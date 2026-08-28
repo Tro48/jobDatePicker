@@ -75,7 +75,6 @@ export function CalendarScreen() {
   }
 
   const todayDay = resolveDay(context, today);
-  const isCurrentMonth = index === MONTH_RANGE;
 
   return (
     <ScrollView
@@ -110,14 +109,6 @@ export function CalendarScreen() {
       <View style={{ marginBottom: theme.spacing.md }}>
         <TodayCard day={todayDay} />
       </View>
-
-      {!isCurrentMonth ? (
-        <Button
-          title="Вернуться к текущему месяцу"
-          onPress={() => setIndex(MONTH_RANGE)}
-          style={{ marginBottom: theme.spacing.md }}
-        />
-      ) : null}
 
       {/* Сетка идёт во всю ширину экрана: при семи колонках только так клетка
           дотягивает до 48 dp зоны нажатия на узких телефонах. */}
