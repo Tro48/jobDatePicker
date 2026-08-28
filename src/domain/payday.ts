@@ -52,6 +52,31 @@ export function applyWeekendShift(date: IsoDate, mode: PaymentRule['weekendShift
     : addDays(date, day === 6 ? 2 : 1);
 }
 
+/**
+ * За какой месяц выплата, если она пришла в указанный день.
+ *
+ * Обратная к expectedPaymentDate по месяцу: правило говорит, на сколько месяцев
+ * выплата опережает или отстаёт от отработанного периода, значит по дате
+ * поступления период восстанавливается сдвигом в другую сторону. Нужно, чтобы
+ * при вводе суммы прямо в календаре месяц подставлялся сам и пользователь не
+ * приписывал августу сентябрьский аванс.
+ */
+export function inferPaymentPeriod(rule: PaymentRule, receivedOn: IsoDate): Period {
+  const naive = shiftPeriod(periodOf(receivedOn), -rule.paidInMonthOffset);
+
+  // Простого сдвига мало: перенос с выходного может выкинуть дату в соседний
+  // месяц. Зарплата 1-го числа со сдвигом назад приходит последним днём
+  // предыдущего месяца, и наивный сдвиг ошибается на месяц — то есть месяц
+  // получил бы чужую сумму. Поэтому ищем период, для которого правило даёт
+  // ровно эту дату, и только при промахе возвращаем догадку.
+  for (const offset of [0, -1, 1] as const) {
+    const candidate = shiftPeriod(naive, offset);
+    if (expectedPaymentDate(rule, candidate) === receivedOn) return candidate;
+  }
+
+  return naive;
+}
+
 export interface UpcomingPayment {
   rule: PaymentRule;
   /** Месяц, ЗА который эта выплата. */

@@ -62,8 +62,8 @@ export const DEFAULT_SHIFT_TYPES: ShiftType[] = [
   },
   { id: 'off', name: 'Выходной', badge: 'В', kind: 'rest', colorToken: 'shift.off', rateMultiplier: 0 },
   { id: 'sleep', name: 'Отсыпной', badge: 'О', kind: 'rest', colorToken: 'shift.sleep', rateMultiplier: 0 },
-  { id: 'vacation', name: 'Отпуск', badge: 'От', kind: 'rest', colorToken: 'shift.vacation', rateMultiplier: 0 },
-  { id: 'sick', name: 'Больничный', badge: 'Б', kind: 'rest', colorToken: 'shift.sick', rateMultiplier: 0 },
+  { id: 'vacation', name: 'Отпуск', badge: 'От', kind: 'rest', colorToken: 'shift.vacation', rateMultiplier: 0, multiDay: true },
+  { id: 'sick', name: 'Больничный', badge: 'Б', kind: 'rest', colorToken: 'shift.sick', rateMultiplier: 0, multiDay: true },
 ];
 
 export function indexShiftTypes(types: ShiftType[]): Map<string, ShiftType> {

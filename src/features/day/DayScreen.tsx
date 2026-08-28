@@ -3,7 +3,12 @@ import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
-import { resolveDay, resolvePlannedShiftId, shiftDurationMinutes } from '@/domain/engine.ts';
+import {
+  findOverrideRun,
+  resolveDay,
+  resolvePlannedShiftId,
+  shiftDurationMinutes,
+} from '@/domain/engine.ts';
 import {
   formatDayLong,
   formatDuration,
@@ -15,6 +20,8 @@ import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, ChoiceGroup, TextField } from '@/ui';
 import { useTheme } from '@/theme';
+import { DayPaymentSection } from './DayPaymentSection.tsx';
+import { DayRangeSection } from './DayRangeSection.tsx';
 
 /** Значение выбора «оставить как в графике» — правка при этом удаляется. */
 const FOLLOW_SCHEDULE = '__schedule__';
@@ -59,10 +66,15 @@ export function DayScreen() {
   const isWork = resolved.shiftType.kind === 'work';
   const plannedMinutes = shiftDurationMinutes(resolved.shiftType);
   const hoursValue = hoursText ?? formatMinutesAsHoursInput(resolved.workedMinutes);
+  const run = findOverrideRun(context.overrides, date);
 
   const choices = [
     { value: FOLLOW_SCHEDULE, label: `По графику — ${planned.name.toLowerCase()}` },
-    ...shiftTypes.map((type) => ({ value: type.id, label: type.name })),
+    ...shiftTypes.map((type) => ({
+      value: type.id,
+      label: type.name,
+      hint: type.multiDay ? 'можно поставить на несколько дней подряд' : undefined,
+    })),
   ];
 
   const applyShiftType = (value: string) => {
@@ -133,6 +145,10 @@ export function DayScreen() {
         />
       </Card>
 
+      {resolved.shiftType.multiDay && run ? (
+        <DayRangeSection shiftType={resolved.shiftType} run={run} />
+      ) : null}
+
       {isWork ? (
         <Card title="Часы">
           <TextField
@@ -154,6 +170,8 @@ export function DayScreen() {
           multiline
         />
       </Card>
+
+      <DayPaymentSection date={date} />
 
       <View style={{ gap: theme.spacing.sm }}>
         {resolved.source === 'override' ? (

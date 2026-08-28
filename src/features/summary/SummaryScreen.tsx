@@ -203,10 +203,16 @@ export function SummaryScreen() {
           </AppText>
         ) : null}
 
+        {/* Выплата вносится в карточке дня, по которому она пришла: там дата
+            уже известна и переспрашивать её незачем. Кнопка ведёт в день
+            ближайшей выплаты по правилу, дальше можно листать календарь. */}
         <Button
           title="Внести выплату"
           variant="primary"
-          onPress={() => router.push({ pathname: '/payment/new', params: { period } })}
+          accessibilityHint="Откроет день, в который ожидается выплата"
+          onPress={() =>
+            router.push({ pathname: '/day/[date]', params: { date: upcoming?.date ?? today } })
+          }
         />
       </Card>
 

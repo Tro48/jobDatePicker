@@ -4,6 +4,7 @@ import { mmkvStateStorage } from './storage.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { DEFAULT_SHIFT_TYPES } from '@/domain/shifts.ts';
 import { DEFAULT_PAYMENT_RULES } from '@/domain/payday.ts';
+import { addDays } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type {
   ActiveSchedule,
@@ -43,7 +44,11 @@ export interface AppActions {
   resetShiftTypes: () => void;
   setPayroll: (payroll: PayrollSettings) => void;
   setOverride: (override: DayOverride) => void;
+  /** Ставит одинаковую правку на несколько дней подряд: отпуск, больничный. */
+  setOverrideRange: (startDate: IsoDate, days: number, shiftTypeId: string, note?: string) => void;
   clearOverride: (date: IsoDate) => void;
+  /** Убирает правки на отрезке дат включительно — снятие отпуска целиком. */
+  clearOverrideRange: (startDate: IsoDate, days: number) => void;
   addPayment: (payment: Omit<PaymentRecord, 'id'>) => void;
   removePayment: (id: string) => void;
   /** Полный сброс — используется при импорте и в отладке. */
@@ -104,6 +109,25 @@ export const useAppStore = create<AppState & AppActions>()(
 
       setOverride: (override) =>
         set((state) => ({ overrides: { ...state.overrides, [override.date]: override } })),
+
+      setOverrideRange: (startDate, days, shiftTypeId, note) =>
+        set((state) => {
+          const overrides = { ...state.overrides };
+          for (let offset = 0; offset < days; offset += 1) {
+            const date = addDays(startDate, offset);
+            overrides[date] = { date, shiftTypeId, note };
+          }
+          return { overrides };
+        }),
+
+      clearOverrideRange: (startDate, days) =>
+        set((state) => {
+          const overrides = { ...state.overrides };
+          for (let offset = 0; offset < days; offset += 1) {
+            delete overrides[addDays(startDate, offset)];
+          }
+          return { overrides };
+        }),
 
       clearOverride: (date) =>
         set((state) => {

@@ -36,10 +36,6 @@ function RootStack() {
           options={{ presentation: 'modal', headerShown: false }}
         />
         <Stack.Screen
-          name="payment/new"
-          options={{ presentation: 'modal', headerShown: false }}
-        />
-        <Stack.Screen
           name="settings/schedule"
           options={{
             headerShown: true,
