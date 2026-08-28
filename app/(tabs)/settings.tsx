@@ -22,6 +22,7 @@ export default function SettingsScreen() {
   const shiftTypeCount = useAppStore((state) => state.shiftTypes.length);
   const overrideCount = useAppStore((state) => Object.keys(state.overrides).length);
   const paymentCount = useAppStore((state) => state.payments.length);
+  const payroll = useAppStore((state) => state.payroll);
 
   return (
     <Screen title="Настройки">
@@ -51,9 +52,12 @@ export default function SettingsScreen() {
       </Card>
 
       <Card title="Выплаты">
-        <Placeholder stage="Этап 3 плана работ">
-          Дни аванса и зарплаты, в каком месяце они приходят относительно отработанного.
-        </Placeholder>
+        <AppText variant="body">
+          {payroll.rules
+            .map((rule) => `${rule.kind === 'advance' ? 'Аванс' : 'Зарплата'} ${rule.dayOfMonth}-го`)
+            .join(', ')}
+        </AppText>
+        <Button title="Настроить выплаты" onPress={() => router.push('/settings/payroll')} />
       </Card>
 
       <Card title="Данные">

@@ -8,8 +8,14 @@ import {
   formatMoney,
   formatMonthTitle,
   formatMinutesAsHoursInput,
+  formatSignedMoney,
+  formatSignedShifts,
+  formatRussianDate,
+  formatSignedTotalHours,
   formatTotalHours,
+  parseAmount,
   parseHoursToMinutes,
+  parseRussianDate,
   plural,
 } from '../format.ts';
 
@@ -45,10 +51,10 @@ test('склонение числительных', () => {
   assert.equal(plural(0, forms), 'смен');
 });
 
-test('длительность смены', () => {
-  assert.equal(formatDuration(12 * 60), '12 ч');
-  assert.equal(formatDuration(7 * 60 + 30), '7 ч 30 мин');
-  assert.equal(formatDuration(45), '45 мин');
+test('длительность смены: число и единица не разрываются переносом', () => {
+  assert.equal(formatDuration(12 * 60), '12\u00A0ч');
+  assert.equal(formatDuration(7 * 60 + 30), '7\u00A0ч 30\u00A0мин');
+  assert.equal(formatDuration(45), '45\u00A0мин');
   assert.equal(formatDuration(0), '—');
 });
 
@@ -60,9 +66,9 @@ test('длительность для скринридера произноси�
 });
 
 test('итог часов за месяц округляется до десятых', () => {
-  assert.equal(formatTotalHours(172 * 60), '172 ч');
-  assert.equal(formatTotalHours(172 * 60 + 30), '172,5 ч');
-  assert.equal(formatTotalHours(0), '0 ч');
+  assert.equal(formatTotalHours(172 * 60), '172\u00A0ч');
+  assert.equal(formatTotalHours(172 * 60 + 30), '172,5\u00A0ч');
+  assert.equal(formatTotalHours(0), '0\u00A0ч');
 });
 
 test('деньги с неразрывными пробелами между разрядами', () => {
@@ -94,4 +100,57 @@ test('минуты разворачиваются обратно в строку
   assert.equal(formatMinutesAsHoursInput(720), '12');
   assert.equal(formatMinutesAsHoursInput(450), '7,5');
   assert.equal(formatMinutesAsHoursInput(0), '0');
+});
+
+test('знаковые разницы используют типографский минус, а не дефис', () => {
+  assert.equal(formatSignedTotalHours(9 * 60), '+9\u00A0ч');
+  assert.equal(formatSignedTotalHours(-3 * 60 - 30), '\u22123,5\u00A0ч');
+  assert.equal(formatSignedTotalHours(0), '0\u00A0ч');
+
+  assert.equal(formatSignedMoney(4000, '₽'), '+4\u00A0000\u00A0₽');
+  assert.equal(formatSignedMoney(-1200, '₽'), '\u22121\u00A0200\u00A0₽');
+  assert.equal(formatSignedMoney(0, '₽'), '0\u00A0₽');
+
+  assert.equal(formatSignedShifts(2), '+2 смены');
+  assert.equal(formatSignedShifts(-1), '\u22121 смена');
+  assert.equal(formatSignedShifts(0), '0 смен');
+
+  // Дефис-минус в выводе недопустим.
+  assert.ok(!formatSignedTotalHours(-5 * 60).includes('-'));
+  assert.ok(!formatSignedMoney(-500, '₽').includes('-'));
+});
+
+test('дата в поле ввода в привычном порядке', () => {
+  assert.equal(formatRussianDate('2026-08-27'), '27.08.2026');
+  assert.equal(formatRussianDate('2026-01-05'), '05.01.2026');
+});
+
+test('разбор даты принимает и однозначный день', () => {
+  assert.equal(parseRussianDate('27.08.2026'), '2026-08-27');
+  assert.equal(parseRussianDate('5.1.2026'), '2026-01-05');
+  assert.equal(parseRussianDate(' 29.02.2028 '), '2028-02-29');
+});
+
+test('несуществующие даты не проходят, а не превращаются в соседние', () => {
+  assert.equal(parseRussianDate('31.02.2026'), null); // Date сам сделал бы из этого 3 марта
+  assert.equal(parseRussianDate('29.02.2027'), null); // 2027 не високосный
+  assert.equal(parseRussianDate('00.01.2026'), null);
+  assert.equal(parseRussianDate('01.13.2026'), null);
+  assert.equal(parseRussianDate('2026-08-27'), null);
+  assert.equal(parseRussianDate(''), null);
+});
+
+test('сумма принимается в том виде, в каком её копируют из банка', () => {
+  assert.equal(parseAmount('30000'), 30000);
+  assert.equal(parseAmount('30 000'), 30000);
+  assert.equal(parseAmount('30\u00A0000'), 30000);
+  assert.equal(parseAmount('30000,50'), 30001); // копейки округляются
+  assert.equal(parseAmount('0'), 0);
+});
+
+test('мусор вместо суммы не проходит', () => {
+  assert.equal(parseAmount(''), null);
+  assert.equal(parseAmount('-500'), null);
+  assert.equal(parseAmount('тридцать тысяч'), null);
+  assert.equal(parseAmount('30 000 ₽'), null);
 });

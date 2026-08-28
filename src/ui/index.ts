@@ -5,5 +5,7 @@ export { ChoiceGroup } from './ChoiceGroup.tsx';
 export { IconButton } from './IconButton.tsx';
 export { Placeholder } from './Placeholder.tsx';
 export { Screen } from './Screen.tsx';
+export { Stat } from './Stat.tsx';
 export { TextField } from './TextField.tsx';
+export { Toggle } from './Toggle.tsx';
 export { useReduceMotion } from './useReduceMotion.ts';

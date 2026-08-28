@@ -36,10 +36,23 @@ function RootStack() {
           options={{ presentation: 'modal', headerShown: false }}
         />
         <Stack.Screen
+          name="payment/new"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
+        <Stack.Screen
           name="settings/schedule"
           options={{
             headerShown: true,
             title: 'График',
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+          }}
+        />
+        <Stack.Screen
+          name="settings/payroll"
+          options={{
+            headerShown: true,
+            title: 'Выплаты',
             headerStyle: { backgroundColor: theme.colors.surface },
             headerTintColor: theme.colors.text,
           }}
