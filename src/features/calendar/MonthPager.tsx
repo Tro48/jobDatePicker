@@ -6,7 +6,8 @@ import type { ScheduleContext } from '@/domain/engine.ts';
 import { shiftPeriod } from '@/domain/payday.ts';
 import type { Period } from '@/domain/payday.ts';
 import { useReduceMotion } from '@/ui';
-import { MonthGrid, gridHeightFor } from './MonthGrid.tsx';
+import { MonthGrid } from './MonthGrid.tsx';
+import { gridMetrics } from './gridMetrics.ts';
 
 export interface MonthRef {
   period: Period;
@@ -77,7 +78,7 @@ export function MonthPager({
       showsHorizontalScrollIndicator={false}
       keyExtractor={(item) => item.period}
       initialScrollIndex={index}
-      style={{ width, height: gridHeightFor(width) }}
+      style={{ width, height: gridMetrics(width).height }}
       // Без getItemLayout initialScrollIndex промахивается: FlatList не знает
       // ширину ещё не отрисованных страниц.
       getItemLayout={(_, itemIndex) => ({

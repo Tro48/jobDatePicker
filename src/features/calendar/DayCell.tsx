@@ -9,6 +9,8 @@ import { useTheme, useShiftColors } from '@/theme';
 export interface DayCellProps {
   day: ResolvedDay;
   size: number;
+  /** false — день соседнего месяца: показывается приглушённо, но остаётся нажимаемым. */
+  inMonth: boolean;
   isToday: boolean;
   isSelected: boolean;
   onPress: (date: IsoDate) => void;
@@ -21,18 +23,29 @@ export interface DayCellProps {
  * полной озвучкой. Одной заливки недостаточно — она не читается ни при
  * дальтонизме, ни скринридером.
  */
-export function DayCell({ day, size, isToday, isSelected, onPress }: DayCellProps) {
+export function DayCell({ day, size, inMonth, isToday, isSelected, onPress }: DayCellProps) {
   const theme = useTheme();
-  const colors = useShiftColors(day.shiftType.colorToken);
+  const shiftColors = useShiftColors(day.shiftType.colorToken);
   const [focused, setFocused] = useState(false);
 
+  /**
+   * Дни соседних месяцев не приглушаются прозрачностью: она уронила бы контраст
+   * ниже проверенного порога. Вместо этого они теряют заливку и уходят в
+   * приглушённый цвет текста, который проверен на фоне страницы.
+   */
+  const colors = inMonth
+    ? shiftColors
+    : { surface: theme.colors.background, on: theme.colors.textMuted };
+
   const dayNumber = Number(day.date.slice(8, 10));
-  const outlined = focused || isSelected || isToday;
+  const outlined = focused || isSelected || (isToday && inMonth);
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={describeDay(day, { isToday })}
+      accessibilityLabel={
+        inMonth ? describeDay(day, { isToday }) : `${describeDay(day)}, соседний месяц`
+      }
       accessibilityState={{ selected: isSelected }}
       onPress={() => onPress(day.date)}
       onFocus={() => setFocused(true)}
@@ -49,7 +62,7 @@ export function DayCell({ day, size, isToday, isSelected, onPress }: DayCellProp
           ? theme.colors.focus
           : isSelected
             ? theme.colors.accent
-            : isToday
+            : isToday && inMonth
               ? colors.on
               : 'transparent',
       }}
@@ -64,16 +77,11 @@ export function DayCell({ day, size, isToday, isSelected, onPress }: DayCellProp
           // может расти, иначе месяц не поместится на экран. Полные данные дня
           // доступны в карточке дня и через скринридер.
           maxFontSizeMultiplier={1.3}
-          style={{ fontWeight: isToday ? '800' : '600' }}
+          style={{ fontWeight: isToday && inMonth ? '800' : '600' }}
         >
           {dayNumber}
         </AppText>
-        <AppText
-          variant="badge"
-          color={colors.on}
-          numberOfLines={1}
-          maxFontSizeMultiplier={1.3}
-        >
+        <AppText variant="badge" color={colors.on} numberOfLines={1} maxFontSizeMultiplier={1.3}>
           {day.shiftType.badge}
         </AppText>
       </View>

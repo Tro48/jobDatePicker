@@ -54,7 +54,6 @@ src/
     storage.ts       обёртка над MMKV
     store.ts         Zustand: настройки, правки, выплаты
     migrations.ts    версия схемы и перенос данных
-    backup.ts        экспорт и импорт JSON
   theme/
     palette.ts       цвета обеих тем  ← проверяется scripts/check-contrast.ts
     typography.ts

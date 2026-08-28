@@ -7,7 +7,7 @@
     "start": "expo start --dev-client",
     "android": "expo start --dev-client --android",
     "typecheck": "tsc --noEmit",
-    "test:domain": "node --test --experimental-strip-types \"src/domain/__tests__/*.test.ts\"",
+    "test:domain": "node --test --experimental-strip-types \"src/**/__tests__/*.test.ts\"",
     "check:contrast": "node --experimental-strip-types scripts/check-contrast.ts"
   },
   "dependencies": {

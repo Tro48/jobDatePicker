@@ -16,10 +16,3 @@ export const mmkvStateStorage: StateStorage = {
     storage.remove(name);
   },
 };
-
-/** Полный дамп хранилища — основа экспорта данных в JSON. */
-export function dumpStorage(): Record<string, string> {
-  return Object.fromEntries(
-    storage.getAllKeys().map((key: string) => [key, storage.getString(key) ?? '']),
-  );
-}

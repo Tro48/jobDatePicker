@@ -1,27 +1,14 @@
 import { useMemo } from 'react';
 import { View } from 'react-native';
-import { monthDays, weekday } from '@/domain/date.ts';
+import { monthGridDates } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
-import { resolveRange } from '@/domain/engine.ts';
+import { resolveDay } from '@/domain/engine.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import { WEEKDAYS_SHORT, formatMonthTitle } from '@/domain/format.ts';
 import { AppText } from '@/ui';
 import { useTheme } from '@/theme';
 import { DayCell } from './DayCell.tsx';
-
-/** Промежуток между клетками. Два пункта — компромисс ради зоны нажатия 48 dp. */
-export const GRID_GAP = 2;
-
-/** Строк всегда шесть, чтобы сетка не прыгала по высоте при листании месяцев. */
-export const GRID_ROWS = 6;
-
-export function cellSizeFor(width: number): number {
-  return (width - GRID_GAP * (7 - 1)) / 7;
-}
-
-export function gridHeightFor(width: number): number {
-  return GRID_ROWS * (cellSizeFor(width) + GRID_GAP);
-}
+import { GRID_GAP, gridMetrics } from './gridMetrics.ts';
 
 export interface MonthGridProps {
   year: number;
@@ -29,7 +16,6 @@ export interface MonthGridProps {
   context: ScheduleContext;
   today: IsoDate;
   selectedDate?: IsoDate;
-  /** Ширина, на которую растягивается сетка: считается по ней, а не по экрану. */
   width: number;
   onSelectDay: (date: IsoDate) => void;
 }
@@ -43,35 +29,36 @@ export function MonthGrid({
   width,
   onSelectDay,
 }: MonthGridProps) {
-  const size = cellSizeFor(width);
+  const { cellSize, gridWidth } = gridMetrics(width);
 
-  const days = useMemo(() => monthDays(year, month), [year, month]);
-  const resolved = useMemo(() => resolveRange(context, days), [context, days]);
-  // Неделя начинается с понедельника, поэтому перед первым числом пустые клетки.
-  const leading = weekday(days[0]) - 1;
+  const days = useMemo(() => {
+    // Сетка всегда 42 дня: хвосты соседних месяцев показываются как контекст,
+    // чтобы было видно, как смены переходят через границу месяца.
+    return monthGridDates(year, month).map((cell) => ({
+      ...cell,
+      resolved: resolveDay(context, cell.date),
+    }));
+  }, [year, month, context]);
 
   return (
-    <View
-      // React Native не знает роли grid — на Android доступен только list.
-      // Точность не теряется: каждая клетка озвучивает свою дату и день недели.
-      accessibilityRole="list"
-      accessibilityLabel={formatMonthTitle(year, month)}
-      style={{ width, flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP }}
-    >
-      {Array.from({ length: leading }, (_, index) => (
-        <View key={`blank-${index}`} style={{ width: size, height: size }} />
-      ))}
-
-      {resolved.map((day) => (
-        <DayCell
-          key={day.date}
-          day={day}
-          size={size}
-          isToday={day.date === today}
-          isSelected={day.date === selectedDate}
-          onPress={onSelectDay}
-        />
-      ))}
+    <View style={{ width, alignItems: 'center' }}>
+      <View
+        accessibilityRole="list"
+        accessibilityLabel={formatMonthTitle(year, month)}
+        style={{ width: gridWidth, flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP }}
+      >
+        {days.map((cell) => (
+          <DayCell
+            key={cell.date}
+            day={cell.resolved}
+            size={cellSize}
+            inMonth={cell.inMonth}
+            isToday={cell.date === today}
+            isSelected={cell.date === selectedDate}
+            onPress={onSelectDay}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -82,29 +69,31 @@ export function MonthGrid({
  */
 export function WeekdayHeader({ width }: { width: number }) {
   const theme = useTheme();
-  const size = cellSizeFor(width);
+  const { cellSize, gridWidth } = gridMetrics(width);
 
   return (
-    <View
-      importantForAccessibility="no-hide-descendants"
-      style={{
-        width,
-        flexDirection: 'row',
-        gap: GRID_GAP,
-        marginBottom: theme.spacing.xs,
-      }}
-    >
-      {WEEKDAYS_SHORT.map((name, index) => (
-        <AppText
-          key={name}
-          variant="caption"
-          tone={index >= 5 ? 'muted' : 'default'}
-          maxFontSizeMultiplier={1.3}
-          style={{ width: size, textAlign: 'center' }}
-        >
-          {name}
-        </AppText>
-      ))}
+    <View style={{ width, alignItems: 'center' }}>
+      <View
+        importantForAccessibility="no-hide-descendants"
+        style={{
+          width: gridWidth,
+          flexDirection: 'row',
+          gap: GRID_GAP,
+          marginBottom: theme.spacing.xs,
+        }}
+      >
+        {WEEKDAYS_SHORT.map((name, index) => (
+          <AppText
+            key={name}
+            variant="caption"
+            tone={index >= 5 ? 'muted' : 'default'}
+            maxFontSizeMultiplier={1.3}
+            style={{ width: cellSize, textAlign: 'center' }}
+          >
+            {name}
+          </AppText>
+        ))}
+      </View>
     </View>
   );
 }

@@ -2,7 +2,7 @@ import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { formatDayShort } from '@/domain/format.ts';
-import { AppText, Button, Card, ChoiceGroup, Placeholder, Screen } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, Screen } from '@/ui';
 import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
 import { useTheme } from '@/theme';
@@ -75,9 +75,6 @@ export default function SettingsScreen() {
             Внесённых выплат: {paymentCount}
           </AppText>
         </View>
-        <Placeholder stage="Этап 5 плана работ">
-          Экспорт и импорт всех данных в JSON.
-        </Placeholder>
       </Card>
     </Screen>
   );
