@@ -1,0 +1,9 @@
+{
+  "name": "job-date-picker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test:domain": "node --test --experimental-strip-types \"src/domain/__tests__/*.test.ts\"",
+    "check:contrast": "node --experimental-strip-types scripts/check-contrast.ts"
+  }
+}
