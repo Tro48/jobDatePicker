@@ -1,0 +1,54 @@
+# Проверки, которые не требуют ни Android SDK, ни телефона.
+#
+# Файл вызывается двумя способами: сам по себе на ветке dev и в пул-реквестах,
+# и через workflow_call из build.yml перед сборкой. Так шаги описаны один раз,
+# а не скопированы в два места.
+name: Проверки
+
+on:
+  workflow_call:
+  pull_request:
+  push:
+    branches: [dev]
+
+# Свежий пуш отменяет предыдущий прогон на той же ветке.
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Типы, тесты, контраст
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Типы
+        # Осознанное ограничение: типы маршрутов expo-router генерирует только
+        # dev-сервер, а .expo/ не в репозитории. Значит, здесь tsc не проверит
+        # пути в router.push — они проверяются локально после npm start.
+        # Цена ошибки низкая: несуществующий путь даёт экран "Unmatched route",
+        # а не падение.
+        run: npm run typecheck
+
+      - name: Тесты доменного слоя
+        run: npm run test:domain
+
+      - name: Контраст палитры по WCAG
+        run: npm run check:contrast
+
+      - name: Конфигурация проекта Expo
+        run: npx expo-doctor
+
+      - name: Сборка JS-бандла под Android
+        # Ловит то, что не видит tsc: несуществующие модули, ошибки резолва
+        # алиасов и путей маршрутов.
+        run: npx expo export --platform android --output-dir /tmp/export-check
