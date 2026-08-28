@@ -1,21 +1,19 @@
 import { useMemo, useState } from 'react';
 import { Alert, View } from 'react-native';
 import type { IsoDate } from '@/domain/date.ts';
-import { formatMoney, parseAmount } from '@/domain/format.ts';
-import { formatMonthTitle } from '@/domain/format.ts';
-import { inferPaymentPeriod, shiftPeriod } from '@/domain/payday.ts';
+import { formatMonthTitle, formatMoney, parseAmount } from '@/domain/format.ts';
+import { inferPaymentPeriod, periodOf, shiftPeriod } from '@/domain/payday.ts';
 import type { Period } from '@/domain/payday.ts';
+import { PAYMENT_KINDS, PAYMENT_KIND_LABELS, isCompensationPayment } from '@/domain/payments.ts';
 import type { PaymentKind } from '@/domain/types.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, ChoiceGroup, IconButton, TextField } from '@/ui';
 import { useTheme } from '@/theme';
 
-const KIND_CHOICES = [
-  { value: 'advance' as const, label: 'Аванс' },
-  { value: 'salary' as const, label: 'Зарплата' },
-];
-
-const KIND_LABELS: Record<PaymentKind, string> = { advance: 'Аванс', salary: 'Зарплата' };
+const KIND_CHOICES = PAYMENT_KINDS.map((kind) => ({
+  value: kind,
+  label: PAYMENT_KIND_LABELS[kind],
+}));
 
 /**
  * Ввод и просмотр выплат, пришедших в этот день.
@@ -39,22 +37,22 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
     [payments, date],
   );
 
-  /** Месяц подставляется из правила выплат, но остаётся правимым. */
+  /**
+   * Месяц подставляется из правила выплат. У отпускных и больничного правила
+   * нет — берётся месяц поступления, дальше пользователь правит стрелками.
+   */
   const inferredPeriod = useMemo(() => {
+    if (isCompensationPayment(kind)) return periodOf(date);
     const rule = payroll.rules.find((item) => item.kind === kind);
-    return rule ? inferPaymentPeriod(rule, date) : date.slice(0, 7);
+    return rule ? inferPaymentPeriod(rule, date) : periodOf(date);
   }, [payroll.rules, kind, date]);
 
   const period = periodOverride ?? inferredPeriod;
   const amount = parseAmount(amountText);
   const canSave = amount !== null && amount > 0;
 
-  const confirmRemove = (id: string, label: string) => {
-    Alert.alert('Удалить выплату?', label, [
-      { text: 'Отмена', style: 'cancel' },
-      { text: 'Удалить', style: 'destructive', onPress: () => removePayment(id) },
-    ]);
-  };
+  const describe = (paymentKind: PaymentKind, value: number) =>
+    `${PAYMENT_KIND_LABELS[paymentKind]} ${formatMoney(value, payroll.currency)}`;
 
   return (
     <Card title="Выплата в этот день">
@@ -66,24 +64,39 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
           <AppText
             variant="body"
             style={{ flex: 1 }}
-            accessibilityLabel={`${KIND_LABELS[payment.kind]} ${formatMoney(payment.amount, payroll.currency)} за ${formatMonthTitle(Number(payment.period.slice(0, 4)), Number(payment.period.slice(5, 7)))}`}
+            accessibilityLabel={`${describe(payment.kind, payment.amount)} за ${formatMonthTitle(Number(payment.period.slice(0, 4)), Number(payment.period.slice(5, 7)))}`}
           >
-            {KIND_LABELS[payment.kind]} · {formatMoney(payment.amount, payroll.currency)}
+            {PAYMENT_KIND_LABELS[payment.kind]} · {formatMoney(payment.amount, payroll.currency)}
           </AppText>
           <IconButton
             name="trash-outline"
-            label={`Удалить: ${KIND_LABELS[payment.kind]} ${formatMoney(payment.amount, payroll.currency)}`}
+            label={`Удалить: ${describe(payment.kind, payment.amount)}`}
             onPress={() =>
-              confirmRemove(
-                payment.id,
-                `${KIND_LABELS[payment.kind]} ${formatMoney(payment.amount, payroll.currency)}`,
-              )
+              // Удаление меняет ставку за час задним числом, поэтому спрашиваем.
+              Alert.alert('Удалить выплату?', describe(payment.kind, payment.amount), [
+                { text: 'Отмена', style: 'cancel' },
+                {
+                  text: 'Удалить',
+                  style: 'destructive',
+                  onPress: () => removePayment(payment.id),
+                },
+              ])
             }
           />
         </View>
       ))}
 
-      <ChoiceGroup label="Тип выплаты" choices={KIND_CHOICES} value={kind} onChange={setKind} />
+      <ChoiceGroup
+        label="Тип выплаты"
+        choices={KIND_CHOICES}
+        value={kind}
+        onChange={(next) => {
+          setKind(next);
+          // Месяц у каждого типа выводится по-своему — сбрасываем ручную правку,
+          // иначе после смены типа остаётся месяц от предыдущего правила.
+          setPeriodOverride(null);
+        }}
+      />
 
       <TextField
         label={`Сумма, ${payroll.currency}`}
@@ -115,10 +128,11 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
             onPress={() => setPeriodOverride(shiftPeriod(period, 1))}
           />
         </View>
-        {/* Месяц, ЗА который платят, и день поступления — разные вещи.
-            Подставленное значение приходит из правила выплат. */}
+        {/* Месяц, ЗА который платят, и день поступления — разные вещи. */}
         <AppText variant="caption" tone="muted">
-          Это месяц, за который платят, а не когда пришло. Подставлен по правилу выплат.
+          {isCompensationPayment(kind)
+            ? 'Это месяц, к которому отнести выплату в сводке. Подставлен месяц поступления.'
+            : 'Это месяц, за который платят, а не когда пришло. Подставлен по правилу выплат.'}
         </AppText>
       </View>
 

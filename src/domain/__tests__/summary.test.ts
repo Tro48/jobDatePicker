@@ -94,3 +94,48 @@ test('прогноза нет, если нет ни одного закрыто�
   const september = buildMonthSummary(context, '2026-09', []);
   assert.equal(forecastMonth(september, [], '2026-09-15', context), null);
 });
+
+test('отпускные входят в сумму месяца, но не в ставку за час и за смену', () => {
+  const payments: PaymentRecord[] = [
+    ...septemberPayments,
+    { id: 'v', kind: 'vacationPay', period: '2026-09', receivedOn: '2026-09-05', amount: 20_000 },
+    { id: 'b', kind: 'sickPay', period: '2026-09', receivedOn: '2026-09-20', amount: 5_000 },
+  ];
+  const summary = buildMonthSummary(contextFor('5-2-short-friday', '2026-09-01'), '2026-09', payments);
+
+  assert.equal(summary.totalPaid, 100_000);
+  assert.equal(summary.compensationPaid, 25_000);
+  assert.equal(summary.workPaid, 75_000);
+  // Ставки остались теми же, что и без отпускных: 75000 / 172 и 75000 / 22.
+  assert.equal(Math.round(summary.effectiveHourlyRate! * 100) / 100, 436.05);
+  assert.equal(Math.round(summary.effectiveShiftRate! * 100) / 100, 3409.09);
+});
+
+test('разбивка по видам выплат идёт в порядке справочника и без пустых строк', () => {
+  const payments: PaymentRecord[] = [
+    { id: 'v', kind: 'vacationPay', period: '2026-09', receivedOn: '2026-09-05', amount: 20_000 },
+    { id: 'a1', kind: 'advance', period: '2026-09', receivedOn: '2026-08-27', amount: 30_000 },
+    { id: 'a2', kind: 'advance', period: '2026-09', receivedOn: '2026-08-28', amount: 1_000 },
+  ];
+  const summary = buildMonthSummary(contextFor('2-2-day', '2026-09-01'), '2026-09', payments);
+
+  assert.deepEqual(
+    summary.byPaymentKind.map((entry) => [entry.kind, entry.amount, entry.count]),
+    [
+      ['advance', 31_000, 2],
+      ['vacationPay', 20_000, 1],
+    ],
+  );
+});
+
+test('месяц без аванса и зарплаты, но с больничным: ставка не считается', () => {
+  const payments: PaymentRecord[] = [
+    { id: 'b', kind: 'sickPay', period: '2026-09', receivedOn: '2026-09-20', amount: 5_000 },
+  ];
+  const summary = buildMonthSummary(contextFor('2-2-day', '2026-09-01'), '2026-09', payments);
+
+  assert.equal(summary.totalPaid, 5_000);
+  assert.equal(summary.workPaid, 0);
+  assert.equal(summary.effectiveHourlyRate, null);
+  assert.equal(summary.effectiveShiftRate, null);
+});

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView } from 'react-native';
 import { todayIso } from '@/domain/date.ts';
@@ -18,21 +17,22 @@ import {
   pluralize,
 } from '@/domain/format.ts';
 import { periodOf, shiftPeriod, upcomingPayments } from '@/domain/payday.ts';
+import { PAYMENT_KIND_LABELS } from '@/domain/payments.ts';
 import type { Period } from '@/domain/payday.ts';
 import { buildMonthSummary, forecastMonth } from '@/domain/summary.ts';
 import type { MonthSummary } from '@/domain/summary.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
+import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, IconButton, Stat } from '@/ui';
 import { useTheme } from '@/theme';
-import { PaymentList } from './PaymentList.tsx';
 
 /** Сколько закрытых месяцев просматривать в поисках ставки для прогноза. */
 const HISTORY_DEPTH = 12;
 
 export function SummaryScreen() {
   const theme = useTheme();
-  const router = useRouter();
+  const push = useGuardedPush();
   const insets = useSafeAreaInsets();
 
   const context = useScheduleContext();
@@ -88,7 +88,7 @@ export function SummaryScreen() {
           <AppText variant="body" tone="muted">
             Считать часы не по чему. Выбери график — сводка появится сама.
           </AppText>
-          <Button title="Выбрать график" variant="primary" onPress={() => router.push('/settings/schedule')} />
+          <Button title="Выбрать график" variant="primary" onPress={() => push('/settings/schedule')} />
         </Card>
       </ScrollView>
     );
@@ -165,35 +165,54 @@ export function SummaryScreen() {
         ) : null}
       </Card>
 
-      <Card title="Деньги">
-        <PaymentList payments={summary.payments} currency={currency} />
-
+      <Card title="Деньги за месяц">
         {summary.payments.length > 0 ? (
           <>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <AppText variant="heading">Итого</AppText>
-              <AppText variant="heading">{formatMoney(summary.totalPaid, currency)}</AppText>
-            </View>
-            {summary.effectiveHourlyRate !== null && summary.effectiveShiftRate !== null ? (
-              <AppText variant="body" tone="muted">
-                {formatMoney(summary.effectiveHourlyRate, currency)} за час ·{' '}
-                {formatMoney(summary.effectiveShiftRate, currency)} за смену
-              </AppText>
-            ) : (
+            <MoneyRow
+              label="Итого"
+              value={formatMoney(summary.totalPaid, currency)}
+              emphasis
+            />
+            {summary.effectiveShiftRate !== null ? (
+              <MoneyRow label="За смену" value={formatMoney(summary.effectiveShiftRate, currency)} />
+            ) : null}
+            {summary.effectiveHourlyRate !== null ? (
+              <MoneyRow label="За час" value={formatMoney(summary.effectiveHourlyRate, currency)} />
+            ) : null}
+
+            {/* Отпускные и больничные — отдельными строками: в сумму месяца они
+                входят, а в ставки нет, часами они не заработаны. */}
+            {summary.byPaymentKind.map((entry) => (
+              <MoneyRow
+                key={entry.kind}
+                label={PAYMENT_KIND_LABELS[entry.kind]}
+                value={formatMoney(entry.amount, currency)}
+                muted
+              />
+            ))}
+
+            {summary.compensationPaid > 0 ? (
               <AppText variant="caption" tone="muted">
-                Часов за месяц нет, поэтому ставка не считается.
+                За смену и за час — по авансу и зарплате. Отпускные и больничные в ставку
+                не входят: они не заработаны часами этого месяца.
               </AppText>
-            )}
+            ) : null}
+            {summary.workPaid > 0 && summary.workedMinutes === 0 ? (
+              <AppText variant="caption" tone="muted">
+                Смен за месяц нет, поэтому ставка не считается.
+              </AppText>
+            ) : null}
           </>
         ) : (
           <AppText variant="body" tone="muted">
-            За этот месяц выплат ещё не внесено.
+            За этот месяц выплат ещё не внесено. Сумма вносится в карточке дня, в который
+            она пришла.
           </AppText>
         )}
 
         {upcoming ? (
           <AppText variant="caption" tone="muted">
-            Ближайшая: {upcoming.rule.kind === 'advance' ? 'аванс' : 'зарплата'} за{' '}
+            Ближайшая: {PAYMENT_KIND_LABELS[upcoming.rule.kind].toLowerCase()} за{' '}
             {formatMonthTitle(
               Number(upcoming.period.slice(0, 4)),
               Number(upcoming.period.slice(5, 7)),
@@ -202,24 +221,22 @@ export function SummaryScreen() {
             {upcoming.daysAway === 0 ? ' — сегодня' : `, через ${pluralize(upcoming.daysAway, DAY_FORMS)}`}
           </AppText>
         ) : null}
-
-        {/* Выплата вносится в карточке дня, по которому она пришла: там дата
-            уже известна и переспрашивать её незачем. Кнопка ведёт в день
-            ближайшей выплаты по правилу, дальше можно листать календарь. */}
-        <Button
-          title="Внести выплату"
-          variant="primary"
-          accessibilityHint="Откроет день, в который ожидается выплата"
-          onPress={() =>
-            router.push({ pathname: '/day/[date]', params: { date: upcoming?.date ?? today } })
-          }
-        />
       </Card>
 
       <Card title="К предыдущему месяцу">
         <ComparisonRow label="Часы" value={formatSignedTotalHours(summary.workedMinutes - previous.workedMinutes)} />
         <ComparisonRow label="Смены" value={formatSignedShifts(summary.workedDays - previous.workedDays)} />
-        <ComparisonRow label="Деньги" value={formatSignedMoney(summary.totalPaid - previous.totalPaid, currency)} />
+        {/* Деньги сравниваются, только когда за оба месяца что-то внесено.
+            Иначе открытый месяц с пустыми выплатами показывал минус во всю
+            зарплату прошлого — не разница, а отсутствие данных. */}
+        {summary.payments.length > 0 && previous.payments.length > 0 ? (
+          <ComparisonRow
+            label="Деньги"
+            value={formatSignedMoney(summary.totalPaid - previous.totalPaid, currency)}
+          />
+        ) : (
+          <ComparisonRow label="Деньги" value="выплаты внесены не за оба месяца" />
+        )}
       </Card>
 
       {forecast ? (
@@ -255,6 +272,39 @@ function ComparisonRow({ label, value }: { label: string; value: string }) {
         {label}
       </AppText>
       <AppText variant="body" tone="muted" importantForAccessibility="no">
+        {value}
+      </AppText>
+    </View>
+  );
+}
+
+/**
+ * Строка денежного блока. Итог выделен начертанием, а не только размером:
+ * ориентироваться на один лишь визуальный вес нельзя.
+ */
+function MoneyRow({
+  label,
+  value,
+  emphasis,
+  muted,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+  muted?: boolean;
+}) {
+  const variant = emphasis ? 'heading' : 'body';
+
+  return (
+    <View
+      accessibilityRole="text"
+      accessibilityLabel={`${label}: ${value}`}
+      style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}
+    >
+      <AppText variant={variant} tone={muted ? 'muted' : undefined} importantForAccessibility="no">
+        {label}
+      </AppText>
+      <AppText variant={variant} tone={muted ? 'muted' : undefined} importantForAccessibility="no">
         {value}
       </AppText>
     </View>

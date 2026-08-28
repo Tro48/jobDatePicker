@@ -3,15 +3,11 @@ import { ScrollView, View } from 'react-native';
 import { todayIso } from '@/domain/date.ts';
 import { formatDayShort, formatMonthTitle } from '@/domain/format.ts';
 import { expectedPaymentDate, periodOf } from '@/domain/payday.ts';
-import type { PaymentKind, PaymentRule } from '@/domain/types.ts';
+import { PAYMENT_KIND_LABELS as KIND_TITLES } from '@/domain/payments.ts';
+import type { PaymentRule, ScheduledPaymentKind } from '@/domain/types.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Card, ChoiceGroup, TextField, Toggle } from '@/ui';
 import { useTheme } from '@/theme';
-
-const KIND_TITLES: Record<PaymentKind, string> = {
-  advance: 'Аванс',
-  salary: 'Зарплата',
-};
 
 const OFFSET_CHOICES = [
   { value: '-1', label: 'В предыдущем месяце', hint: 'Аванс за сентябрь приходит в конце августа' },
@@ -33,7 +29,7 @@ export function PayrollSettingsScreen() {
   const today = useMemo(() => todayIso(), []);
   const period = periodOf(today);
 
-  const updateRule = (kind: PaymentKind, patch: Partial<PaymentRule>) => {
+  const updateRule = (kind: ScheduledPaymentKind, patch: Partial<PaymentRule>) => {
     setPayroll({
       ...payroll,
       rules: payroll.rules.map((rule) => (rule.kind === kind ? { ...rule, ...patch } : rule)),

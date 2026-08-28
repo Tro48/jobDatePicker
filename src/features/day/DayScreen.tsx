@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import {
@@ -29,6 +30,7 @@ const FOLLOW_SCHEDULE = '__schedule__';
 export function DayScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ date: string }>();
   const date = (params.date ?? todayIso()) as IsoDate;
 
@@ -40,6 +42,14 @@ export function DayScreen() {
 
   const [hoursText, setHoursText] = useState<string | null>(null);
 
+  // Модалка открывается без шапки, поэтому вертикальный отступ здесь свой:
+  // иначе заголовок дня упирается в статус-бар.
+  const padding = {
+    paddingTop: insets.top + theme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: insets.bottom + theme.spacing.xxl,
+  };
+
   const planned = useMemo(() => {
     if (!context) return null;
     const id = resolvePlannedShiftId(context.schedule, date);
@@ -48,10 +58,7 @@ export function DayScreen() {
 
   if (!context || !planned) {
     return (
-      <ScrollView
-        style={{ flex: 1, backgroundColor: theme.colors.background }}
-        contentContainerStyle={{ padding: theme.spacing.lg }}
-      >
+      <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }} contentContainerStyle={padding}>
         <Card title="График не выбран">
           <AppText variant="body" tone="muted">
             Пока график не выбран, править отдельные дни нечего.
@@ -111,7 +118,7 @@ export function DayScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.colors.background }}
-      contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
+      contentContainerStyle={padding}
       keyboardShouldPersistTaps="handled"
     >
       <View style={{ marginBottom: theme.spacing.lg }}>

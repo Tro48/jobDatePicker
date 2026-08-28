@@ -19,7 +19,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -27,6 +27,11 @@ export interface AppState {
   appearance: ThemePreference;
   /** null, пока пользователь не выбрал график. */
   schedule: ActiveSchedule | null;
+  /**
+   * Справочник смен. В хранилище не уходит: он задан кодом, и снимок из старой
+   * сборки перекрывал бы новые поля — так пропал признак многодневности у
+   * отпуска, и карточка дня переставала спрашивать количество дней.
+   */
   shiftTypes: ShiftType[];
   payroll: PayrollSettings;
   /** Ручные правки по датам: ключ — дата в формате YYYY-MM-DD. */
@@ -34,14 +39,15 @@ export interface AppState {
   payments: PaymentRecord[];
 }
 
+/** Часть состояния, которая переживает перезапуск. */
+export type PersistedState = Omit<AppState, 'shiftTypes'>;
+
 export interface AppActions {
   setAppearance: (value: ThemePreference) => void;
   /** Выбор графика: паттерн копируется из пресета, а не хранится ссылкой. */
   selectSchedule: (presetId: string, anchorDate: IsoDate) => void;
   setAnchorDate: (anchorDate: IsoDate) => void;
   clearSchedule: () => void;
-  upsertShiftType: (shiftType: ShiftType) => void;
-  resetShiftTypes: () => void;
   setPayroll: (payroll: PayrollSettings) => void;
   setOverride: (override: DayOverride) => void;
   /** Ставит одинаковую правку на несколько дней подряд: отпуск, больничный. */
@@ -94,17 +100,6 @@ export const useAppStore = create<AppState & AppActions>()(
 
       clearSchedule: () => set({ schedule: null }),
 
-      upsertShiftType: (shiftType) =>
-        set((state) => {
-          const index = state.shiftTypes.findIndex((item) => item.id === shiftType.id);
-          if (index === -1) return { shiftTypes: [...state.shiftTypes, shiftType] };
-          const next = [...state.shiftTypes];
-          next[index] = shiftType;
-          return { shiftTypes: next };
-        }),
-
-      resetShiftTypes: () => set({ shiftTypes: DEFAULT_SHIFT_TYPES }),
-
       setPayroll: (payroll) => set({ payroll }),
 
       setOverride: (override) =>
@@ -147,11 +142,10 @@ export const useAppStore = create<AppState & AppActions>()(
       name: 'app-state',
       version: SCHEMA_VERSION,
       storage: createJSONStorage(() => mmkvStateStorage),
-      /** В хранилище уходит только состояние, действия — нет. */
-      partialize: (state): AppState => ({
+      /** В хранилище уходят только данные пользователя, справочники — нет. */
+      partialize: (state): PersistedState => ({
         appearance: state.appearance,
         schedule: state.schedule,
-        shiftTypes: state.shiftTypes,
         payroll: state.payroll,
         overrides: state.overrides,
         payments: state.payments,
@@ -162,10 +156,13 @@ export const useAppStore = create<AppState & AppActions>()(
 );
 
 /**
- * Перенос данных со старых версий схемы. Пока версия одна, поэтому функция
- * только достраивает отсутствующие поля значениями по умолчанию — это спасает
- * от падения, если сборка обновилась, а в хранилище лежит неполный объект.
+ * Перенос данных со старых версий схемы.
+ *
+ * Достраивает отсутствующие поля значениями по умолчанию — иначе неполный
+ * объект из старой сборки уронил бы приложение. Справочник смен при этом
+ * всегда берётся из кода: в версии 1 он лежал в хранилище, и после обновления
+ * приложение читало устаревшие описания смен вместо новых.
  */
 export function migrateState(persisted: Partial<AppState>, _version: number): AppState {
-  return { ...INITIAL_STATE, ...persisted };
+  return { ...INITIAL_STATE, ...persisted, shiftTypes: DEFAULT_SHIFT_TYPES };
 }

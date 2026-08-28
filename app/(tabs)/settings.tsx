@@ -1,10 +1,10 @@
 import { View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { formatDayShort } from '@/domain/format.ts';
 import { AppText, Button, Card, ChoiceGroup, Screen } from '@/ui';
 import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
+import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { useTheme } from '@/theme';
 
 const THEME_CHOICES = [
@@ -15,7 +15,7 @@ const THEME_CHOICES = [
 
 export default function SettingsScreen() {
   const theme = useTheme();
-  const router = useRouter();
+  const push = useGuardedPush();
   const appearance = useAppStore((state) => state.appearance);
   const setAppearance = useAppStore((state) => state.setAppearance);
   const schedule = useAppStore((state) => state.schedule);
@@ -47,7 +47,7 @@ export default function SettingsScreen() {
         <Button
           title={schedule ? 'Изменить график' : 'Выбрать график'}
           variant={schedule ? 'secondary' : 'primary'}
-          onPress={() => router.push('/settings/schedule')}
+          onPress={() => push('/settings/schedule')}
         />
       </Card>
 
@@ -57,7 +57,7 @@ export default function SettingsScreen() {
             .map((rule) => `${rule.kind === 'advance' ? 'Аванс' : 'Зарплата'} ${rule.dayOfMonth}-го`)
             .join(', ')}
         </AppText>
-        <Button title="Настроить выплаты" onPress={() => router.push('/settings/payroll')} />
+        <Button title="Настроить выплаты" onPress={() => push('/settings/payroll')} />
       </Card>
 
       <Card title="Данные">
