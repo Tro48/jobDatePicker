@@ -46,9 +46,12 @@ React Native, а Node 22 исполняет TypeScript напрямую.
 Локально нет JDK и Android SDK, поэтому APK собирается в облаке EAS.
 
 ```bash
-npx eas login          # нужен бесплатный аккаунт Expo
-npx eas build --platform android --profile development
+npx eas-cli@latest login                                   # нужен бесплатный аккаунт Expo
+npx eas-cli@latest build --platform android --profile development
 ```
+
+Пакет называется `eas-cli`, хотя команда внутри него — `eas`. Через `npx`
+нужно писать полное имя пакета, иначе npm не найдёт, что запускать.
 
 Готовый APK ставится на телефон по ссылке из вывода команды. Дальше разработка
 идёт с горячей перезагрузкой:
