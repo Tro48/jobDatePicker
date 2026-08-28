@@ -1,5 +1,8 @@
 import { View } from 'react-native';
-import { AppText, Card, ChoiceGroup, Placeholder, Screen } from '@/ui';
+import { useRouter } from 'expo-router';
+import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
+import { formatDayShort } from '@/domain/format.ts';
+import { AppText, Button, Card, ChoiceGroup, Placeholder, Screen } from '@/ui';
 import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
 import { useTheme } from '@/theme';
@@ -12,6 +15,7 @@ const THEME_CHOICES = [
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const appearance = useAppStore((state) => state.appearance);
   const setAppearance = useAppStore((state) => state.setAppearance);
   const schedule = useAppStore((state) => state.schedule);
@@ -34,11 +38,16 @@ export default function SettingsScreen() {
       </Card>
 
       <Card title="График">
-        <Placeholder stage="Этап 2 плана работ">
+        <AppText variant="body">
           {schedule
-            ? `Выбран график «${schedule.presetId}», первая смена ${schedule.anchorDate}.`
-            : 'Выбор графика из списка и дата первой смены с предпросмотром на две недели.'}
-        </Placeholder>
+            ? `${SCHEDULE_PRESETS.find((item) => item.id === schedule.presetId)?.name ?? schedule.presetId}, первая смена ${formatDayShort(schedule.anchorDate)}`
+            : 'График не выбран — календарь пуст.'}
+        </AppText>
+        <Button
+          title={schedule ? 'Изменить график' : 'Выбрать график'}
+          variant={schedule ? 'secondary' : 'primary'}
+          onPress={() => router.push('/settings/schedule')}
+        />
       </Card>
 
       <Card title="Выплаты">

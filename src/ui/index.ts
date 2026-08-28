@@ -1,6 +1,9 @@
 export { AppText } from './AppText.tsx';
+export { Button } from './Button.tsx';
 export { Card } from './Card.tsx';
 export { ChoiceGroup } from './ChoiceGroup.tsx';
+export { IconButton } from './IconButton.tsx';
 export { Placeholder } from './Placeholder.tsx';
 export { Screen } from './Screen.tsx';
+export { TextField } from './TextField.tsx';
 export { useReduceMotion } from './useReduceMotion.ts';

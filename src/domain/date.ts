@@ -91,3 +91,22 @@ export function formatMinutesAsTime(totalMinutes: number): string {
   const minutes = normalized % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
+
+/**
+ * Дата из объекта Date по ЛОКАЛЬНОМУ времени.
+ *
+ * toISOString здесь непригоден: он отдаёт UTC, и вечером 17-го числа в Москве
+ * вернул бы 17-е, а в Иркутске уже 18-е. Календарь должен показывать тот день,
+ * который на часах у пользователя.
+ */
+export function toIsoDateLocal(date: Date): IsoDate {
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** Сегодняшняя дата по часам телефона. */
+export function todayIso(): IsoDate {
+  return toIsoDateLocal(new Date());
+}

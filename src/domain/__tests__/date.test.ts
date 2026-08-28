@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, floorMod, monthDays, startOfWeek, weekday } from '../date.ts';
+import { addDays, floorMod, monthDays, startOfWeek, toIsoDateLocal, weekday } from '../date.ts';
 
 test('день недели по ISO: понедельник 1, воскресенье 7', () => {
   assert.equal(weekday('2026-08-28'), 5); // пятница
@@ -30,4 +30,11 @@ test('високосный февраль', () => {
   assert.equal(monthDays(2024, 2).length, 29);
   assert.equal(monthDays(2027, 2).length, 28);
   assert.equal(monthDays(2026, 9).at(-1), '2026-09-30');
+});
+
+test('дата берётся по локальному времени, а не по UTC', () => {
+  // 23:30 по местному времени — это всё ещё 17-е число, в какой бы зоне ни был телефон.
+  assert.equal(toIsoDateLocal(new Date(2026, 8, 17, 23, 30)), '2026-09-17');
+  assert.equal(toIsoDateLocal(new Date(2026, 0, 1, 0, 5)), '2026-01-01');
+  assert.equal(toIsoDateLocal(new Date(2026, 11, 31, 23, 59)), '2026-12-31');
 });

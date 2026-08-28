@@ -35,6 +35,15 @@ function RootStack() {
           name="day/[date]"
           options={{ presentation: 'modal', headerShown: false }}
         />
+        <Stack.Screen
+          name="settings/schedule"
+          options={{
+            headerShown: true,
+            title: 'График',
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+          }}
+        />
       </Stack>
     </>
   );

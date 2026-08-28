@@ -17,10 +17,19 @@ export function useScheduleContext(): ScheduleContext | null {
 
   return useMemo(() => {
     if (!schedule) return null;
+    const index = indexShiftTypes(shiftTypes);
+
+    // Правки на удалённый тип смены отбрасываются здесь, а не в домене.
+    // resolveDay намеренно падает на неизвестном id, а календарь разворачивает
+    // через него весь месяц — одна битая запись уронила бы экран целиком.
+    const usable = Object.entries(overrides).filter(([, override]) =>
+      index.has(override.shiftTypeId),
+    );
+
     return {
       schedule,
-      shiftTypes: indexShiftTypes(shiftTypes),
-      overrides: new Map(Object.entries(overrides)),
+      shiftTypes: index,
+      overrides: new Map(usable),
     };
   }, [schedule, shiftTypes, overrides]);
 }
