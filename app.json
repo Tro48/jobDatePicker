@@ -44,7 +44,8 @@
       "router": {},
       "eas": {
         "projectId": "b31a042f-9401-4059-a663-d47f73586437"
-      }
+      },
+      "releaseManifestUrl": "https://github.com/Tro48/jobDatePicker/releases/latest/download/android.json"
     },
     "owner": "trofimdev",
     "updates": {

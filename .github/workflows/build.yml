@@ -25,6 +25,9 @@ jobs:
     name: EAS Build
     needs: checks
     runs-on: ubuntu-latest
+    # Нужно, чтобы workflow мог создать релиз с APK и списком выпусков.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -41,7 +44,38 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Постановка сборки в очередь
-        # --no-wait: workflow не ждёт окончания сборки и не жжёт минуты
-        # GitHub Actions. Ссылка на APK придёт на expo.dev.
-        run: eas build --platform android --profile production --non-interactive --no-wait
+      - name: Сборка APK
+        # --wait, а не --no-wait: без ожидания не узнать ни ссылку на APK, ни
+        # отпечаток нативной части, а без них нечего класть в список выпусков.
+        # Минуты Actions на публичном репозитории бесплатны.
+        run: eas build --platform android --profile production --non-interactive --json --wait > build.json
+
+      - name: Выпуск на GitHub
+        # APK переезжает в релиз репозитория по двум причинам: артефакты EAS на
+        # бесплатном аккаунте живут 30 дней, а ссылка релиза постоянная —
+        # приложение читает по ней список выпусков и никогда не промахивается.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          artifact=$(jq -er '.[0].artifacts.applicationArchiveUrl' build.json)
+          runtime=$(jq -er '.[0].runtimeVersion' build.json)
+          version=$(jq -er '.[0].appVersion' build.json)
+          tag="v$version-${runtime:0:8}"
+          apk="smeny-$version.apk"
+
+          curl -fsSL "$artifact" -o "$apk"
+
+          jq -n \
+            --arg runtimeVersion "$runtime" \
+            --arg url "https://github.com/${{ github.repository }}/releases/download/$tag/$apk" \
+            --arg version "$version" \
+            --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{runtimeVersion: $runtimeVersion, url: $url, version: $version, builtAt: $builtAt}' \
+            > android.json
+
+          gh release create "$tag" "$apk" android.json \
+            --title "Смены $version" \
+            --notes "Отпечаток нативной части: $runtime" \
+            || gh release upload "$tag" "$apk" android.json --clobber
