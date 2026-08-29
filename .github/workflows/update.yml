@@ -20,12 +20,44 @@ jobs:
   checks:
     uses: ./.github/workflows/checks.yml
 
+  version:
+    name: Версия
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Поднять патч-версию
+        # Версия меняется на каждом попадании в main: по ней видно, что
+        # приехало на телефон, и по ней же называются APK. Живёт она только на
+        # main — на dev её никто не трогает, поэтому мержи не конфликтуют.
+        # [skip ci] в сообщении: без него коммит запустил бы этот же workflow.
+        run: |
+          set -euo pipefail
+          next=$(node -e "const v=require('./app.json').expo.version.split('.').map(Number); v[2]+=1; console.log(v.join('.'))")
+          node -e "
+            const fs = require('fs');
+            const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            config.expo.version = process.argv[1];
+            fs.writeFileSync('app.json', JSON.stringify(config, null, 2) + '\n');
+          " "$next"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Версия $next [skip ci]"
+          git push
+
   update:
     name: EAS Update
-    needs: checks
+    needs: [checks, version]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Обновление публикуется уже с поднятой версией.
+          ref: main
 
       - uses: actions/setup-node@v5
         with:

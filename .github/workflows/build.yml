@@ -12,9 +12,17 @@ name: Сборка Android
 
 on:
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Профиль сборки
+        type: choice
+        options:
+          - production
+          - development
+        default: production
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.ref }}-${{ inputs.profile }}
   cancel-in-progress: false
 
 jobs:
@@ -48,7 +56,7 @@ jobs:
         # --wait, а не --no-wait: без ожидания не узнать ни ссылку на APK, ни
         # отпечаток нативной части, а без них нечего класть в список выпусков.
         # Минуты Actions на публичном репозитории бесплатны.
-        run: eas build --platform android --profile production --non-interactive --json --wait > build.json
+        run: eas build --platform android --profile ${{ inputs.profile }} --non-interactive --json --wait > build.json
 
       - name: Выпуск на GitHub
         # APK переезжает в релиз репозитория по двум причинам: артефакты EAS на
@@ -56,16 +64,34 @@ jobs:
         # приложение читает по ней список выпусков и никогда не промахивается.
         env:
           GH_TOKEN: ${{ github.token }}
+          PROFILE: ${{ inputs.profile }}
         run: |
           set -euo pipefail
 
           artifact=$(jq -er '.[0].artifacts.applicationArchiveUrl' build.json)
           runtime=$(jq -er '.[0].runtimeVersion' build.json)
           version=$(jq -er '.[0].appVersion' build.json)
-          tag="v$version-${runtime:0:8}"
-          apk="smeny-$version.apk"
+
+          if [ "$PROFILE" = "development" ]; then
+            apk="smeny-dev-$version.apk"
+            tag="dev-v$version-${runtime:0:8}"
+          else
+            apk="smeny-$version.apk"
+            tag="v$version-${runtime:0:8}"
+          fi
 
           curl -fsSL "$artifact" -o "$apk"
+
+          if [ "$PROFILE" = "development" ]; then
+            # Отладочная сборка помечается предварительным выпуском: иначе
+            # ссылка releases/latest увела бы приложение на неё вместо рабочей.
+            gh release create "$tag" "$apk" \
+              --prerelease \
+              --title "Смены dev $version" \
+              --notes "Отладочная сборка. Отпечаток нативной части: $runtime" \
+              || gh release upload "$tag" "$apk" --clobber
+            exit 0
+          fi
 
           jq -n \
             --arg runtimeVersion "$runtime" \
