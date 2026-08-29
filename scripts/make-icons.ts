@@ -160,6 +160,17 @@ const ON_DARK: Palette = {
 };
 
 /**
+ * Отладочное приложение стоит на телефоне рядом с рабочим, поэтому иконка у
+ * него другая: янтарная шапка вместо синей. Различать две одинаковые иконки по
+ * подписи под ними — гарантированно запускать не то.
+ */
+const ON_DEV: Palette = {
+  ...ON_DARK,
+  header: hex('#D97706'),
+  day: hex('#D97706'),
+};
+
+/**
  * Тот же календарь для белого фона: светлый лист на белом не виден, поэтому
  * лист тёмный, а клетки — цвета смен из тёмной темы приложения.
  */
@@ -274,6 +285,15 @@ const files: Array<{ name: string; pixels: Uint8Array }> = [
     // здесь важна только альфа.
     name: 'android-icon-monochrome.png',
     pixels: render(SIZE, null, calendarOps(SIZE, 0.5, null)),
+  },
+  {
+    // Отладочное приложение: та же иконка с янтарной шапкой.
+    name: 'icon-dev.png',
+    pixels: render(SIZE, DARK_BACKGROUND, calendarOps(SIZE, 0.62, ON_DEV)),
+  },
+  {
+    name: 'android-icon-foreground-dev.png',
+    pixels: render(SIZE, null, calendarOps(SIZE, 0.5, ON_DEV)),
   },
   {
     // Заставка: Android 12+ обрезает картинку кругом, поэтому запас по краям

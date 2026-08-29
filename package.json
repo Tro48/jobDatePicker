@@ -4,8 +4,8 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start --dev-client",
-    "android": "expo start --dev-client --android",
+    "start": "APP_VARIANT=development expo start --dev-client",
+    "android": "APP_VARIANT=development expo start --dev-client --android",
     "typecheck": "tsc --noEmit",
     "test:domain": "node --test --experimental-strip-types \"src/**/__tests__/*.test.ts\"",
     "check:contrast": "node --experimental-strip-types scripts/check-contrast.ts",
