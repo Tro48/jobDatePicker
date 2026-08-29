@@ -136,15 +136,40 @@ function render(size: number, background: Rgb | null, ops: Op[]): Uint8Array {
 
 // ------------------------------------------------------------ Иконка
 
-const COLORS = {
-  background: hex('#0F1115'),
+const DARK_BACKGROUND = hex('#0F1115');
+const WHITE = hex('#FFFFFF');
+
+/** Раскраска календаря. Светлый лист — для тёмного фона, тёмный — для светлого. */
+interface Palette {
+  sheet: Rgb;
+  header: Rgb;
+  ring: Rgb;
+  cell: Rgb;
+  day: Rgb;
+  night: Rgb;
+}
+
+/** Лист бумаги на тёмном фоне: иконка приложения и заставка тёмной темы. */
+const ON_DARK: Palette = {
   sheet: hex('#F5F7FA'),
   header: hex('#1D4ED8'),
   ring: hex('#C7D2E5'),
   cell: hex('#D5DCE8'),
   day: hex('#1D4ED8'),
   night: hex('#6D28D9'),
-  white: hex('#FFFFFF'),
+};
+
+/**
+ * Тот же календарь для белого фона: светлый лист на белом не виден, поэтому
+ * лист тёмный, а клетки — цвета смен из тёмной темы приложения.
+ */
+const ON_LIGHT: Palette = {
+  sheet: hex('#14161A'),
+  header: hex('#1D4ED8'),
+  ring: hex('#5A6270'),
+  cell: hex('#39404E'),
+  day: hex('#93B4FF'),
+  night: hex('#C4B5FD'),
 };
 
 /**
@@ -161,7 +186,9 @@ const GRID: Array<Array<'day' | 'night' | 'off'>> = [
  * Слои иконки. glyph — доля стороны, которую занимает рисунок: у адаптивной
  * иконки Android обрезает края, поэтому там он меньше.
  */
-function calendarOps(size: number, glyph: number, mono: boolean): Op[] {
+function calendarOps(size: number, glyph: number, palette: Palette | null): Op[] {
+  // palette === null — монохромный силуэт: цвета нет, клетки вырезаются.
+  const mono = palette === null;
   const g = size * glyph;
   const cx = size / 2;
   const cy = size / 2;
@@ -184,7 +211,7 @@ function calendarOps(size: number, glyph: number, mono: boolean): Op[] {
   const ringY = sheetTop - 0.02 * g;
   const rings: Op[] = [-1, 1].map((side) => ({
     sdf: roundBox(cx + side * 0.26 * g, ringY, ringW, ringH, ringW / 2),
-    color: mono ? COLORS.white : COLORS.ring,
+    color: mono ? WHITE : palette.ring,
   }));
 
   const cellW = 0.18 * g;
@@ -201,7 +228,13 @@ function calendarOps(size: number, glyph: number, mono: boolean): Op[] {
       const y = gridTop + cellH / 2 + rowIndex * (cellH + gapY);
       cells.push({
         sdf: roundBox(x, y, cellW, cellH, 0.035 * g),
-        color: kind === 'day' ? COLORS.day : kind === 'night' ? COLORS.night : COLORS.cell,
+        color: mono
+          ? WHITE
+          : kind === 'day'
+            ? palette.day
+            : kind === 'night'
+              ? palette.night
+              : palette.cell,
         // В монохромной иконке цвета нет: клетки вырезаются насквозь.
         erase: mono,
       });
@@ -209,12 +242,12 @@ function calendarOps(size: number, glyph: number, mono: boolean): Op[] {
   });
 
   if (mono) {
-    return [...rings, { sdf: sheet, color: COLORS.white }, ...cells];
+    return [...rings, { sdf: sheet, color: WHITE }, ...cells];
   }
   return [
     ...rings,
-    { sdf: sheet, color: COLORS.sheet },
-    { sdf: header, color: COLORS.header },
+    { sdf: sheet, color: palette.sheet },
+    { sdf: header, color: palette.header },
     ...cells,
   ];
 }
@@ -224,23 +257,33 @@ const SIZE = 1024;
 const files: Array<{ name: string; pixels: Uint8Array }> = [
   {
     name: 'icon.png',
-    pixels: render(SIZE, COLORS.background, calendarOps(SIZE, 0.62, false)),
+    pixels: render(SIZE, DARK_BACKGROUND, calendarOps(SIZE, 0.62, ON_DARK)),
   },
   {
     // Адаптивная иконка: система обрезает края маской, рисунок держится
     // внутри безопасной зоны в две трети стороны.
     name: 'android-icon-foreground.png',
-    pixels: render(SIZE, null, calendarOps(SIZE, 0.5, false)),
+    pixels: render(SIZE, null, calendarOps(SIZE, 0.5, ON_DARK)),
   },
   {
     name: 'android-icon-background.png',
-    pixels: render(SIZE, COLORS.background, []),
+    pixels: render(SIZE, DARK_BACKGROUND, []),
   },
   {
     // Тематическая иконка Android 13+: система красит силуэт сама, поэтому
     // здесь важна только альфа.
     name: 'android-icon-monochrome.png',
-    pixels: render(SIZE, null, calendarOps(SIZE, 0.5, true)),
+    pixels: render(SIZE, null, calendarOps(SIZE, 0.5, null)),
+  },
+  {
+    // Заставка: Android 12+ обрезает картинку кругом, поэтому запас по краям
+    // тот же, что у адаптивной иконки.
+    name: 'splash-icon.png',
+    pixels: render(SIZE, null, calendarOps(SIZE, 0.5, ON_LIGHT)),
+  },
+  {
+    name: 'splash-icon-dark.png',
+    pixels: render(SIZE, null, calendarOps(SIZE, 0.5, ON_DARK)),
   },
 ];
 
