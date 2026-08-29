@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
@@ -9,17 +8,19 @@ import { SHIFT_FORMS, formatMonthTitle, formatTotalHours, pluralize } from '@/do
 import { periodOf } from '@/domain/payday.ts';
 import { buildMonthSummary } from '@/domain/summary.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
+import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 import { Legend } from './Legend.tsx';
 import { WeekdayHeader } from './MonthGrid.tsx';
-import { MONTH_RANGE, MonthPager, buildMonthWindow } from './MonthPager.tsx';
+import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
+import { MonthPager } from './MonthPager.tsx';
 import { TodayCard } from './TodayCard.tsx';
 
 export function CalendarScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const push = useGuardedPush();
   const { width } = useWindowDimensions();
   const context = useScheduleContext();
 
@@ -41,8 +42,8 @@ export function CalendarScreen() {
   }, [context]);
 
   const openDay = useCallback(
-    (date: IsoDate) => router.push({ pathname: '/day/[date]', params: { date } }),
-    [router],
+    (date: IsoDate) => push({ pathname: '/day/[date]', params: { date } }),
+    [push],
   );
 
   const padding = {
@@ -67,7 +68,7 @@ export function CalendarScreen() {
           <Button
             title="Выбрать график"
             variant="primary"
-            onPress={() => router.push('/settings/schedule')}
+            onPress={() => push('/settings/schedule')}
           />
         </Card>
       </ScrollView>
@@ -75,7 +76,6 @@ export function CalendarScreen() {
   }
 
   const todayDay = resolveDay(context, today);
-  const isCurrentMonth = index === MONTH_RANGE;
 
   return (
     <ScrollView
@@ -110,14 +110,6 @@ export function CalendarScreen() {
       <View style={{ marginBottom: theme.spacing.md }}>
         <TodayCard day={todayDay} />
       </View>
-
-      {!isCurrentMonth ? (
-        <Button
-          title="Вернуться к текущему месяцу"
-          onPress={() => setIndex(MONTH_RANGE)}
-          style={{ marginBottom: theme.spacing.md }}
-        />
-      ) : null}
 
       {/* Сетка идёт во всю ширину экрана: при семи колонках только так клетка
           дотягивает до 48 dp зоны нажатия на узких телефонах. */}

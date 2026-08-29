@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMonthSummary, forecastMonth } from '../summary.ts';
+import { buildMonthSummary, forecastMonth, yearlyPaymentTotals } from '../summary.ts';
 import type { ScheduleContext } from '../engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '../shifts.ts';
 import { SCHEDULE_PRESETS } from '../presets.ts';
@@ -93,4 +93,70 @@ test('прогноза нет, если нет ни одного закрыто�
   const context = contextFor('2-2-day', '2026-09-01');
   const september = buildMonthSummary(context, '2026-09', []);
   assert.equal(forecastMonth(september, [], '2026-09-15', context), null);
+});
+
+test('отпускные входят в сумму месяца, но не в ставку за час и за смену', () => {
+  const payments: PaymentRecord[] = [
+    ...septemberPayments,
+    { id: 'v', kind: 'vacationPay', period: '2026-09', receivedOn: '2026-09-05', amount: 20_000 },
+    { id: 'b', kind: 'sickPay', period: '2026-09', receivedOn: '2026-09-20', amount: 5_000 },
+  ];
+  const summary = buildMonthSummary(contextFor('5-2-short-friday', '2026-09-01'), '2026-09', payments);
+
+  assert.equal(summary.totalPaid, 100_000);
+  assert.equal(summary.compensationPaid, 25_000);
+  assert.equal(summary.workPaid, 75_000);
+  // Ставки остались теми же, что и без отпускных: 75000 / 172 и 75000 / 22.
+  assert.equal(Math.round(summary.effectiveHourlyRate! * 100) / 100, 436.05);
+  assert.equal(Math.round(summary.effectiveShiftRate! * 100) / 100, 3409.09);
+});
+
+test('разбивка по видам выплат идёт в порядке справочника и без пустых строк', () => {
+  const payments: PaymentRecord[] = [
+    { id: 'v', kind: 'vacationPay', period: '2026-09', receivedOn: '2026-09-05', amount: 20_000 },
+    { id: 'a1', kind: 'advance', period: '2026-09', receivedOn: '2026-08-27', amount: 30_000 },
+    { id: 'a2', kind: 'advance', period: '2026-09', receivedOn: '2026-08-28', amount: 1_000 },
+  ];
+  const summary = buildMonthSummary(contextFor('2-2-day', '2026-09-01'), '2026-09', payments);
+
+  assert.deepEqual(
+    summary.byPaymentKind.map((entry) => [entry.kind, entry.amount, entry.count]),
+    [
+      ['advance', 31_000, 2],
+      ['vacationPay', 20_000, 1],
+    ],
+  );
+});
+
+test('месяц без аванса и зарплаты, но с больничным: ставка не считается', () => {
+  const payments: PaymentRecord[] = [
+    { id: 'b', kind: 'sickPay', period: '2026-09', receivedOn: '2026-09-20', amount: 5_000 },
+  ];
+  const summary = buildMonthSummary(contextFor('2-2-day', '2026-09-01'), '2026-09', payments);
+
+  assert.equal(summary.totalPaid, 5_000);
+  assert.equal(summary.workPaid, 0);
+  assert.equal(summary.effectiveHourlyRate, null);
+  assert.equal(summary.effectiveShiftRate, null);
+});
+
+test('годовые итоги: месяц выплаты — тот, ЗА который платят', () => {
+  const payments: PaymentRecord[] = [
+    ...septemberPayments,
+    { id: 'v', kind: 'vacationPay', period: '2026-07', receivedOn: '2026-06-25', amount: 52_000 },
+    // Декабрь прошлого года в 2026-й не попадает.
+    { id: 'old', kind: 'salary', period: '2025-12', receivedOn: '2026-01-09', amount: 44_000 },
+  ];
+
+  const months = yearlyPaymentTotals(payments, 2026);
+
+  assert.equal(months.length, 12);
+  assert.equal(months[6].period, '2026-07');
+  assert.equal(months[6].total, 52_000);
+  // Отпускные видны отдельно: в сумму месяца входят, в ставки — нет.
+  assert.equal(months[6].compensation, 52_000);
+  assert.equal(months[7].total, 41_000);
+  assert.equal(months[8].total, 75_000);
+  assert.equal(months[8].compensation, 0);
+  assert.equal(months.reduce((sum, item) => sum + item.total, 0), 168_000);
 });

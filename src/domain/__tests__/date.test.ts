@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, floorMod, monthDays, startOfWeek, toIsoDateLocal, weekday } from '../date.ts';
+import { addDays, floorMod, monthDays, monthGridDates, startOfWeek, toIsoDateLocal, weekday } from '../date.ts';
 
 test('день недели по ISO: понедельник 1, воскресенье 7', () => {
   assert.equal(weekday('2026-08-28'), 5); // пятница
@@ -37,4 +37,40 @@ test('дата берётся по локальному времени, а не 
   assert.equal(toIsoDateLocal(new Date(2026, 8, 17, 23, 30)), '2026-09-17');
   assert.equal(toIsoDateLocal(new Date(2026, 0, 1, 0, 5)), '2026-01-01');
   assert.equal(toIsoDateLocal(new Date(2026, 11, 31, 23, 59)), '2026-12-31');
+});
+
+test('сетка месяца — ровно 42 дня подряд, начиная с понедельника', () => {
+  const grid = monthGridDates(2026, 9);
+  assert.equal(grid.length, 42);
+  assert.equal(weekday(grid[0].date), 1);
+  for (let i = 1; i < grid.length; i += 1) {
+    assert.equal(grid[i].date, addDays(grid[i - 1].date, 1), `разрыв перед ${grid[i].date}`);
+  }
+});
+
+test('в сетке видны хвосты соседних месяцев', () => {
+  const grid = monthGridDates(2026, 9); // 1 сентября 2026 — вторник
+  assert.equal(grid[0].date, '2026-08-31');
+  assert.equal(grid[0].inMonth, false);
+  assert.equal(grid[1].date, '2026-09-01');
+  assert.equal(grid[1].inMonth, true);
+  assert.equal(grid[30].date, '2026-09-30');
+  assert.equal(grid[30].inMonth, true);
+  assert.equal(grid[31].date, '2026-10-01');
+  assert.equal(grid[31].inMonth, false);
+  assert.equal(grid.filter((day) => day.inMonth).length, 30);
+});
+
+test('месяц, начинающийся с понедельника, не теряет первое число', () => {
+  const grid = monthGridDates(2026, 6); // 1 июня 2026 — понедельник
+  assert.equal(grid[0].date, '2026-06-01');
+  assert.equal(grid[0].inMonth, true);
+  assert.equal(grid.filter((day) => day.inMonth).length, 30);
+});
+
+test('каждый день месяца попадает в сетку ровно один раз', () => {
+  for (const [year, month] of [[2027, 2], [2028, 2], [2026, 12], [2026, 8]] as const) {
+    const inMonth = monthGridDates(year, month).filter((day) => day.inMonth).map((day) => day.date);
+    assert.deepEqual(inMonth, monthDays(year, month), `месяц ${year}-${month}`);
+  }
 });

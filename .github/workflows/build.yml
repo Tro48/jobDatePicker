@@ -1,0 +1,44 @@
+# Сборка APK в облаке EAS при попадании изменений в main.
+#
+# Сборка запускается только после зелёных проверок: собирать APK из кода,
+# который не проходит типы или тесты, смысла нет — это трата квоты сборок.
+name: Сборка Android
+
+on:
+  push:
+    branches: [main]
+  # Ручной запуск: пригодится, чтобы пересобрать APK без нового коммита.
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  build:
+    name: EAS Build
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Постановка сборки в очередь
+        # --no-wait: workflow не ждёт окончания сборки и не жжёт минуты
+        # GitHub Actions. Ссылка на APK придёт на expo.dev.
+        run: eas build --platform android --profile production --non-interactive --no-wait

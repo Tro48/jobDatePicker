@@ -1,5 +1,5 @@
-import { daysBetween, floorMod, parseTimeToMinutes, startOfWeek, weekday } from './date.ts';
-import type { IsoDate } from './date.ts';
+import { addDays, daysBetween, floorMod, parseTimeToMinutes, startOfWeek, weekday } from './date.ts';
+import type { IsoDate, Weekday } from './date.ts';
 import type {
   ActiveSchedule,
   DayOverride,
@@ -56,6 +56,22 @@ export function resolvePlannedShiftId(schedule: ActiveSchedule, date: IsoDate): 
   return week[weekday(date)];
 }
 
+/**
+ * Какие типы смен вообще встречаются в графике, по порядку появления.
+ *
+ * Нужно будильнику: когда в графике чередуются дневные и ночные, время
+ * подъёма у них разное, и экран правки показывает столько полей времени,
+ * сколько смен в графике, — спрашивать это у пользователя незачем.
+ */
+export function patternShiftTypeIds(pattern: SchedulePattern): string[] {
+  const ids =
+    pattern.kind === 'cycle'
+      ? pattern.slots
+      : pattern.weeks.flatMap((week) => [1, 2, 3, 4, 5, 6, 7].map((day) => week[day as Weekday]));
+
+  return [...new Set(ids)];
+}
+
 /** Итоговый день календаря: график плюс ручная правка поверх него. */
 export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay {
   const override = context.overrides.get(date);
@@ -108,4 +124,44 @@ export function validatePreset(preset: SchedulePreset, shiftTypes: Map<string, S
     }
   });
   return errors;
+}
+
+/** Непрерывный отрезок одинаковых ручных правок вокруг даты. */
+export interface OverrideRun {
+  start: IsoDate;
+  end: IsoDate;
+  length: number;
+  /** Какой это день отрезка по счёту, начиная с 1. */
+  position: number;
+}
+
+/**
+ * Ищет отпуск или больничный целиком по одному дню из него.
+ *
+ * Нужно, чтобы карточка дня говорила «отпуск, 3-й день из 14», а не просто
+ * «отпуск»: без этого непонятно, куда именно ты попал, и легко продлить отпуск
+ * второй раз поверх уже проставленного.
+ */
+export function findOverrideRun(
+  overrides: Map<IsoDate, DayOverride>,
+  date: IsoDate,
+): OverrideRun | null {
+  const current = overrides.get(date);
+  if (!current) return null;
+
+  const sameType = (candidate: IsoDate): boolean =>
+    overrides.get(candidate)?.shiftTypeId === current.shiftTypeId;
+
+  let start = date;
+  while (sameType(addDays(start, -1))) start = addDays(start, -1);
+
+  let end = date;
+  while (sameType(addDays(end, 1))) end = addDays(end, 1);
+
+  return {
+    start,
+    end,
+    length: daysBetween(start, end) + 1,
+    position: daysBetween(start, date) + 1,
+  };
 }

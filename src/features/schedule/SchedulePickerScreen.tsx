@@ -10,7 +10,7 @@ import { periodOf, shiftPeriod } from '@/domain/payday.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { indexShiftTypes } from '@/domain/shifts.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, IconButton } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, IconButton, Sheet, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 import { MonthGrid, WeekdayHeader } from '@/features/calendar/MonthGrid.tsx';
 
@@ -20,6 +20,7 @@ const PREVIEW_DAYS = 14;
 export function SchedulePickerScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const scroll = useSheetScroll();
   const { width } = useWindowDimensions();
 
   const saved = useAppStore((state) => state.schedule);
@@ -69,89 +70,92 @@ export function SchedulePickerScreen() {
   }));
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
-      contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
-    >
-      <Card title="График">
-        <ChoiceGroup label="График работы" choices={choices} value={presetId} onChange={setPresetId} />
-      </Card>
+    <Sheet title="График" onClose={() => router.back()}>
+      <ScrollView
+        {...scroll}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
+      >
+        <Card title="График">
+          <ChoiceGroup label="График работы" choices={choices} value={presetId} onChange={setPresetId} />
+        </Card>
 
-      <Card title="Дата первой смены">
-        <AppText variant="body">
-          {formatDayShort(anchorDate)}
-        </AppText>
-        <AppText variant="caption" tone="muted">
-          Нажми на день в календаре ниже. От него график разворачивается и вперёд, и назад.
-        </AppText>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <IconButton
-            name="chevron-back"
-            label="Предыдущий месяц"
-            onPress={() => setPreviewPeriod((value) => shiftPeriod(value, -1))}
-          />
-          <AppText variant="heading" style={{ flex: 1, textAlign: 'center' }}>
-            {formatMonthTitle(previewYear, previewMonth)}
+        <Card title="Дата первой смены">
+          <AppText variant="body">
+            {formatDayShort(anchorDate)}
           </AppText>
-          <IconButton
-            name="chevron-forward"
-            label="Следующий месяц"
-            onPress={() => setPreviewPeriod((value) => shiftPeriod(value, 1))}
-          />
-        </View>
+          <AppText variant="caption" tone="muted">
+            Нажми на день в календаре ниже. От него график разворачивается и вперёд, и назад.
+          </AppText>
 
-        {/* Сетка во всю ширину карточки: те же 48 dp на клетку, что и в календаре. */}
-        <View style={{ marginHorizontal: -theme.spacing.lg, alignItems: 'center' }}>
-          <WeekdayHeader width={width} />
-          <MonthGrid
-            year={previewYear}
-            month={previewMonth}
-            context={draftContext}
-            today={today}
-            selectedDate={anchorDate}
-            width={width}
-            onSelectDay={setAnchorDate}
-          />
-        </View>
-      </Card>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconButton
+              name="chevron-back"
+              label="Предыдущий месяц"
+              onPress={() => setPreviewPeriod((value) => shiftPeriod(value, -1))}
+            />
+            <AppText variant="heading" style={{ flex: 1, textAlign: 'center' }}>
+              {formatMonthTitle(previewYear, previewMonth)}
+            </AppText>
+            <IconButton
+              name="chevron-forward"
+              label="Следующий месяц"
+              onPress={() => setPreviewPeriod((value) => shiftPeriod(value, 1))}
+            />
+          </View>
 
-      <Card title={`Как ляжет: ${PREVIEW_DAYS} дней от первой смены`}>
-        <View
-          accessibilityRole="text"
-          accessibilityLabel={previewDays
-            .map((day) => `${formatDayShort(day.date)} — ${day.shiftType.name.toLowerCase()}`)
-            .join('; ')}
-          style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs }}
-        >
-          {previewDays.map((day) => (
-            <View
-              key={day.date}
-              importantForAccessibility="no-hide-descendants"
-              style={{
-                paddingHorizontal: theme.spacing.sm,
-                paddingVertical: 2,
-                borderRadius: theme.radius.sm,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-              }}
-            >
-              <AppText variant="badge">{day.shiftType.badge}</AppText>
-            </View>
-          ))}
-        </View>
-      </Card>
+          {/* Сетка во всю ширину карточки: те же 48 dp на клетку, что и в календаре. */}
+          <View style={{ marginHorizontal: -theme.spacing.lg, alignItems: 'center' }}>
+            <WeekdayHeader width={width} />
+            <MonthGrid
+              year={previewYear}
+              month={previewMonth}
+              context={draftContext}
+              today={today}
+              selectedDate={anchorDate}
+              width={width}
+              onSelectDay={setAnchorDate}
+            />
+          </View>
+        </Card>
 
-      <Button
-        title="Сохранить график"
-        variant="primary"
-        accessibilityHint="Календарь заполнится по выбранному графику"
-        onPress={() => {
-          selectSchedule(preset.id, anchorDate);
-          router.back();
-        }}
-      />
-    </ScrollView>
+        <Card title={`Как ляжет: ${PREVIEW_DAYS} дней от первой смены`}>
+          <View
+            accessibilityRole="text"
+            accessibilityLabel={previewDays
+              .map((day) => `${formatDayShort(day.date)} — ${day.shiftType.name.toLowerCase()}`)
+              .join('; ')}
+            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs }}
+          >
+            {previewDays.map((day) => (
+              <View
+                key={day.date}
+                importantForAccessibility="no-hide-descendants"
+                style={{
+                  paddingHorizontal: theme.spacing.sm,
+                  paddingVertical: 2,
+                  borderRadius: theme.radius.sm,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                }}
+              >
+                <AppText variant="badge">{day.shiftType.badge}</AppText>
+              </View>
+            ))}
+          </View>
+        </Card>
+
+        <Button
+          title="Сохранить график"
+          variant="primary"
+          accessibilityHint="Календарь заполнится по выбранному графику"
+          onPress={() => {
+            selectSchedule(preset.id, anchorDate);
+            router.back();
+          }}
+        />
+      </ScrollView>
+    </Sheet>
   );
 }
 
