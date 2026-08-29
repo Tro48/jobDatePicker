@@ -4,6 +4,8 @@ import { mmkvStateStorage } from './storage.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { DEFAULT_SHIFT_TYPES } from '@/domain/shifts.ts';
 import { DEFAULT_PAYMENT_RULES } from '@/domain/payday.ts';
+import { DEFAULT_ALARM_SETTINGS, settingFor } from '@/domain/alarm.ts';
+import type { AlarmSettings } from '@/domain/alarm.ts';
 import { addDays } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type {
@@ -19,7 +21,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -34,6 +36,8 @@ export interface AppState {
    */
   shiftTypes: ShiftType[];
   payroll: PayrollSettings;
+  /** Будильники: общий выключатель и настройка по типам смен. */
+  alarms: AlarmSettings;
   /** Ручные правки по датам: ключ — дата в формате YYYY-MM-DD. */
   overrides: Record<IsoDate, DayOverride>;
   payments: PaymentRecord[];
@@ -49,6 +53,12 @@ export interface AppActions {
   setAnchorDate: (anchorDate: IsoDate) => void;
   clearSchedule: () => void;
   setPayroll: (payroll: PayrollSettings) => void;
+  setAlarmsEnabled: (enabled: boolean) => void;
+  /** Включает или выключает будильник для одного типа смены. */
+  setShiftAlarmEnabled: (shiftTypeId: string, enabled: boolean) => void;
+  /** За сколько минут до начала смены звонить для этого типа. */
+  setShiftAlarmLead: (shiftTypeId: string, leadMinutes: number) => void;
+  setSnoozeMinutes: (minutes: number) => void;
   setOverride: (override: DayOverride) => void;
   /** Ставит одинаковую правку на несколько дней подряд: отпуск, больничный. */
   setOverrideRange: (startDate: IsoDate, days: number, shiftTypeId: string, note?: string) => void;
@@ -72,9 +82,13 @@ export const INITIAL_STATE: AppState = {
   schedule: null,
   shiftTypes: DEFAULT_SHIFT_TYPES,
   payroll: DEFAULT_PAYROLL,
+  alarms: DEFAULT_ALARM_SETTINGS,
   overrides: {},
   payments: [],
 };
+
+/** Сутки: будить больше чем за сутки до смены смысла нет. */
+const MAX_LEAD_MINUTES = 24 * 60;
 
 function createId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -101,6 +115,41 @@ export const useAppStore = create<AppState & AppActions>()(
       clearSchedule: () => set({ schedule: null }),
 
       setPayroll: (payroll) => set({ payroll }),
+
+      setAlarmsEnabled: (enabled) =>
+        set((state) => ({ alarms: { ...state.alarms, enabled } })),
+
+      setShiftAlarmEnabled: (shiftTypeId, enabled) =>
+        set((state) => ({
+          alarms: {
+            ...state.alarms,
+            byShiftType: {
+              ...state.alarms.byShiftType,
+              // Отступ сохраняется, даже когда будильник выключен: включил
+              // обратно — прежнее время на месте.
+              [shiftTypeId]: { ...settingFor(state.alarms, shiftTypeId), enabled },
+            },
+          },
+        })),
+
+      setShiftAlarmLead: (shiftTypeId, leadMinutes) =>
+        set((state) => ({
+          alarms: {
+            ...state.alarms,
+            byShiftType: {
+              ...state.alarms.byShiftType,
+              [shiftTypeId]: {
+                ...settingFor(state.alarms, shiftTypeId),
+                leadMinutes: Math.max(0, Math.min(leadMinutes, MAX_LEAD_MINUTES)),
+              },
+            },
+          },
+        })),
+
+      setSnoozeMinutes: (minutes) =>
+        set((state) => ({
+          alarms: { ...state.alarms, snoozeMinutes: Math.max(1, Math.min(minutes, 60)) },
+        })),
 
       setOverride: (override) =>
         set((state) => ({ overrides: { ...state.overrides, [override.date]: override } })),
@@ -147,6 +196,7 @@ export const useAppStore = create<AppState & AppActions>()(
         appearance: state.appearance,
         schedule: state.schedule,
         payroll: state.payroll,
+        alarms: state.alarms,
         overrides: state.overrides,
         payments: state.payments,
       }),

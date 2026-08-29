@@ -4,7 +4,9 @@ dist/
 web-build/
 *.log
 .DS_Store
-android/
-ios/
+# Только каталоги prebuild в корне. Без ведущего слэша правило съедало
+# android-часть локального нативного модуля, и в сборку она бы не уехала.
+/android/
+/ios/
 .env*.local
 expo-env.d.ts

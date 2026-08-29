@@ -111,6 +111,22 @@ export function todayIso(): IsoDate {
   return toIsoDateLocal(new Date());
 }
 
+/**
+ * Момент местного времени в миллисекундах эпохи: дата плюс «ЧЧ:ММ».
+ *
+ * Считается конструктором Date по местному времени, а не сложением
+ * миллисекунд: в ночь перевода часов сутки не равны 24 часам, и арифметика по
+ * эпохе увела бы будильник на час.
+ */
+export function localDateTimeToMillis(date: IsoDate, time: string): number {
+  assertIsoDate(date);
+  const minutes = parseTimeToMinutes(time);
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const day = Number(date.slice(8, 10));
+  return new Date(year, month - 1, day, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
+}
+
 /** Клетка месячной сетки: дата и принадлежность просматриваемому месяцу. */
 export interface GridDay {
   date: IsoDate;
