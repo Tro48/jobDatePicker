@@ -36,6 +36,21 @@ class AlarmActivity : Activity() {
     setContentView(buildLayout())
   }
 
+  /**
+   * Второй будильник, пока экран уже открыт.
+   *
+   * Активность объявлена singleInstance, поэтому система приносит новый intent
+   * сюда, а не создаёт экран заново. Без этого на экране остался бы заголовок
+   * первого будильника, а «Отложить» откладывало бы его вместо того, который
+   * звонит.
+   */
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    alarm = AlarmScheduler.alarmFromIntent(intent)
+    setContentView(buildLayout())
+  }
+
   /** Кнопка «назад» будильник не выключает — иначе его глушат случайно. */
   @Suppress("DEPRECATION")
   override fun onBackPressed() = Unit

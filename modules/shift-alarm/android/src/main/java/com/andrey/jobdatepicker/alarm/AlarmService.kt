@@ -56,6 +56,14 @@ class AlarmService : Service() {
       return START_NOT_STICKY
     }
 
+    // Второй будильник на ту же минуту приходит сюда, пока звонит первый:
+    // AlarmManager честно выстреливает оба. Без остановки прежнего его плеер
+    // остаётся играть без единой ссылки на себя, и «Отключить» до него уже не
+    // дотянется. Заодно снимается прошлый автостоп — иначе он оборвал бы
+    // новый звонок по таймеру предыдущего.
+    handler.removeCallbacks(autoStop)
+    stopRinging()
+
     startForegroundWith(alarm)
     acquireWakeLock()
     startRinging(alarm)
@@ -219,6 +227,8 @@ class AlarmService : Service() {
   }
 
   private fun acquireWakeLock() {
+    // Прежний захват отпускается явно: иначе он висел бы до своего таймаута.
+    releaseWakeLock()
     val manager = getSystemService(Context.POWER_SERVICE) as PowerManager
     wakeLock = manager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "shift-alarm:ring").apply {
       setReferenceCounted(false)
