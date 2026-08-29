@@ -99,7 +99,7 @@ npm start          # expo start --dev-client
 ### Проверки
 
 ```bash
-npm run test:domain     # 99 тестов доменного слоя и чистой арифметики
+npm run test:domain     # 106 тестов доменного слоя и чистой арифметики
 npm run check:contrast  # 66 проверок контраста по WCAG
 npm run typecheck       # tsc --noEmit
 npx expo-doctor         # конфигурация проекта

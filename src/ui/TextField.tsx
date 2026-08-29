@@ -13,6 +13,11 @@ export interface TextFieldProps {
   hint?: string;
   keyboardType?: KeyboardTypeOptions;
   multiline?: boolean;
+  /**
+   * Уход фокуса. Здесь экраны дописывают набранное в хранилище: писать на
+   * каждую букву слишком дорого, а поле должно хранить ровно то, что набрали.
+   */
+  onBlur?: () => void;
 }
 
 export function TextField({
@@ -23,6 +28,7 @@ export function TextField({
   hint,
   keyboardType = 'default',
   multiline = false,
+  onBlur,
 }: TextFieldProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
@@ -51,6 +57,7 @@ export function TextField({
         onBlur={() => {
           setFocused(false);
           reveal(null);
+          onBlur?.();
         }}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textMuted}

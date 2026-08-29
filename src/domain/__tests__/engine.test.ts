@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { monthDays } from '../date.ts';
-import { resolveDay, resolvePlannedShiftId, shiftDurationMinutes, validatePreset } from '../engine.ts';
+import {
+  resolveDay,
+  resolvePlannedShiftId,
+  scheduleUsesKnownShifts,
+  shiftDurationMinutes,
+  validatePreset,
+} from '../engine.ts';
 import type { ScheduleContext } from '../engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '../shifts.ts';
 import { SCHEDULE_PRESETS } from '../presets.ts';
@@ -104,4 +110,53 @@ test('resolvePlannedShiftId игнорирует правки — это пла�
   const context = contextFor('2-2-day', '2026-09-01');
   context.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'off' });
   assert.equal(resolvePlannedShiftId(context.schedule, '2026-09-01'), 'day12');
+});
+
+test('заметка к дню не делает его изменённым вручную', () => {
+  const context = contextFor('2-2-day', '2026-09-01');
+  // Так карточка дня записывает одну заметку: смену не трогает, часы тоже.
+  context.overrides.set('2026-09-01', { date: '2026-09-01', note: 'вышел за Сергея' });
+  const day = resolveDay(context, '2026-09-01');
+
+  // Точка в клетке, счётчик правок за месяц и кнопка «вернуть по графику»
+  // смотрят именно на source. Подпись к дню ничего из этого не заслуживает.
+  assert.equal(day.source, 'schedule');
+  assert.equal(day.shiftType.id, 'day12');
+  assert.equal(day.workedMinutes, 12 * 60);
+  assert.equal(day.note, 'вышел за Сергея');
+});
+
+test('правка без смены продолжает следовать графику при сдвиге даты отсчёта', () => {
+  const withNote = { date: '2026-09-01', note: 'вышел за Сергея' };
+
+  const early = contextFor('2-2-day', '2026-09-01');
+  early.overrides.set('2026-09-01', withNote);
+  assert.equal(resolveDay(early, '2026-09-01').shiftType.id, 'day12');
+
+  // Тот же день после сдвига первой смены на два дня назад — уже выходной.
+  const shifted = contextFor('2-2-day', '2026-08-30');
+  shifted.overrides.set('2026-09-01', withNote);
+  assert.equal(resolveDay(shifted, '2026-09-01').shiftType.id, 'off');
+});
+
+test('одни только часы — это изменение дня, а не заметка', () => {
+  const context = contextFor('2-2-day', '2026-09-01');
+  context.overrides.set('2026-09-01', { date: '2026-09-01', workedMinutesOverride: 420 });
+  const day = resolveDay(context, '2026-09-01');
+
+  assert.equal(day.source, 'override');
+  assert.equal(day.shiftType.id, 'day12');
+  assert.equal(day.workedMinutes, 420);
+});
+
+test('scheduleUsesKnownShifts ловит график на исчезнувшую смену', () => {
+  const ok = contextFor('2-2-day', '2026-09-01');
+  assert.equal(scheduleUsesKnownShifts(ok.schedule, shiftTypes), true);
+
+  const broken: ActiveSchedule = {
+    presetId: '2-2-day',
+    pattern: { kind: 'cycle', slots: ['day12', 'ghost', 'off', 'off'] },
+    anchorDate: '2026-09-01',
+  };
+  assert.equal(scheduleUsesKnownShifts(broken, shiftTypes), false);
 });

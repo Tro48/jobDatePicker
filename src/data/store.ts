@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { mmkvStateStorage } from './storage.ts';
-import { migrateAlarm } from './migrations.ts';
+import { migrateAlarm, migrateSchedule } from './migrations.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { DEFAULT_SHIFT_TYPES } from '@/domain/shifts.ts';
 import { DEFAULT_PAYMENT_RULES } from '@/domain/payday.ts';
@@ -22,7 +22,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -73,8 +73,6 @@ export interface AppActions {
   clearOverrideRange: (startDate: IsoDate, days: number) => void;
   addPayment: (payment: Omit<PaymentRecord, 'id'>) => void;
   removePayment: (id: string) => void;
-  /** Полный сброс — используется при импорте и в отладке. */
-  replaceAll: (state: AppState) => void;
 }
 
 const DEFAULT_PAYROLL: PayrollSettings = {
@@ -161,7 +159,21 @@ export const useAppStore = create<AppState & AppActions>()(
         ),
 
       setOverride: (override) =>
-        set((state) => ({ overrides: { ...state.overrides, [override.date]: override } })),
+        set((state) => {
+          // Правка, в которой не осталось ни смены, ни часов, ни заметки, — это
+          // отсутствие правки. Без этой ветки стёртая заметка оставляла бы за
+          // собой пустую запись, и день до конца жизни числился бы тронутым.
+          const empty =
+            override.shiftTypeId === undefined &&
+            override.workedMinutesOverride === undefined &&
+            (override.note === undefined || override.note.length === 0);
+
+          if (empty) {
+            const { [override.date]: removed, ...rest } = state.overrides;
+            return { overrides: rest };
+          }
+          return { overrides: { ...state.overrides, [override.date]: override } };
+        }),
 
       setOverrideRange: (startDate, days, shiftTypeId, note) =>
         set((state) => {
@@ -193,8 +205,6 @@ export const useAppStore = create<AppState & AppActions>()(
 
       removePayment: (id) =>
         set((state) => ({ payments: state.payments.filter((item) => item.id !== id) })),
-
-      replaceAll: (next) => set(next),
     }),
     {
       name: 'app-state',
@@ -221,11 +231,20 @@ export const useAppStore = create<AppState & AppActions>()(
  * объект из старой сборки уронил бы приложение. Справочник смен при этом
  * всегда берётся из кода: в версии 1 он лежал в хранилище, и после обновления
  * приложение читало устаревшие описания смен вместо новых.
+ *
+ * В версии 7 смена в ручной правке стала необязательной: правка может держать
+ * одну заметку, не отвязывая день от графика. Старые записи читаются как есть —
+ * смена в них указана всегда.
  */
 export function migrateState(persisted: Partial<AppState>, _version: number): AppState {
   // До версии 4 будильник был не списком, а одним набором настроек по типам
   // смен. Переносить оттуда нечего: звонить он не успел ни разу, ни одна
   // сборка с нативной частью не выходила.
   const alarms = Array.isArray(persisted.alarms) ? persisted.alarms.map(migrateAlarm) : [];
-  return { ...INITIAL_STATE, ...persisted, alarms, shiftTypes: DEFAULT_SHIFT_TYPES };
+
+  // График сбрасывается, если смена, на которую он ссылается, исчезла из
+  // справочника: разложить такой график нельзя, а падает он на каждой дате.
+  const schedule = migrateSchedule(persisted.schedule, DEFAULT_SHIFT_TYPES);
+
+  return { ...INITIAL_STATE, ...persisted, schedule, alarms, shiftTypes: DEFAULT_SHIFT_TYPES };
 }
