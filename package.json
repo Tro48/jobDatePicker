@@ -8,7 +8,8 @@
     "android": "expo start --dev-client --android",
     "typecheck": "tsc --noEmit",
     "test:domain": "node --test --experimental-strip-types \"src/**/__tests__/*.test.ts\"",
-    "check:contrast": "node --experimental-strip-types scripts/check-contrast.ts"
+    "check:contrast": "node --experimental-strip-types scripts/check-contrast.ts",
+    "icons": "node --experimental-strip-types scripts/make-icons.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
