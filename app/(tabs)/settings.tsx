@@ -4,6 +4,7 @@ import { formatDayShort } from '@/domain/format.ts';
 import { AppText, Button, Card, ChoiceGroup, Screen } from '@/ui';
 import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
+import { AboutSection } from '@/features/settings/AboutSection.tsx';
 import { UpdateCard } from '@/features/settings/UpdateCard.tsx';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { useTheme } from '@/theme';
@@ -78,6 +79,8 @@ export default function SettingsScreen() {
             Внесённых выплат: {paymentCount}
           </AppText>
         </View>
+
+        <AboutSection />
       </Card>
     </Screen>
   );
