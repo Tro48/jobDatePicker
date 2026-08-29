@@ -74,12 +74,16 @@ class AlarmActivity : Activity() {
       }
     )
 
-    val snooze = alarm?.snoozeMinutes ?: 10
-    root.addView(
-      button("Отложить на $snooze мин", SURFACE, TEXT) {
-        sendToService(AlarmService.ACTION_SNOOZE)
-      }
-    )
+    // Отсрочка выключена — кнопки нет вовсе. Неактивная кнопка спросонья
+    // читается как «не сработало», а не как «так задумано».
+    val snooze = alarm?.takeIf { it.canSnooze }?.snoozeMinutes
+    if (snooze != null) {
+      root.addView(
+        button("Отложить на $snooze мин", SURFACE, TEXT) {
+          sendToService(AlarmService.ACTION_SNOOZE)
+        }
+      )
+    }
 
     return root
   }

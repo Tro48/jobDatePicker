@@ -23,7 +23,8 @@ class AlarmRecord : Record {
 
   @Field var subtitle: String = ""
 
-  @Field var snoozeMinutes: Int = 10
+  /** 0 — отсрочки нет, кнопки «Отложить» не будет. */
+  @Field var snoozeMinutes: Int = 0
 
   @Field var soundUri: String? = null
 

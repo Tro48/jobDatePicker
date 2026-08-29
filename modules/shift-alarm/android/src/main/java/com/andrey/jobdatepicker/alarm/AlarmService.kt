@@ -45,7 +45,7 @@ class AlarmService : Service() {
         return START_NOT_STICKY
       }
       ACTION_SNOOZE -> {
-        alarm?.let { AlarmScheduler.snooze(this, it) }
+        alarm?.takeIf { it.canSnooze }?.let { AlarmScheduler.snooze(this, it) }
         stopEverything()
         return START_NOT_STICKY
       }
@@ -89,7 +89,7 @@ class AlarmService : Service() {
       Notification.Builder(this)
     }
 
-    val notification = builder
+    builder
       .setContentTitle(alarm.title)
       .setContentText(alarm.subtitle)
       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
@@ -106,12 +106,17 @@ class AlarmService : Service() {
         "Отключить",
         servicePendingIntent(alarm, ACTION_DISMISS)
       )
-      .addAction(
+
+    // Отсрочка выключена — второй кнопки в уведомлении просто нет.
+    if (alarm.canSnooze) {
+      builder.addAction(
         android.R.drawable.ic_menu_recent_history,
         "Отложить на ${alarm.snoozeMinutes} мин",
         servicePendingIntent(alarm, ACTION_SNOOZE)
       )
-      .build()
+    }
+
+    val notification = builder.build()
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)

@@ -6,13 +6,12 @@ import type { IsoDate, Weekday } from '@/domain/date.ts';
 import { patternShiftTypeIds, resolveDay } from '@/domain/engine.ts';
 import { formatDayLong } from '@/domain/format.ts';
 import {
-  DEFAULT_SNOOZE_MINUTES,
   MAX_SNOOZE_MINUTES,
-  MIN_SNOOZE_MINUTES,
   hasAnyTrigger,
   isPastOnce,
   newAlarmDraft,
   nextDateForTime,
+  parseSnoozeMinutes,
 } from '@/domain/alarm.ts';
 import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
@@ -95,6 +94,13 @@ export function AlarmEditScreen() {
   });
 
   /**
+   * Отсрочка правится текстом, а не числом: поле обязано хранить ровно то, что
+   * набрали, включая пустую строку. Число из него получается один раз, при
+   * сохранении, — иначе поле само подставляет значение поверх ввода.
+   */
+  const [snoozeText, setSnoozeText] = useState(() => String(draft.snoozeMinutes));
+
+  /**
    * Рабочие смены самого графика. Спрашивать их у пользователя незачем —
    * график уже выбран в настройках; здесь они нужны только затем, чтобы у
    * чередующихся дневных и ночных было по своему времени подъёма.
@@ -155,15 +161,16 @@ export function AlarmEditScreen() {
   const save = (): void => {
     // Времена смен дозаполняются перед сохранением: то, что показано на
     // экране, и то, что уходит в хранилище, должно совпадать до значения.
+    const base: AlarmDraft = { ...draft, snoozeMinutes: parseSnoozeMinutes(snoozeText) };
     const saved: AlarmDraft = perShiftTimes
       ? {
-          ...draft,
+          ...base,
           repeat: {
             kind: 'schedule',
             times: Object.fromEntries(scheduleShifts.map((type) => [type.id, timeFor(type)])),
           },
         }
-      : draft;
+      : base;
 
     if (isNew) addAlarm(saved);
     else updateAlarm(params.id, saved);
@@ -183,7 +190,6 @@ export function AlarmEditScreen() {
         {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={padding}
-        keyboardShouldPersistTaps="handled"
       >
         <Card title="Когда звонить">
           {perShiftTimes ? (
@@ -297,16 +303,14 @@ export function AlarmEditScreen() {
           />
           <TextField
             label="Отложить на, минут"
-            value={String(draft.snoozeMinutes)}
-            onChangeText={(text) => {
-              const digits = text.replace(/\D/g, '');
-              setDraft((current) => ({
-                ...current,
-                snoozeMinutes: digits === '' ? DEFAULT_SNOOZE_MINUTES : Number(digits),
-              }));
-            }}
+            value={snoozeText}
+            onChangeText={setSnoozeText}
             keyboardType="number-pad"
-            hint={`Столько ждёт кнопка «Отложить». От ${MIN_SNOOZE_MINUTES} до ${MAX_SNOOZE_MINUTES} минут`}
+            hint={
+              parseSnoozeMinutes(snoozeText) === 0
+                ? 'Кнопки «Отложить» не будет. Поставь минуты, чтобы она появилась'
+                : `Столько ждёт кнопка «Отложить». Не больше ${MAX_SNOOZE_MINUTES} минут`
+            }
           />
         </Card>
 

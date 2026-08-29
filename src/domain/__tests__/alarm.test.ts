@@ -6,10 +6,12 @@ import {
   describeTime,
   expiredOnceAlarmIds,
   hasAnyTrigger,
+  hasSnooze,
   isPastOnce,
   newAlarmDraft,
   nextDateForTime,
   nextOccurrences,
+  parseSnoozeMinutes,
   planAlarms,
   restartOnce,
 } from '../alarm.ts';
@@ -226,7 +228,26 @@ test('в списке у графика показываются все его �
 });
 
 test('отсрочка держится в разумных пределах', () => {
-  assert.equal(clampSnoozeMinutes(0), 1);
+  assert.equal(clampSnoozeMinutes(0), 0);
+  assert.equal(clampSnoozeMinutes(-5), 0);
   assert.equal(clampSnoozeMinutes(90), 60);
-  assert.equal(clampSnoozeMinutes(Number.NaN), 10);
+  assert.equal(clampSnoozeMinutes(Number.NaN), 0);
+});
+
+test('поле отсрочки разбирается только при сохранении', () => {
+  // Пустое поле — это «без отсрочки», а не «подставить десять минут».
+  assert.equal(parseSnoozeMinutes(''), 0);
+  assert.equal(parseSnoozeMinutes('0'), 0);
+  assert.equal(parseSnoozeMinutes('5'), 5);
+  assert.equal(parseSnoozeMinutes('999'), 60);
+  assert.equal(parseSnoozeMinutes('abc'), 0);
+});
+
+test('кнопка «Отложить» появляется только при ненулевой отсрочке', () => {
+  assert.equal(hasSnooze({ snoozeMinutes: 0 }), false);
+  assert.equal(hasSnooze({ snoozeMinutes: 10 }), true);
+});
+
+test('новый будильник заводится без отсрочки', () => {
+  assert.equal(newAlarmDraft(new Date(2026, 7, 29, 12, 0)).snoozeMinutes, 0);
 });
