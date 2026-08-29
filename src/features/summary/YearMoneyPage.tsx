@@ -4,7 +4,7 @@ import { formatMonthName, formatMoney, pluralize } from '@/domain/format.ts';
 import { yearlyPaymentTotals } from '@/domain/summary.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type { PaymentRecord } from '@/domain/types.ts';
-import { AppText, Card } from '@/ui';
+import { AppText, Card, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 
 const MONTH_FORMS = ['месяц', 'месяца', 'месяцев'] as const;
@@ -26,6 +26,7 @@ export interface YearMoneyPageProps {
  */
 export function YearMoneyPage({ year, payments, currency, today, width }: YearMoneyPageProps) {
   const theme = useTheme();
+  const scroll = useSheetScroll();
 
   const months = useMemo(() => yearlyPaymentTotals(payments, year), [payments, year]);
 
@@ -36,6 +37,7 @@ export function YearMoneyPage({ year, payments, currency, today, width }: YearMo
 
   return (
     <ScrollView
+      {...scroll}
       style={{ width }}
       contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
     >

@@ -19,7 +19,7 @@ import {
 } from '@/domain/format.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, Sheet, TextField } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, Sheet, TextField, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 import { DayAlarmSection } from './DayAlarmSection.tsx';
 import { DayPaymentSection } from './DayPaymentSection.tsx';
@@ -32,6 +32,7 @@ export function DayScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const scroll = useSheetScroll();
   const params = useLocalSearchParams<{ date: string }>();
   const date = (params.date ?? todayIso()) as IsoDate;
 
@@ -59,7 +60,7 @@ export function DayScreen() {
   if (!context || !planned) {
     return (
       <Sheet title={formatDayLong(date)} onClose={() => router.back()}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={padding}>
+        <ScrollView {...scroll} style={{ flex: 1 }} contentContainerStyle={padding}>
           <Card title="График не выбран">
             <AppText variant="body" tone="muted">
               Пока график не выбран, править отдельные дни нечего.
@@ -119,6 +120,7 @@ export function DayScreen() {
   return (
     <Sheet title={formatDayLong(date)} onClose={() => router.back()}>
       <ScrollView
+        {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={padding}
         keyboardShouldPersistTaps="handled"

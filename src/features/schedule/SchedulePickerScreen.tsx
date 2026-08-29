@@ -10,7 +10,7 @@ import { periodOf, shiftPeriod } from '@/domain/payday.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { indexShiftTypes } from '@/domain/shifts.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, IconButton, Sheet } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, IconButton, Sheet, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 import { MonthGrid, WeekdayHeader } from '@/features/calendar/MonthGrid.tsx';
 
@@ -20,6 +20,7 @@ const PREVIEW_DAYS = 14;
 export function SchedulePickerScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const scroll = useSheetScroll();
   const { width } = useWindowDimensions();
 
   const saved = useAppStore((state) => state.schedule);
@@ -71,6 +72,7 @@ export function SchedulePickerScreen() {
   return (
     <Sheet title="График" onClose={() => router.back()}>
       <ScrollView
+        {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
       >

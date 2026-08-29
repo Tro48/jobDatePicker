@@ -18,7 +18,7 @@ import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, Sheet, TextField, TimeSelect, Toggle } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, Sheet, TextField, TimeSelect, Toggle, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 import { DatePickerField } from './DatePickerField.tsx';
 import { RingtonePicker } from './RingtonePicker.tsx';
@@ -58,6 +58,7 @@ function defaultTimeFor(shiftType: ShiftType): string {
 export function AlarmEditScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const scroll = useSheetScroll();
   // date приходит из карточки дня: «добавить будильник на этот день».
   const params = useLocalSearchParams<{ id: string; date?: string }>();
   const isNew = params.id === 'new';
@@ -119,7 +120,7 @@ export function AlarmEditScreen() {
   if (!isNew && !existing) {
     return (
       <Sheet title="Будильник" onClose={() => router.back()}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={padding}>
+        <ScrollView {...scroll} style={{ flex: 1 }} contentContainerStyle={padding}>
           <Card title="Будильник не найден">
             <AppText variant="body" tone="muted">
               Похоже, его уже удалили.
@@ -179,6 +180,7 @@ export function AlarmEditScreen() {
   return (
     <Sheet title={isNew ? 'Новый будильник' : 'Будильник'} onClose={() => router.back()}>
       <ScrollView
+        {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={padding}
         keyboardShouldPersistTaps="handled"

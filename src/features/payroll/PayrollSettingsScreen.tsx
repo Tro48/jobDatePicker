@@ -7,7 +7,7 @@ import { expectedPaymentDate, periodOf } from '@/domain/payday.ts';
 import { PAYMENT_KIND_LABELS as KIND_TITLES } from '@/domain/payments.ts';
 import type { PaymentRule, ScheduledPaymentKind } from '@/domain/types.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Card, ChoiceGroup, Sheet, TextField, Toggle } from '@/ui';
+import { AppText, Card, ChoiceGroup, Sheet, TextField, Toggle, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 
 const OFFSET_CHOICES = [
@@ -25,6 +25,7 @@ const WEEKEND_CHOICES = [
 export function PayrollSettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const scroll = useSheetScroll();
   const payroll = useAppStore((state) => state.payroll);
   const setPayroll = useAppStore((state) => state.setPayroll);
 
@@ -41,6 +42,7 @@ export function PayrollSettingsScreen() {
   return (
     <Sheet title="Выплаты" onClose={() => router.back()}>
       <ScrollView
+        {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
         keyboardShouldPersistTaps="handled"
