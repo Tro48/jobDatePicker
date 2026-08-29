@@ -6,9 +6,10 @@ import {
   formatDuration,
   formatDurationSpoken,
   formatMoney,
-  formatMonthTitle,
   formatMinutesAsHoursInput,
+  formatMonthTitle,
   formatRussianDate,
+  formatTimeUntil,
   formatTotalHours,
   parseAmount,
   parseHoursToMinutes,
@@ -132,4 +133,13 @@ test('мусор вместо суммы не проходит', () => {
   assert.equal(parseAmount('-500'), null);
   assert.equal(parseAmount('тридцать тысяч'), null);
   assert.equal(parseAmount('30 000 ₽'), null);
+});
+
+test('остаток времени: минуты, часы, дни', () => {
+  assert.equal(formatTimeUntil(0), 'меньше минуты');
+  assert.equal(formatTimeUntil(45), '45\u00A0мин');
+  assert.equal(formatTimeUntil(8 * 60 + 20), '8\u00A0ч 20\u00A0мин');
+  assert.equal(formatTimeUntil(9 * 60), '9\u00A0ч');
+  assert.equal(formatTimeUntil(36 * 60), '1 день 12\u00A0ч');
+  assert.equal(formatTimeUntil(48 * 60), '2 дня');
 });

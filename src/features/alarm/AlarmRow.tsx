@@ -2,17 +2,16 @@ import { useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { describeRepeat, describeTime } from '@/domain/alarm.ts';
 import type { Alarm, AlarmOccurrence } from '@/domain/alarm.ts';
-import { formatDayShort, formatDuration } from '@/domain/format.ts';
+import { formatDayShort, formatTimeUntil } from '@/domain/format.ts';
 import type { ShiftType } from '@/domain/types.ts';
 import { AppText, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 
-/** «Через 8 ч 20 мин» для ближайших суток, дальше — просто день и время. */
-function describeNext(occurrence: AlarmOccurrence, now: number): string {
+/** «Через 8 ч 20 мин» для ближайших суток, дальше — день и остаток. */
+export function describeNext(occurrence: AlarmOccurrence, now: number): string {
   const minutes = Math.round((occurrence.triggerAtMillis - now) / 60_000);
-  if (minutes < 1) return 'Меньше чем через минуту';
-  if (minutes < 24 * 60) return `Через ${formatDuration(minutes)}`;
-  return `${formatDayShort(occurrence.date)}, ${occurrence.time}`;
+  if (minutes < 24 * 60) return `Через ${formatTimeUntil(minutes)}`;
+  return `${formatDayShort(occurrence.date)} — через ${formatTimeUntil(minutes)}`;
 }
 
 /**
@@ -52,12 +51,16 @@ export function AlarmRow({
     : 'Выключен';
 
   return (
+    // Каждый будильник — своя карточка: так их проще различать взглядом и
+    // нечему слипаться, когда у соседних совпадает время.
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: theme.spacing.md,
-        paddingVertical: theme.spacing.xs,
+        gap: theme.spacing.sm,
+        padding: theme.spacing.md,
+        borderRadius: theme.radius.lg,
+        backgroundColor: theme.colors.surface,
       }}
     >
       <Pressable
@@ -72,8 +75,8 @@ export function AlarmRow({
           minHeight: theme.minTouchTarget,
           justifyContent: 'center',
           gap: 2,
-          paddingHorizontal: theme.spacing.sm,
-          paddingVertical: theme.spacing.sm,
+          paddingHorizontal: theme.spacing.xs,
+          paddingVertical: theme.spacing.xs,
           borderRadius: theme.radius.md,
           borderWidth: focused ? theme.focusRingWidth : 0,
           borderColor: theme.colors.focus,

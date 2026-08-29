@@ -18,7 +18,7 @@ import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, TextField, TimeSelect, Toggle } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, Sheet, TextField, TimeSelect, Toggle } from '@/ui';
 import { useTheme } from '@/theme';
 import { DatePickerField } from './DatePickerField.tsx';
 import { RingtonePicker } from './RingtonePicker.tsx';
@@ -118,14 +118,15 @@ export function AlarmEditScreen() {
 
   if (!isNew && !existing) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }} contentContainerStyle={padding}>
-        <Card title="Будильник не найден">
-          <AppText variant="body" tone="muted">
-            Похоже, его уже удалили.
-          </AppText>
-          <Button title="Назад" onPress={() => router.back()} />
-        </Card>
-      </ScrollView>
+      <Sheet title="Будильник" onClose={() => router.back()}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={padding}>
+          <Card title="Будильник не найден">
+            <AppText variant="body" tone="muted">
+              Похоже, его уже удалили.
+            </AppText>
+          </Card>
+        </ScrollView>
+      </Sheet>
     );
   }
 
@@ -176,140 +177,142 @@ export function AlarmEditScreen() {
   const silent = !hasAnyTrigger({ ...draft, id: 'draft' });
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
-      contentContainerStyle={padding}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Card title="Когда звонить">
-        {perShiftTimes ? (
-          <>
-            {/* В графике чередуются дневные и ночные — вставать надо в разное
-                время, поэтому полей столько, сколько смен в графике. */}
+    <Sheet title={isNew ? 'Новый будильник' : 'Будильник'} onClose={() => router.back()}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={padding}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Card title="Когда звонить">
+          {perShiftTimes ? (
+            <>
+              {/* В графике чередуются дневные и ночные — вставать надо в разное
+                  время, поэтому полей столько, сколько смен в графике. */}
+              <AppText variant="body" tone="muted">
+                В графике несколько смен, и время подъёма у них разное.
+              </AppText>
+              {scheduleShifts.map((type) => (
+                <TimeSelect
+                  key={type.id}
+                  label={type.name}
+                  value={timeFor(type)}
+                  onChange={(time) => setShiftTime(type.id, time)}
+                  hint={
+                    type.time && timeFor(type) >= type.time.start
+                      ? `Начало смены в ${type.time.start} — звонок придётся уже на смену`
+                      : `Начало смены в ${type.time?.start ?? ''}`
+                  }
+                />
+              ))}
+            </>
+          ) : (
+            <TimeSelect label="Время" value={draft.time} onChange={setTime} />
+          )}
+          <TextField
+            label="Название"
+            value={draft.label}
+            onChangeText={(label) => setDraft((current) => ({ ...current, label }))}
+            placeholder="На смену"
+            hint="Показывается на экране будильника"
+          />
+          <Toggle
+            label="Включён"
+            hint="Выключенный остаётся в списке со всеми настройками"
+            value={draft.enabled}
+            onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+          />
+        </Card>
+
+        <Card title={fromCalendar ? 'День' : 'Повтор'}>
+          {fromCalendar ? (
             <AppText variant="body" tone="muted">
-              В графике несколько смен, и время подъёма у них разное.
+              Разовый будильник на выбранный день. Повторы настраиваются на вкладке
+              «Будильник».
             </AppText>
-            {scheduleShifts.map((type) => (
-              <TimeSelect
-                key={type.id}
-                label={type.name}
-                value={timeFor(type)}
-                onChange={(time) => setShiftTime(type.id, time)}
-                hint={
-                  type.time && timeFor(type) >= type.time.start
-                    ? `Начало смены в ${type.time.start} — звонок придётся уже на смену`
-                    : `Начало смены в ${type.time?.start ?? ''}`
-                }
-              />
-            ))}
-          </>
-        ) : (
-          <TimeSelect label="Время" value={draft.time} onChange={setTime} />
-        )}
-        <TextField
-          label="Название"
-          value={draft.label}
-          onChangeText={(label) => setDraft((current) => ({ ...current, label }))}
-          placeholder="На смену"
-          hint="Показывается на экране будильника"
-        />
-        <Toggle
-          label="Включён"
-          hint="Выключенный остаётся в списке со всеми настройками"
-          value={draft.enabled}
-          onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
-        />
-      </Card>
+          ) : (
+            <ChoiceGroup
+              label="Режим повтора"
+              choices={REPEAT_CHOICES}
+              value={draft.repeat.kind}
+              onChange={setRepeatKind}
+            />
+          )}
 
-      <Card title={fromCalendar ? 'День' : 'Повтор'}>
-        {fromCalendar ? (
-          <AppText variant="body" tone="muted">
-            Разовый будильник на выбранный день. Повторы настраиваются на вкладке
-            «Будильник».
-          </AppText>
-        ) : (
-          <ChoiceGroup
-            label="Режим повтора"
-            choices={REPEAT_CHOICES}
-            value={draft.repeat.kind}
-            onChange={setRepeatKind}
+          {draft.repeat.kind === 'once' ? (
+            <DatePickerField
+              label="Дата"
+              value={draft.repeat.date}
+              onChange={(date) => setDraft((current) => ({ ...current, repeat: { kind: 'once', date } }))}
+              hint={isPastOnce(draft, now) ? undefined : `Зазвонит: ${formatDayLong(draft.repeat.date).toLowerCase()}`}
+            />
+          ) : null}
+
+          {isPastOnce(draft, now) ? (
+            <AppText variant="body" tone="danger">
+              Этот момент уже прошёл — будильник не зазвонит. Выбери другое время или день.
+            </AppText>
+          ) : null}
+
+          {draft.repeat.kind === 'weekly' ? (
+            <WeekdayPicker
+              days={draft.repeat.days}
+              onChange={(days) => setDraft((current) => ({ ...current, repeat: { kind: 'weekly', days } }))}
+            />
+          ) : null}
+
+          {draft.repeat.kind === 'schedule' && !schedule ? (
+            <AppText variant="body" tone="muted">
+              График не выбран, поэтому смен приложение пока не знает. Выбери график в
+              настройках — они появятся здесь сами.
+            </AppText>
+          ) : null}
+
+          {draft.repeat.kind === 'schedule' && schedule ? (
+            <AppText variant="body" tone="muted">
+              Звонит в каждый рабочий день графика. Выходные, отсыпные, отпуск и больничный
+              пропускаются, ручные правки дней учитываются.
+            </AppText>
+          ) : null}
+
+          {silent ? (
+            <AppText variant="body" tone="danger">
+              {draft.repeat.kind === 'schedule'
+                ? 'Так будильник не зазвонит ни разу: не отмечена ни одна смена.'
+                : 'Так будильник не зазвонит ни разу: не выбран ни один день недели.'}
+            </AppText>
+          ) : null}
+        </Card>
+
+        <Card title="Сигнал">
+          <RingtonePicker
+            value={draft.soundUri}
+            onChange={(soundUri) => setDraft((current) => ({ ...current, soundUri }))}
           />
-        )}
-
-        {draft.repeat.kind === 'once' ? (
-          <DatePickerField
-            label="Дата"
-            value={draft.repeat.date}
-            onChange={(date) => setDraft((current) => ({ ...current, repeat: { kind: 'once', date } }))}
-            hint={isPastOnce(draft, now) ? undefined : `Зазвонит: ${formatDayLong(draft.repeat.date).toLowerCase()}`}
+          <Toggle
+            label="Вибрация"
+            value={draft.vibrate}
+            onValueChange={(vibrate) => setDraft((current) => ({ ...current, vibrate }))}
           />
-        ) : null}
-
-        {isPastOnce(draft, now) ? (
-          <AppText variant="body" tone="danger">
-            Этот момент уже прошёл — будильник не зазвонит. Выбери другое время или день.
-          </AppText>
-        ) : null}
-
-        {draft.repeat.kind === 'weekly' ? (
-          <WeekdayPicker
-            days={draft.repeat.days}
-            onChange={(days) => setDraft((current) => ({ ...current, repeat: { kind: 'weekly', days } }))}
+          <TextField
+            label="Отложить на, минут"
+            value={String(draft.snoozeMinutes)}
+            onChangeText={(text) => {
+              const digits = text.replace(/\D/g, '');
+              setDraft((current) => ({
+                ...current,
+                snoozeMinutes: digits === '' ? DEFAULT_SNOOZE_MINUTES : Number(digits),
+              }));
+            }}
+            keyboardType="number-pad"
+            hint={`Столько ждёт кнопка «Отложить». От ${MIN_SNOOZE_MINUTES} до ${MAX_SNOOZE_MINUTES} минут`}
           />
-        ) : null}
+        </Card>
 
-        {draft.repeat.kind === 'schedule' && !schedule ? (
-          <AppText variant="body" tone="muted">
-            График не выбран, поэтому смен приложение пока не знает. Выбери график в
-            настройках — они появятся здесь сами.
-          </AppText>
-        ) : null}
-
-        {draft.repeat.kind === 'schedule' && schedule ? (
-          <AppText variant="body" tone="muted">
-            Звонит в каждый рабочий день графика. Выходные, отсыпные, отпуск и больничный
-            пропускаются, ручные правки дней учитываются.
-          </AppText>
-        ) : null}
-
-        {silent ? (
-          <AppText variant="body" tone="danger">
-            {draft.repeat.kind === 'schedule'
-              ? 'Так будильник не зазвонит ни разу: не отмечена ни одна смена.'
-              : 'Так будильник не зазвонит ни разу: не выбран ни один день недели.'}
-          </AppText>
-        ) : null}
-      </Card>
-
-      <Card title="Сигнал">
-        <RingtonePicker
-          value={draft.soundUri}
-          onChange={(soundUri) => setDraft((current) => ({ ...current, soundUri }))}
-        />
-        <Toggle
-          label="Вибрация"
-          value={draft.vibrate}
-          onValueChange={(vibrate) => setDraft((current) => ({ ...current, vibrate }))}
-        />
-        <TextField
-          label="Отложить на, минут"
-          value={String(draft.snoozeMinutes)}
-          onChangeText={(text) => {
-            const digits = text.replace(/\D/g, '');
-            setDraft((current) => ({
-              ...current,
-              snoozeMinutes: digits === '' ? DEFAULT_SNOOZE_MINUTES : Number(digits),
-            }));
-          }}
-          keyboardType="number-pad"
-          hint={`Столько ждёт кнопка «Отложить». От ${MIN_SNOOZE_MINUTES} до ${MAX_SNOOZE_MINUTES} минут`}
-        />
-      </Card>
-
-      <View style={{ gap: theme.spacing.md }}>
-        <Button title="Сохранить" variant="primary" onPress={save} />
-        {isNew ? null : <Button title="Удалить будильник" variant="danger" onPress={remove} />}
-      </View>
-    </ScrollView>
+        <View style={{ gap: theme.spacing.md }}>
+          <Button title="Сохранить" variant="primary" onPress={save} />
+          {isNew ? null : <Button title="Удалить будильник" variant="danger" onPress={remove} />}
+        </View>
+      </ScrollView>
+    </Sheet>
   );
 }

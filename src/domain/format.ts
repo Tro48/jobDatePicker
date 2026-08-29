@@ -83,6 +83,26 @@ export function formatDuration(minutes: number): string {
   return rest === 0 ? `${hours}\u00A0ч` : `${hours}\u00A0ч ${rest}\u00A0мин`;
 }
 
+/**
+ * Сколько осталось: «через 45 мин», «8 ч 20 мин», «1 день 12 ч».
+ *
+ * Дни отделяются от часов намеренно: «36 ч» до будильника читается хуже, чем
+ * «1 день 12 ч», а секунды и минуты на таком расстоянии никому не нужны.
+ */
+export function formatTimeUntil(minutes: number): string {
+  if (minutes < 1) return 'меньше минуты';
+
+  const days = Math.floor(minutes / (24 * 60));
+  const hours = Math.floor((minutes % (24 * 60)) / 60);
+  const rest = minutes % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${pluralize(days, DAY_FORMS)} ${hours}\u00A0ч` : pluralize(days, DAY_FORMS);
+  }
+  if (hours > 0) return rest > 0 ? `${hours}\u00A0ч ${rest}\u00A0мин` : `${hours}\u00A0ч`;
+  return `${rest}\u00A0мин`;
+}
+
 /** Итог за месяц: «172 ч», «172,5 ч». */
 export function formatTotalHours(minutes: number): string {
   const hours = minutes / 60;

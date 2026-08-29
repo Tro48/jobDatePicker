@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { View, useWindowDimensions } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { todayIso } from '@/domain/date.ts';
 import { YEAR_RANGE, buildYearWindow } from '@/domain/months.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, HorizontalPager, IconButton } from '@/ui';
+import { AppText, HorizontalPager, IconButton, Sheet } from '@/ui';
 import { useTheme } from '@/theme';
 import { YearMoneyPage } from './YearMoneyPage.tsx';
 
@@ -17,6 +17,7 @@ import { YearMoneyPage } from './YearMoneyPage.tsx';
  */
 export function YearMoneyScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{ year?: string }>();
 
@@ -32,7 +33,7 @@ export function YearMoneyScreen() {
   const [index, setIndex] = useState(YEAR_RANGE);
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+    <Sheet title="Деньги по месяцам" onClose={() => router.back()}>
       <View
         style={{
           flexDirection: 'row',
@@ -47,9 +48,9 @@ export function YearMoneyScreen() {
           disabled={index === 0}
           onPress={() => setIndex((value) => Math.max(0, value - 1))}
         />
+        {/* Заголовок экрана — у шторки; здесь значение, а не второй заголовок. */}
         <AppText
           variant="title"
-          accessibilityRole="header"
           accessibilityLiveRegion="polite"
           style={{ flex: 1, textAlign: 'center' }}
         >
@@ -79,6 +80,6 @@ export function YearMoneyScreen() {
           />
         )}
       />
-    </View>
+    </Sheet>
   );
 }
