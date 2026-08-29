@@ -13,7 +13,8 @@ import { AppText, Button, Card, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 import { Legend } from './Legend.tsx';
 import { WeekdayHeader } from './MonthGrid.tsx';
-import { MONTH_RANGE, MonthPager, buildMonthWindow } from './MonthPager.tsx';
+import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
+import { MonthPager } from './MonthPager.tsx';
 import { TodayCard } from './TodayCard.tsx';
 
 export function CalendarScreen() {

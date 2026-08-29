@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMonthSummary, forecastMonth } from '../summary.ts';
+import { buildMonthSummary, forecastMonth, yearlyPaymentTotals } from '../summary.ts';
 import type { ScheduleContext } from '../engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '../shifts.ts';
 import { SCHEDULE_PRESETS } from '../presets.ts';
@@ -138,4 +138,25 @@ test('месяц без аванса и зарплаты, но с больнич
   assert.equal(summary.workPaid, 0);
   assert.equal(summary.effectiveHourlyRate, null);
   assert.equal(summary.effectiveShiftRate, null);
+});
+
+test('годовые итоги: месяц выплаты — тот, ЗА который платят', () => {
+  const payments: PaymentRecord[] = [
+    ...septemberPayments,
+    { id: 'v', kind: 'vacationPay', period: '2026-07', receivedOn: '2026-06-25', amount: 52_000 },
+    // Декабрь прошлого года в 2026-й не попадает.
+    { id: 'old', kind: 'salary', period: '2025-12', receivedOn: '2026-01-09', amount: 44_000 },
+  ];
+
+  const months = yearlyPaymentTotals(payments, 2026);
+
+  assert.equal(months.length, 12);
+  assert.equal(months[6].period, '2026-07');
+  assert.equal(months[6].total, 52_000);
+  // Отпускные видны отдельно: в сумму месяца входят, в ставки — нет.
+  assert.equal(months[6].compensation, 52_000);
+  assert.equal(months[7].total, 41_000);
+  assert.equal(months[8].total, 75_000);
+  assert.equal(months[8].compensation, 0);
+  assert.equal(months.reduce((sum, item) => sum + item.total, 0), 168_000);
 });

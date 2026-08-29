@@ -48,6 +48,15 @@ function RootStack() {
           }}
         />
         <Stack.Screen
+          name="summary/year"
+          options={{
+            headerShown: true,
+            title: 'Деньги по месяцам',
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+          }}
+        />
+        <Stack.Screen
           name="settings/schedule"
           options={{
             headerShown: true,

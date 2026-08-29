@@ -25,6 +25,11 @@ const WEEKDAYS_FULL = [
 
 export const WEEKDAYS_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'] as const;
 
+/** «Сентябрь» — название месяца без года. month — 1..12. */
+export function formatMonthName(month: number): string {
+  return MONTHS_NOMINATIVE[month - 1];
+}
+
 /** «Сентябрь 2026» — заголовок месяца. */
 export function formatMonthTitle(year: number, month: number): string {
   return `${MONTHS_NOMINATIVE[month - 1]} ${year}`;

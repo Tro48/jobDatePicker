@@ -61,6 +61,9 @@ export function AlarmEditScreen() {
   // date приходит из карточки дня: «добавить будильник на этот день».
   const params = useLocalSearchParams<{ id: string; date?: string }>();
   const isNew = params.id === 'new';
+  // Пришли из карточки дня: такой будильник всегда разовый, на этот день, и
+  // выбор повтора здесь только мешает.
+  const fromCalendar = isNew && params.date !== undefined;
   const context = useScheduleContext();
 
   const existing = useAppStore((state) => state.alarms.find((alarm) => alarm.id === params.id));
@@ -173,13 +176,20 @@ export function AlarmEditScreen() {
         />
       </Card>
 
-      <Card title="Повтор">
-        <ChoiceGroup
-          label="Режим повтора"
-          choices={REPEAT_CHOICES}
-          value={draft.repeat.kind}
-          onChange={setRepeatKind}
-        />
+      <Card title={fromCalendar ? 'День' : 'Повтор'}>
+        {fromCalendar ? (
+          <AppText variant="body" tone="muted">
+            Разовый будильник на выбранный день. Повторы настраиваются на вкладке
+            «Будильник».
+          </AppText>
+        ) : (
+          <ChoiceGroup
+            label="Режим повтора"
+            choices={REPEAT_CHOICES}
+            value={draft.repeat.kind}
+            onChange={setRepeatKind}
+          />
+        )}
 
         {draft.repeat.kind === 'once' ? (
           <DatePickerField

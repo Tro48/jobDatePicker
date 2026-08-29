@@ -167,3 +167,39 @@ export function forecastMonth(
     earnedSoFar: hourlyRate * (elapsedMinutes / 60),
   };
 }
+
+/** Деньги одного месяца для годового графика. */
+export interface MonthMoney {
+  period: Period;
+  /** 1..12 — для подписи месяца. */
+  month: number;
+  total: number;
+  /** Отпускные и больничные внутри total: в графике они помечаются отдельно. */
+  compensation: number;
+}
+
+/**
+ * Суммы по месяцам года.
+ *
+ * Считается прямо по выплатам, без графика: месяц выплаты — это период, ЗА
+ * который она пришла, а не дата поступления. Поэтому годовой график работает
+ * и когда график смен ещё не выбран.
+ */
+export function yearlyPaymentTotals(payments: PaymentRecord[], year: number): MonthMoney[] {
+  const prefix = String(year).padStart(4, '0');
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    const period = `${prefix}-${String(month).padStart(2, '0')}` as Period;
+    const forMonth = payments.filter((payment) => payment.period === period);
+    const sum = (items: PaymentRecord[]): number =>
+      items.reduce((total, payment) => total + payment.amount, 0);
+
+    return {
+      period,
+      month,
+      total: sum(forMonth),
+      compensation: sum(forMonth.filter((payment) => isCompensationPayment(payment.kind))),
+    };
+  });
+}
