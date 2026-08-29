@@ -1,17 +1,28 @@
-# Сборка APK в облаке EAS при попадании изменений в main.
+# Сборка APK в облаке EAS. Запускается руками.
 #
-# Сборка запускается только после зелёных проверок: собирать APK из кода,
-# который не проходит типы или тесты, смысла нет — это трата квоты сборок.
+# На мерж в main повешено обновление по воздуху (update.yml): оно закрывает
+# правки экранов и расчётов. Сюда приходят только изменения нативной части —
+# нативный модуль, новые нативные зависимости, разрешения, иконка, заставка,
+# всё, что попадает в манифест Android. Такое по воздуху не доставить, а
+# собирать APK на каждый мерж нельзя: у бесплатного аккаунта 15 сборок в месяц.
+#
+# Сборка идёт только после зелёных проверок: APK из кода, который не проходит
+# типы или тесты, стоил бы столько же, сколько рабочий.
 name: Сборка Android
 
 on:
-  push:
-    branches: [main]
-  # Ручной запуск: пригодится, чтобы пересобрать APK без нового коммита.
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Профиль сборки
+        type: choice
+        options:
+          - production
+          - development
+        default: production
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.ref }}-${{ inputs.profile }}
   cancel-in-progress: false
 
 jobs:
@@ -22,6 +33,9 @@ jobs:
     name: EAS Build
     needs: checks
     runs-on: ubuntu-latest
+    # Нужно, чтобы workflow мог создать релиз с APK и списком выпусков.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -38,7 +52,56 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Постановка сборки в очередь
-        # --no-wait: workflow не ждёт окончания сборки и не жжёт минуты
-        # GitHub Actions. Ссылка на APK придёт на expo.dev.
-        run: eas build --platform android --profile production --non-interactive --no-wait
+      - name: Сборка APK
+        # --wait, а не --no-wait: без ожидания не узнать ни ссылку на APK, ни
+        # отпечаток нативной части, а без них нечего класть в список выпусков.
+        # Минуты Actions на публичном репозитории бесплатны.
+        run: eas build --platform android --profile ${{ inputs.profile }} --non-interactive --json --wait > build.json
+
+      - name: Выпуск на GitHub
+        # APK переезжает в релиз репозитория по двум причинам: артефакты EAS на
+        # бесплатном аккаунте живут 30 дней, а ссылка релиза постоянная —
+        # приложение читает по ней список выпусков и никогда не промахивается.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+
+          artifact=$(jq -er '.[0].artifacts.applicationArchiveUrl' build.json)
+          runtime=$(jq -er '.[0].runtimeVersion' build.json)
+          version=$(jq -er '.[0].appVersion' build.json)
+
+          if [ "$PROFILE" = "development" ]; then
+            apk="smeny-dev-$version.apk"
+            tag="dev-v$version-${runtime:0:8}"
+          else
+            apk="smeny-$version.apk"
+            tag="v$version-${runtime:0:8}"
+          fi
+
+          curl -fsSL "$artifact" -o "$apk"
+
+          if [ "$PROFILE" = "development" ]; then
+            # Отладочная сборка помечается предварительным выпуском: иначе
+            # ссылка releases/latest увела бы приложение на неё вместо рабочей.
+            gh release create "$tag" "$apk" \
+              --prerelease \
+              --title "Смены dev $version" \
+              --notes "Отладочная сборка. Отпечаток нативной части: $runtime" \
+              || gh release upload "$tag" "$apk" --clobber
+            exit 0
+          fi
+
+          jq -n \
+            --arg runtimeVersion "$runtime" \
+            --arg url "https://github.com/${{ github.repository }}/releases/download/$tag/$apk" \
+            --arg version "$version" \
+            --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{runtimeVersion: $runtimeVersion, url: $url, version: $version, builtAt: $builtAt}' \
+            > android.json
+
+          gh release create "$tag" "$apk" android.json \
+            --title "Смены $version" \
+            --notes "Отпечаток нативной части: $runtime" \
+            || gh release upload "$tag" "$apk" android.json --clobber

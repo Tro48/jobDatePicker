@@ -7,6 +7,9 @@
     "icon": "./assets/icon.png",
     "scheme": "jobdatepicker",
     "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
     "android": {
       "package": "com.andrey.jobdatepicker",
       "predictiveBackGestureEnabled": false,
@@ -41,8 +44,12 @@
       "router": {},
       "eas": {
         "projectId": "b31a042f-9401-4059-a663-d47f73586437"
-      }
+      },
+      "releaseManifestUrl": "https://github.com/Tro48/jobDatePicker/releases/latest/download/android.json"
     },
-    "owner": "trofimdev"
+    "owner": "trofimdev",
+    "updates": {
+      "url": "https://u.expo.dev/b31a042f-9401-4059-a663-d47f73586437"
+    }
   }
 }
