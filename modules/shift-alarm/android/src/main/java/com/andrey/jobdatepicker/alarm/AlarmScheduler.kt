@@ -23,11 +23,19 @@ object AlarmScheduler {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) manager.canScheduleExactAlarms() else true
   }
 
-  /** Ставит новый набор целиком, снимая предыдущий. */
+  /**
+   * Ставит новый набор целиком, снимая предыдущий.
+   *
+   * Отложенные звонки переживают замену: JS про них не знает, и без этого
+   * открытое в 6:35 приложение молча отменяло бы будильник, отложенный в 6:30.
+   */
   fun replaceAll(context: Context, alarms: List<StoredAlarm>) {
+    val now = System.currentTimeMillis()
+    val snoozed = AlarmStore.read(context).filter { it.isSnooze && it.triggerAtMillis > now }
     cancelAll(context)
-    AlarmStore.write(context, alarms)
-    alarms.forEach { set(context, it) }
+    val next = snoozed + alarms
+    AlarmStore.write(context, next)
+    next.forEach { set(context, it) }
   }
 
   fun cancelAll(context: Context) {
@@ -58,7 +66,7 @@ object AlarmScheduler {
   /** Отложить: тот же будильник через заданное число минут. */
   fun snooze(context: Context, alarm: StoredAlarm) {
     val next = alarm.copy(
-      id = "${alarm.id}:snooze:${System.currentTimeMillis()}",
+      id = "${alarm.id}${StoredAlarm.SNOOZE_MARK}${System.currentTimeMillis()}",
       triggerAtMillis = System.currentTimeMillis() + alarm.snoozeMinutes * 60_000L
     )
     AlarmStore.put(context, next)
@@ -72,6 +80,8 @@ object AlarmScheduler {
     putExtra(StoredAlarm.KEY_TITLE, alarm.title)
     putExtra(StoredAlarm.KEY_SUBTITLE, alarm.subtitle)
     putExtra(StoredAlarm.KEY_SNOOZE, alarm.snoozeMinutes)
+    putExtra(StoredAlarm.KEY_SOUND, alarm.soundUri)
+    putExtra(StoredAlarm.KEY_VIBRATE, alarm.vibrate)
   }
 
   fun firePendingIntent(context: Context, alarm: StoredAlarm): PendingIntent {
@@ -94,7 +104,9 @@ object AlarmScheduler {
       triggerAtMillis = intent.getLongExtra(StoredAlarm.KEY_TRIGGER, 0L),
       title = intent.getStringExtra(StoredAlarm.KEY_TITLE).orEmpty(),
       subtitle = intent.getStringExtra(StoredAlarm.KEY_SUBTITLE).orEmpty(),
-      snoozeMinutes = intent.getIntExtra(StoredAlarm.KEY_SNOOZE, 10)
+      snoozeMinutes = intent.getIntExtra(StoredAlarm.KEY_SNOOZE, 10),
+      soundUri = intent.getStringExtra(StoredAlarm.KEY_SOUND),
+      vibrate = intent.getBooleanExtra(StoredAlarm.KEY_VIBRATE, true)
     )
   }
 

@@ -4,8 +4,8 @@ import { mmkvStateStorage } from './storage.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { DEFAULT_SHIFT_TYPES } from '@/domain/shifts.ts';
 import { DEFAULT_PAYMENT_RULES } from '@/domain/payday.ts';
-import { DEFAULT_ALARM_SETTINGS, settingFor } from '@/domain/alarm.ts';
-import type { AlarmSettings } from '@/domain/alarm.ts';
+import { clampSnoozeMinutes } from '@/domain/alarm.ts';
+import type { Alarm } from '@/domain/alarm.ts';
 import { addDays } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type {
@@ -21,7 +21,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -36,8 +36,8 @@ export interface AppState {
    */
   shiftTypes: ShiftType[];
   payroll: PayrollSettings;
-  /** Будильники: общий выключатель и настройка по типам смен. */
-  alarms: AlarmSettings;
+  /** Список будильников. Порядок — как их завёл пользователь. */
+  alarms: Alarm[];
   /** Ручные правки по датам: ключ — дата в формате YYYY-MM-DD. */
   overrides: Record<IsoDate, DayOverride>;
   payments: PaymentRecord[];
@@ -53,12 +53,14 @@ export interface AppActions {
   setAnchorDate: (anchorDate: IsoDate) => void;
   clearSchedule: () => void;
   setPayroll: (payroll: PayrollSettings) => void;
-  setAlarmsEnabled: (enabled: boolean) => void;
-  /** Включает или выключает будильник для одного типа смены. */
-  setShiftAlarmEnabled: (shiftTypeId: string, enabled: boolean) => void;
-  /** За сколько минут до начала смены звонить для этого типа. */
-  setShiftAlarmLead: (shiftTypeId: string, leadMinutes: number) => void;
-  setSnoozeMinutes: (minutes: number) => void;
+  /** Заводит будильник и возвращает его id — экран правки открывается сразу по нему. */
+  addAlarm: (alarm: Omit<Alarm, 'id'>) => string;
+  updateAlarm: (id: string, patch: Partial<Omit<Alarm, 'id'>>) => void;
+  removeAlarm: (id: string) => void;
+  /** Пауза и запуск: настройки будильника при этом сохраняются. */
+  setAlarmEnabled: (id: string, enabled: boolean) => void;
+  /** Гасит разом несколько будильников — так выключаются отзвонившие разовые. */
+  disableAlarms: (ids: string[]) => void;
   setOverride: (override: DayOverride) => void;
   /** Ставит одинаковую правку на несколько дней подряд: отпуск, больничный. */
   setOverrideRange: (startDate: IsoDate, days: number, shiftTypeId: string, note?: string) => void;
@@ -82,13 +84,15 @@ export const INITIAL_STATE: AppState = {
   schedule: null,
   shiftTypes: DEFAULT_SHIFT_TYPES,
   payroll: DEFAULT_PAYROLL,
-  alarms: DEFAULT_ALARM_SETTINGS,
+  alarms: [],
   overrides: {},
   payments: [],
 };
 
-/** Сутки: будить больше чем за сутки до смены смысла нет. */
-const MAX_LEAD_MINUTES = 24 * 60;
+/** Единственное место, где чинятся значения из формы: отсрочка вне диапазона. */
+function normalizeAlarm(alarm: Alarm): Alarm {
+  return { ...alarm, snoozeMinutes: clampSnoozeMinutes(alarm.snoozeMinutes) };
+}
 
 function createId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -116,40 +120,37 @@ export const useAppStore = create<AppState & AppActions>()(
 
       setPayroll: (payroll) => set({ payroll }),
 
-      setAlarmsEnabled: (enabled) =>
-        set((state) => ({ alarms: { ...state.alarms, enabled } })),
+      addAlarm: (alarm) => {
+        const id = createId();
+        set((state) => ({ alarms: [...state.alarms, normalizeAlarm({ ...alarm, id })] }));
+        return id;
+      },
 
-      setShiftAlarmEnabled: (shiftTypeId, enabled) =>
+      updateAlarm: (id, patch) =>
         set((state) => ({
-          alarms: {
-            ...state.alarms,
-            byShiftType: {
-              ...state.alarms.byShiftType,
-              // Отступ сохраняется, даже когда будильник выключен: включил
-              // обратно — прежнее время на месте.
-              [shiftTypeId]: { ...settingFor(state.alarms, shiftTypeId), enabled },
-            },
-          },
+          alarms: state.alarms.map((alarm) =>
+            alarm.id === id ? normalizeAlarm({ ...alarm, ...patch }) : alarm,
+          ),
         })),
 
-      setShiftAlarmLead: (shiftTypeId, leadMinutes) =>
+      removeAlarm: (id) =>
+        set((state) => ({ alarms: state.alarms.filter((alarm) => alarm.id !== id) })),
+
+      setAlarmEnabled: (id, enabled) =>
         set((state) => ({
-          alarms: {
-            ...state.alarms,
-            byShiftType: {
-              ...state.alarms.byShiftType,
-              [shiftTypeId]: {
-                ...settingFor(state.alarms, shiftTypeId),
-                leadMinutes: Math.max(0, Math.min(leadMinutes, MAX_LEAD_MINUTES)),
+          alarms: state.alarms.map((alarm) => (alarm.id === id ? { ...alarm, enabled } : alarm)),
+        })),
+
+      disableAlarms: (ids) =>
+        set((state) =>
+          ids.length === 0
+            ? state
+            : {
+                alarms: state.alarms.map((alarm) =>
+                  ids.includes(alarm.id) ? { ...alarm, enabled: false } : alarm,
+                ),
               },
-            },
-          },
-        })),
-
-      setSnoozeMinutes: (minutes) =>
-        set((state) => ({
-          alarms: { ...state.alarms, snoozeMinutes: Math.max(1, Math.min(minutes, 60)) },
-        })),
+        ),
 
       setOverride: (override) =>
         set((state) => ({ overrides: { ...state.overrides, [override.date]: override } })),
@@ -214,5 +215,9 @@ export const useAppStore = create<AppState & AppActions>()(
  * приложение читало устаревшие описания смен вместо новых.
  */
 export function migrateState(persisted: Partial<AppState>, _version: number): AppState {
-  return { ...INITIAL_STATE, ...persisted, shiftTypes: DEFAULT_SHIFT_TYPES };
+  // До версии 4 будильник был не списком, а одним набором настроек по типам
+  // смен. Переносить оттуда нечего: звонить он не успел ни разу, ни одна
+  // сборка с нативной частью не выходила.
+  const alarms = Array.isArray(persisted.alarms) ? persisted.alarms : [];
+  return { ...INITIAL_STATE, ...persisted, alarms, shiftTypes: DEFAULT_SHIFT_TYPES };
 }

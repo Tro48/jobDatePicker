@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
-import { planAlarms } from '@/domain/alarm.ts';
-import type { PlannedAlarm } from '@/domain/alarm.ts';
+import { expiredOnceAlarmIds, planAlarms } from '@/domain/alarm.ts';
+import type { AlarmOccurrence } from '@/domain/alarm.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import {
@@ -14,9 +14,9 @@ import {
 import type { AlarmPermissions } from '@modules/shift-alarm';
 
 export interface AlarmSyncState {
-  /** Что должно звонить по графику. Считается всегда, даже без нативной части. */
-  planned: PlannedAlarm[];
-  /** Сколько будильников реально поставлено в систему. */
+  /** Что должно зазвонить. Считается всегда, даже без нативной части. */
+  occurrences: AlarmOccurrence[];
+  /** Сколько срабатываний реально поставлено в систему. */
   scheduled: number;
   permissions: AlarmPermissions;
   /** Нативный модуль есть в этой сборке. */
@@ -32,33 +32,43 @@ const NO_PERMISSIONS: AlarmPermissions = {
 };
 
 /**
- * Держит будильники в системе в согласии с графиком.
+ * Держит будильники в системе в согласии со списком и графиком.
  *
- * Пересчёт запускается при любом изменении графика, правок дней и настроек
- * будильника, а также при каждом возвращении в приложение: будильники живут в
- * абсолютном времени, и после перевода часов или недели без запуска их надо
- * переставить. Набор всегда заменяется целиком — так нечему рассинхронизироваться.
+ * Пересчёт идёт при любом изменении будильников, графика и правок дней, а
+ * также при каждом возвращении в приложение: срабатывания живут в абсолютном
+ * времени, и после перевода часов или недели без запуска их надо переставить.
+ * Набор всегда заменяется целиком — рассинхронизироваться нечему.
  */
 export function useAlarmSync(): AlarmSyncState {
   const context = useScheduleContext();
-  const settings = useAppStore((state) => state.alarms);
+  const alarms = useAppStore((state) => state.alarms);
+  const disableAlarms = useAppStore((state) => state.disableAlarms);
 
   const [permissions, setPermissions] = useState<AlarmPermissions>(() =>
     isAlarmModuleAvailable ? getPermissions() : NO_PERMISSIONS,
   );
   const [scheduled, setScheduled] = useState(0);
   const [needsExactAlarmPermission, setNeedsExactAlarmPermission] = useState(false);
+  // Метка «когда считали»: без неё расписание, посчитанное при запуске,
+  // так и осталось бы вчерашним после недели в фоне.
+  const [plannedAt, setPlannedAt] = useState(() => Date.now());
 
-  const planned = useMemo(
-    () => (context ? planAlarms(context, settings, new Date()) : []),
-    [context, settings],
+  // Разовый будильник гаснет сам, отзвонив. Отследить это может только JS,
+  // поэтому проверка идёт при каждом пересчёте.
+  useEffect(() => {
+    disableAlarms(expiredOnceAlarmIds(alarms, new Date(plannedAt)));
+  }, [alarms, plannedAt, disableAlarms]);
+
+  const occurrences = useMemo(
+    () => planAlarms(alarms, context, new Date(plannedAt)),
+    [alarms, context, plannedAt],
   );
 
   const sync = useCallback(async () => {
     if (!isAlarmModuleAvailable) return;
     setPermissions(getPermissions());
 
-    if (planned.length === 0) {
+    if (occurrences.length === 0) {
       await cancelAllAlarms();
       setScheduled(0);
       setNeedsExactAlarmPermission(false);
@@ -67,12 +77,14 @@ export function useAlarmSync(): AlarmSyncState {
 
     try {
       const count = await scheduleAlarms(
-        planned.map((alarm) => ({
-          id: alarm.id,
-          triggerAtMillis: alarm.triggerAtMillis,
-          title: alarm.title,
-          subtitle: alarm.subtitle,
-          snoozeMinutes: settings.snoozeMinutes,
+        occurrences.map((occurrence) => ({
+          id: occurrence.id,
+          triggerAtMillis: occurrence.triggerAtMillis,
+          title: occurrence.title,
+          subtitle: occurrence.subtitle,
+          snoozeMinutes: occurrence.snoozeMinutes,
+          soundUri: occurrence.soundUri,
+          vibrate: occurrence.vibrate,
         })),
       );
       setScheduled(count);
@@ -84,7 +96,7 @@ export function useAlarmSync(): AlarmSyncState {
       setScheduled(0);
       setNeedsExactAlarmPermission(true);
     }
-  }, [planned, settings.snoozeMinutes]);
+  }, [occurrences]);
 
   useEffect(() => {
     void sync();
@@ -92,13 +104,13 @@ export function useAlarmSync(): AlarmSyncState {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void sync();
+      if (state === 'active') setPlannedAt(Date.now());
     });
     return () => subscription.remove();
-  }, [sync]);
+  }, []);
 
   return {
-    planned,
+    occurrences,
     scheduled,
     permissions,
     available: isAlarmModuleAvailable,

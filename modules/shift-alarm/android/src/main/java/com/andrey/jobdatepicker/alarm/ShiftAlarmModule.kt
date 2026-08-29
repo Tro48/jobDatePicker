@@ -25,12 +25,18 @@ class AlarmRecord : Record {
 
   @Field var snoozeMinutes: Int = 10
 
+  @Field var soundUri: String? = null
+
+  @Field var vibrate: Boolean = true
+
   fun toStored() = StoredAlarm(
     id = id,
     triggerAtMillis = triggerAtMillis.toLong(),
     title = title,
     subtitle = subtitle,
-    snoozeMinutes = snoozeMinutes
+    snoozeMinutes = snoozeMinutes,
+    soundUri = soundUri,
+    vibrate = vibrate
   )
 }
 
@@ -106,6 +112,24 @@ class ShiftAlarmModule : Module() {
 
     AsyncFunction("cancelAll") {
       AlarmScheduler.cancelAll(context)
+    }
+
+    /** Мелодии показывает свой экран, поэтому наружу отдаётся список, а не диалог. */
+    AsyncFunction("listRingtones") {
+      RingtoneCatalog.list(context)
+    }
+
+    /** Прослушивание при выборе: без него мелодию узнаёшь только в шесть утра. */
+    AsyncFunction("previewRingtone") { uri: String? ->
+      RingtoneCatalog.preview(context, uri)
+    }
+
+    AsyncFunction("stopRingtonePreview") {
+      RingtoneCatalog.stopPreview()
+    }
+
+    OnDestroy {
+      RingtoneCatalog.stopPreview()
     }
   }
 

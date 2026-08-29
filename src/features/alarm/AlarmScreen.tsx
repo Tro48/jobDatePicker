@@ -1,73 +1,52 @@
 import { useMemo } from 'react';
 import { View } from 'react-native';
-import { formatDayLong, formatDayShort } from '@/domain/format.ts';
-import { useScheduleContext } from '@/data/selectors.ts';
+import { indexShiftTypes } from '@/domain/shifts.ts';
 import { useAppStore } from '@/data/store.ts';
+import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import {
   openExactAlarmSettings,
   openFullScreenIntentSettings,
   openNotificationSettings,
 } from '@modules/shift-alarm';
-import { AppText, Button, Card, Screen, TextField, Toggle } from '@/ui';
+import { AppText, Button, Card, Screen } from '@/ui';
 import { useTheme } from '@/theme';
-import { ShiftAlarmRow } from './ShiftAlarmRow.tsx';
-import { useAlarmSync } from './useAlarmSync.ts';
+import { AlarmRow } from './AlarmRow.tsx';
+import { useAlarmSyncState } from './AlarmSyncProvider.tsx';
 
 export function AlarmScreen() {
   const theme = useTheme();
-  const context = useScheduleContext();
+  const push = useGuardedPush();
+  const alarms = useAppStore((state) => state.alarms);
   const shiftTypes = useAppStore((state) => state.shiftTypes);
-  const settings = useAppStore((state) => state.alarms);
-  const setAlarmsEnabled = useAppStore((state) => state.setAlarmsEnabled);
-  const setSnoozeMinutes = useAppStore((state) => state.setSnoozeMinutes);
+  const setAlarmEnabled = useAppStore((state) => state.setAlarmEnabled);
 
-  const { planned, scheduled, permissions, available, needsExactAlarmPermission } = useAlarmSync();
+  const { occurrences, scheduled, permissions, available, needsExactAlarmPermission } =
+    useAlarmSyncState();
 
-  // Будить можно только на смену: у выходного и отпуска времени начала нет.
-  const workTypes = useMemo(
-    () => shiftTypes.filter((type) => type.kind === 'work' && type.time),
-    [shiftTypes],
-  );
+  const index = useMemo(() => indexShiftTypes(shiftTypes), [shiftTypes]);
+  const now = Date.now();
+
+  /** Ближайшее срабатывание каждого будильника — то, что показывает строка списка. */
+  const nextByAlarm = useMemo(() => {
+    const map = new Map<string, (typeof occurrences)[number]>();
+    for (const occurrence of occurrences) {
+      if (!map.has(occurrence.alarmId)) map.set(occurrence.alarmId, occurrence);
+    }
+    return map;
+  }, [occurrences]);
 
   return (
-    <Screen title="Будильник" subtitle="Звонит перед сменой по графику">
+    <Screen title="Будильник" subtitle="Звонит даже на заблокированном экране">
       {!available ? (
         // Модуль нативный: в старой сборке его просто нет, и врать про
         // поставленные будильники нельзя.
         <Card title="Нужна новая сборка">
           <AppText variant="body" tone="muted">
             Будильник работает через нативный модуль. В установленной сборке его ещё нет —
-            расписание ниже считается, но звонить некому.
+            список ниже сохраняется, но звонить некому.
           </AppText>
         </Card>
       ) : null}
-
-      {!context ? (
-        <Card title="График не выбран">
-          <AppText variant="body" tone="muted">
-            Будить не по чему. Выбери график — расписание появится само.
-          </AppText>
-        </Card>
-      ) : null}
-
-      <Card title="Настройки">
-        <Toggle
-          label="Будильник включён"
-          hint="Общий выключатель: снимает все будильники разом"
-          value={settings.enabled}
-          onValueChange={setAlarmsEnabled}
-        />
-        <TextField
-          label="Отложить на, минут"
-          value={String(settings.snoozeMinutes)}
-          onChangeText={(text) => {
-            const minutes = Number(text.replace(/\D/g, ''));
-            if (Number.isFinite(minutes) && text.length > 0) setSnoozeMinutes(minutes);
-          }}
-          keyboardType="number-pad"
-          hint="Столько ждёт кнопка «Отложить» на экране будильника"
-        />
-      </Card>
 
       {available && needsExactAlarmPermission ? (
         <Card title="Точные будильники запрещены">
@@ -99,49 +78,33 @@ export function AlarmScreen() {
         </Card>
       ) : null}
 
-      <Card title="По типам смен">
-        {workTypes.map((type) => (
-          <ShiftAlarmRow key={type.id} shiftType={type} settings={settings} />
-        ))}
-      </Card>
-
-      <Card title="Ближайшие звонки">
-        {planned.length === 0 ? (
+      <Card title="Мои будильники">
+        {alarms.length === 0 ? (
           <AppText variant="body" tone="muted">
-            {settings.enabled
-              ? 'Ни для одного типа смены будильник не включён.'
-              : 'Будильник выключен целиком.'}
+            Ни одного будильника пока нет. Обычный будильник ставится на время и дни недели,
+            а режим «по графику» звонит только в рабочие дни — у ночных и дневных смен своё
+            время подъёма.
           </AppText>
         ) : (
-          <View
-            accessibilityRole="list"
-            accessibilityLabel="Ближайшие будильники"
-            style={{ gap: theme.spacing.sm }}
-          >
-            {planned.map((alarm) => (
-              <View
+          <View accessibilityRole="list" style={{ gap: theme.spacing.sm }}>
+            {alarms.map((alarm) => (
+              <AlarmRow
                 key={alarm.id}
-                accessibilityRole="text"
-                accessibilityLabel={`${alarm.wakeTime}, ${formatDayLong(alarm.wakeDate).toLowerCase()}, ${alarm.title}, начало смены в ${alarm.shiftStartTime}`}
-                style={{ flexDirection: 'row', alignItems: 'baseline', gap: theme.spacing.md }}
-              >
-                <AppText variant="heading" importantForAccessibility="no" style={{ minWidth: 64 }}>
-                  {alarm.wakeTime}
-                </AppText>
-                <View importantForAccessibility="no-hide-descendants" style={{ flex: 1 }}>
-                  <AppText variant="body">{formatDayShort(alarm.wakeDate)}</AppText>
-                  <AppText variant="caption" tone="muted">
-                    {alarm.title}, начало в {alarm.shiftStartTime}
-                  </AppText>
-                </View>
-              </View>
+                alarm={alarm}
+                next={nextByAlarm.get(alarm.id) ?? null}
+                shiftTypes={index}
+                now={now}
+                onEdit={() => push(`/alarm/${alarm.id}`)}
+                onToggle={(enabled) => setAlarmEnabled(alarm.id, enabled)}
+              />
             ))}
           </View>
         )}
+        <Button title="Добавить будильник" variant="primary" onPress={() => push('/alarm/new')} />
         {available && scheduled > 0 ? (
           <AppText variant="caption" tone="muted">
-            Поставлено в систему: {scheduled}. Дальше расписание продлевается само при
-            каждом открытии приложения.
+            Поставлено в систему: {scheduled}. Расписание продлевается при каждом открытии
+            приложения.
           </AppText>
         ) : null}
       </Card>

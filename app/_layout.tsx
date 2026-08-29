@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AlarmSyncProvider } from '@/features/alarm/AlarmSyncProvider.tsx';
 import { ThemeProvider, useTheme } from '@/theme';
 
 /**
@@ -12,7 +13,9 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <RootStack />
+        <AlarmSyncProvider>
+          <RootStack />
+        </AlarmSyncProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
@@ -34,6 +37,15 @@ function RootStack() {
         <Stack.Screen
           name="day/[date]"
           options={{ presentation: 'modal', headerShown: false }}
+        />
+        <Stack.Screen
+          name="alarm/[id]"
+          options={{
+            headerShown: true,
+            title: 'Будильник',
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+          }}
         />
         <Stack.Screen
           name="settings/schedule"

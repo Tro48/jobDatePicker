@@ -8,6 +8,15 @@ export interface NativeAlarm {
   title: string;
   subtitle: string;
   snoozeMinutes: number;
+  /** URI системной мелодии. null — сигнал будильника по умолчанию. */
+  soundUri: string | null;
+  vibrate: boolean;
+}
+
+/** Системная мелодия из списка Android. */
+export interface Ringtone {
+  uri: string;
+  title: string;
 }
 
 interface ShiftAlarmNativeModule {
@@ -19,6 +28,9 @@ interface ShiftAlarmNativeModule {
   openNotificationSettings(): void;
   schedule(alarms: NativeAlarm[]): Promise<number>;
   cancelAll(): Promise<void>;
+  listRingtones(): Promise<Ringtone[]>;
+  previewRingtone(uri: string | null): Promise<void>;
+  stopRingtonePreview(): Promise<void>;
 }
 
 /**
@@ -74,4 +86,19 @@ export async function scheduleAlarms(alarms: NativeAlarm[]): Promise<number> {
 
 export async function cancelAllAlarms(): Promise<void> {
   await native?.cancelAll();
+}
+
+/** Мелодии будильника, установленные в системе. Пустой список — модуля нет. */
+export async function listRingtones(): Promise<Ringtone[]> {
+  if (!native) return [];
+  return native.listRingtones();
+}
+
+/** Проиграть мелодию при выборе. null — сигнал по умолчанию. */
+export async function previewRingtone(uri: string | null): Promise<void> {
+  await native?.previewRingtone(uri);
+}
+
+export async function stopRingtonePreview(): Promise<void> {
+  await native?.stopRingtonePreview();
 }

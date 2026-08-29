@@ -10,7 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.MediaPlayer
-import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -58,7 +58,7 @@ class AlarmService : Service() {
 
     startForegroundWith(alarm)
     acquireWakeLock()
-    startRinging()
+    startRinging(alarm)
     // Звонить вечно нельзя: разряженный телефон хуже пропущенной смены.
     handler.postDelayed(autoStop, MAX_RING_MILLIS)
     return START_NOT_STICKY
@@ -147,28 +147,38 @@ class AlarmService : Service() {
     manager.createNotificationChannel(channel)
   }
 
-  private fun startRinging() {
-    val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-      ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-      ?: return
+  private fun startRinging(alarm: StoredAlarm) {
+    val chosen = alarm.soundUri?.let { Uri.parse(it) }
+    val fallback = RingtoneCatalog.defaultUri()
+
+    // Выбранная мелодия могла уехать вместе с картой памяти или удалённым
+    // приложением. Тогда звонит сигнал по умолчанию, а не тишина.
+    val started = chosen != null && play(chosen)
+    if (!started && fallback != null && fallback != chosen) play(fallback)
 
     // Падение плеера не должно уносить с собой вибрацию и экран будильника.
-    runCatching {
-      player = MediaPlayer().apply {
-        setDataSource(this@AlarmService, uri)
-        setAudioAttributes(
-          AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        )
-        isLooping = true
-        prepare()
-        start()
-      }
-    }
+    if (alarm.vibrate) runCatching { startVibration() }
+  }
 
-    runCatching { startVibration() }
+  /** true, если плеер действительно завёлся. */
+  private fun play(uri: Uri): Boolean = runCatching {
+    player = MediaPlayer().apply {
+      setDataSource(this@AlarmService, uri)
+      setAudioAttributes(
+        AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_ALARM)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
+      )
+      isLooping = true
+      prepare()
+      start()
+    }
+    true
+  }.getOrElse {
+    runCatching { player?.release() }
+    player = null
+    false
   }
 
   private fun startVibration() {

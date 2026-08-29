@@ -21,7 +21,7 @@ src/ui/         переиспользуемые компоненты, хук т
 src/theme/      палитра, типографика, отступы
 src/data/       хранилище (MMKV), репозитории, миграции схемы
 src/domain/     чистая логика: графики, часы, деньги. Не знает про React
-modules/alarm/  нативный модуль будильника (Kotlin, Expo Modules API)
+modules/shift-alarm/  нативный модуль будильника (Kotlin, Expo Modules API)
 ```
 
 Правило одно: `src/domain/` не импортирует ничего из React Native. За счёт
@@ -63,7 +63,7 @@ src/
     summary/
     alarm/
     settings/
-modules/alarm/
+modules/shift-alarm/
 scripts/
 docs/
 ```
@@ -77,7 +77,7 @@ docs/
 | `schema.version` | номер версии, для миграций |
 | `settings.schedule` | `ActiveSchedule`: id пресета, паттерн, дата первой смены |
 | `settings.payroll` | валюта, правила выплат |
-| `settings.alarms` | будильники по типам смен |
+| `settings.alarms` | список будильников: время, повтор, мелодия, отсрочка |
 | `settings.appearance` | тема: системная / светлая / тёмная |
 | `overrides` | правки по дням, объект `{ "2026-09-03": DayOverride }` |
 | `payments` | массив `PaymentRecord` |
