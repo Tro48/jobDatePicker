@@ -69,8 +69,14 @@ jobs:
           set -euo pipefail
 
           artifact=$(jq -er '.[0].artifacts.applicationArchiveUrl' build.json)
-          runtime=$(jq -er '.[0].runtimeVersion' build.json)
           version=$(jq -er '.[0].appVersion' build.json)
+          # Отпечаток лежит в runtime.version, а не в runtimeVersion: поля с
+          # таким именем в ответе EAS нет, и шаг падал без объяснений.
+          runtime=$(jq -er '.[0].runtime.version' build.json) || {
+            echo "В ответе EAS нет runtime.version. Что пришло:"
+            jq '.[0] | keys' build.json
+            exit 1
+          }
 
           if [ "$PROFILE" = "development" ]; then
             apk="smeny-dev-$version.apk"
