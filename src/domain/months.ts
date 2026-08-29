@@ -23,3 +23,11 @@ export function buildMonthWindow(center: Period, range = MONTH_RANGE): MonthRef[
     return { period, year: Number(period.slice(0, 4)), month: Number(period.slice(5, 7)) };
   });
 }
+
+/** Сколько лет доступно листанием в каждую сторону. */
+export const YEAR_RANGE = 10;
+
+/** Окно годов вокруг заданного — данные для листания годового экрана. */
+export function buildYearWindow(center: number, range = YEAR_RANGE): number[] {
+  return Array.from({ length: range * 2 + 1 }, (_, index) => center - range + index);
+}
