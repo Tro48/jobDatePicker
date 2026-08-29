@@ -136,31 +136,6 @@ export function formatMinutesAsHoursInput(minutes: number): string {
   return Number.isInteger(hours) ? String(hours) : String(hours).replace('.', ',');
 }
 
-/**
- * Знаковая разница часов для сравнения с прошлым месяцем: «+9 ч», «−3,5 ч».
- * Минус — типографский U+2212, а не дефис: в дефисе цифра и знак сливаются.
- */
-export function formatSignedTotalHours(minutes: number): string {
-  if (minutes === 0) return `0\u00A0ч`;
-  const sign = minutes > 0 ? '+' : '\u2212';
-  return `${sign}${formatTotalHours(Math.abs(minutes))}`;
-}
-
-/** Знаковая разница сумм: «+4 000 ₽», «−1 200 ₽». */
-export function formatSignedMoney(amount: number, currency: string): string {
-  const rounded = Math.round(amount);
-  if (rounded === 0) return formatMoney(0, currency);
-  const sign = rounded > 0 ? '+' : '\u2212';
-  return `${sign}${formatMoney(Math.abs(rounded), currency)}`;
-}
-
-/** Знаковая разница смен: «+2 смены», «−1 смена». */
-export function formatSignedShifts(count: number): string {
-  if (count === 0) return pluralize(0, SHIFT_FORMS);
-  const sign = count > 0 ? '+' : '\u2212';
-  return `${sign}${pluralize(Math.abs(count), SHIFT_FORMS)}`;
-}
-
 /** Дата в привычном виде для поля ввода: 2026-08-27 → «27.08.2026». */
 export function formatRussianDate(date: IsoDate): string {
   return `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)}`;

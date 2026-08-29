@@ -8,10 +8,7 @@ import {
   formatMoney,
   formatMonthTitle,
   formatMinutesAsHoursInput,
-  formatSignedMoney,
-  formatSignedShifts,
   formatRussianDate,
-  formatSignedTotalHours,
   formatTotalHours,
   parseAmount,
   parseHoursToMinutes,
@@ -100,24 +97,6 @@ test('минуты разворачиваются обратно в строку
   assert.equal(formatMinutesAsHoursInput(720), '12');
   assert.equal(formatMinutesAsHoursInput(450), '7,5');
   assert.equal(formatMinutesAsHoursInput(0), '0');
-});
-
-test('знаковые разницы используют типографский минус, а не дефис', () => {
-  assert.equal(formatSignedTotalHours(9 * 60), '+9\u00A0ч');
-  assert.equal(formatSignedTotalHours(-3 * 60 - 30), '\u22123,5\u00A0ч');
-  assert.equal(formatSignedTotalHours(0), '0\u00A0ч');
-
-  assert.equal(formatSignedMoney(4000, '₽'), '+4\u00A0000\u00A0₽');
-  assert.equal(formatSignedMoney(-1200, '₽'), '\u22121\u00A0200\u00A0₽');
-  assert.equal(formatSignedMoney(0, '₽'), '0\u00A0₽');
-
-  assert.equal(formatSignedShifts(2), '+2 смены');
-  assert.equal(formatSignedShifts(-1), '\u22121 смена');
-  assert.equal(formatSignedShifts(0), '0 смен');
-
-  // Дефис-минус в выводе недопустим.
-  assert.ok(!formatSignedTotalHours(-5 * 60).includes('-'));
-  assert.ok(!formatSignedMoney(-500, '₽').includes('-'));
 });
 
 test('дата в поле ввода в привычном порядке', () => {

@@ -9,9 +9,6 @@ import {
   formatDayShort,
   formatMonthTitle,
   formatMoney,
-  formatSignedMoney,
-  formatSignedShifts,
-  formatSignedTotalHours,
   formatTotalHours,
   plural,
   pluralize,
@@ -29,6 +26,10 @@ import { useTheme } from '@/theme';
 
 /** Сколько закрытых месяцев просматривать в поисках ставки для прогноза. */
 const HISTORY_DEPTH = 12;
+
+/** Стрелка «стало» и прочерк «данных нет» — одинаковые во всём экране. */
+const ARROW = '\u2192';
+const DASH = '\u2014';
 
 export function SummaryScreen() {
   const theme = useTheme();
@@ -97,6 +98,12 @@ export function SummaryScreen() {
   const year = Number(period.slice(0, 4));
   const month = Number(period.slice(5, 7));
   const currency = payroll.currency;
+  const currentTitle = formatMonthTitle(year, month);
+  const previousPeriod = shiftPeriod(period, -1);
+  const previousTitle = formatMonthTitle(
+    Number(previousPeriod.slice(0, 4)),
+    Number(previousPeriod.slice(5, 7)),
+  );
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }} contentContainerStyle={padding}>
@@ -112,7 +119,7 @@ export function SummaryScreen() {
           accessibilityLiveRegion="polite"
           style={{ flex: 1, textAlign: 'center' }}
         >
-          {formatMonthTitle(year, month)}
+          {currentTitle}
         </AppText>
         <IconButton
           name="chevron-forward"
@@ -223,20 +230,33 @@ export function SummaryScreen() {
         ) : null}
       </Card>
 
-      <Card title="К предыдущему месяцу">
-        <ComparisonRow label="Часы" value={formatSignedTotalHours(summary.workedMinutes - previous.workedMinutes)} />
-        <ComparisonRow label="Смены" value={formatSignedShifts(summary.workedDays - previous.workedDays)} />
-        {/* Деньги сравниваются, только когда за оба месяца что-то внесено.
-            Иначе открытый месяц с пустыми выплатами показывал минус во всю
-            зарплату прошлого — не разница, а отсутствие данных. */}
-        {summary.payments.length > 0 && previous.payments.length > 0 ? (
-          <ComparisonRow
-            label="Деньги"
-            value={formatSignedMoney(summary.totalPaid - previous.totalPaid, currency)}
-          />
-        ) : (
-          <ComparisonRow label="Деньги" value="выплаты внесены не за оба месяца" />
-        )}
+      <Card title={`Сравнение с ${previousTitle.toLowerCase()}`}>
+        <ComparisonRow
+          label="Часы"
+          previous={formatTotalHours(previous.workedMinutes)}
+          current={formatTotalHours(summary.workedMinutes)}
+          spoken={`Часы: в ${previousTitle.toLowerCase()} ${formatTotalHours(previous.workedMinutes)}, в ${currentTitle.toLowerCase()} ${formatTotalHours(summary.workedMinutes)}`}
+        />
+        <ComparisonRow
+          label="Смены"
+          previous={pluralize(previous.workedDays, SHIFT_FORMS)}
+          current={pluralize(summary.workedDays, SHIFT_FORMS)}
+          spoken={`Смены: в ${previousTitle.toLowerCase()} ${pluralize(previous.workedDays, SHIFT_FORMS)}, в ${currentTitle.toLowerCase()} ${pluralize(summary.workedDays, SHIFT_FORMS)}`}
+        />
+        {/* Показываются суммы обоих месяцев, а не разница: месяц с отпуском
+            давал минус во всю зарплату прошлого — число верное, толку ноль.
+            Прочерк вместо суммы честнее нуля: выплат просто ещё нет. */}
+        <ComparisonRow
+          label="Деньги"
+          previous={previous.payments.length > 0 ? formatMoney(previous.totalPaid, currency) : DASH}
+          current={summary.payments.length > 0 ? formatMoney(summary.totalPaid, currency) : DASH}
+          spoken={`Деньги: в ${previousTitle.toLowerCase()} ${previous.payments.length > 0 ? formatMoney(previous.totalPaid, currency) : 'выплат нет'}, в ${currentTitle.toLowerCase()} ${summary.payments.length > 0 ? formatMoney(summary.totalPaid, currency) : 'выплат нет'}`}
+        />
+        {summary.payments.length === 0 || previous.payments.length === 0 ? (
+          <AppText variant="caption" tone="muted">
+            Прочерк — за месяц ещё не внесено ни одной выплаты.
+          </AppText>
+        ) : null}
       </Card>
 
       {forecast ? (
@@ -261,19 +281,45 @@ export function SummaryScreen() {
   );
 }
 
-function ComparisonRow({ label, value }: { label: string; value: string }) {
+function ComparisonRow({
+  label,
+  previous,
+  current,
+  spoken,
+}: {
+  label: string;
+  previous: string;
+  current: string;
+  spoken: string;
+}) {
   return (
     <View
       accessibilityRole="text"
-      accessibilityLabel={`${label}: ${value}`}
-      style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+      accessibilityLabel={spoken}
+      style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        flexWrap: 'wrap',
+        gap: 8,
+      }}
     >
       <AppText variant="body" importantForAccessibility="no">
         {label}
       </AppText>
-      <AppText variant="body" tone="muted" importantForAccessibility="no">
-        {value}
-      </AppText>
+      {/* Значения в своей строке: на узком экране она переносится целиком,
+          а не наезжает на подпись слева. */}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexShrink: 1 }}>
+        <AppText variant="body" tone="muted" importantForAccessibility="no">
+          {previous}
+        </AppText>
+        <AppText variant="body" tone="muted" importantForAccessibility="no">
+          {ARROW}
+        </AppText>
+        <AppText variant="body" importantForAccessibility="no">
+          {current}
+        </AppText>
+      </View>
     </View>
   );
 }
@@ -301,7 +347,12 @@ function MoneyRow({
       accessibilityLabel={`${label}: ${value}`}
       style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}
     >
-      <AppText variant={variant} tone={muted ? 'muted' : undefined} importantForAccessibility="no">
+      <AppText
+        variant={variant}
+        tone={muted ? 'muted' : undefined}
+        importantForAccessibility="no"
+        style={{ flexShrink: 1 }}
+      >
         {label}
       </AppText>
       <AppText variant={variant} tone={muted ? 'muted' : undefined} importantForAccessibility="no">
