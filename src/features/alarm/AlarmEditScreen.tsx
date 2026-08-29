@@ -2,21 +2,25 @@ import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { formatMinutesAsTime, parseTimeToMinutes } from '@/domain/date.ts';
-import type { Weekday } from '@/domain/date.ts';
+import type { IsoDate, Weekday } from '@/domain/date.ts';
+import { resolveDay } from '@/domain/engine.ts';
 import { formatDayLong } from '@/domain/format.ts';
 import {
   DEFAULT_SNOOZE_MINUTES,
   MAX_SNOOZE_MINUTES,
   MIN_SNOOZE_MINUTES,
   hasAnyTrigger,
+  isPastOnce,
   newAlarmDraft,
   nextDateForTime,
 } from '@/domain/alarm.ts';
 import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
+import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, ChoiceGroup, TextField, TimeDialField, Toggle } from '@/ui';
 import { useTheme } from '@/theme';
+import { DatePickerField } from './DatePickerField.tsx';
 import { RingtonePicker } from './RingtonePicker.tsx';
 import { WeekdayPicker } from './WeekdayPicker.tsx';
 
@@ -54,8 +58,10 @@ function defaultTimeFor(shiftType: ShiftType): string {
 export function AlarmEditScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string }>();
+  // date приходит из карточки дня: «добавить будильник на этот день».
+  const params = useLocalSearchParams<{ id: string; date?: string }>();
   const isNew = params.id === 'new';
+  const context = useScheduleContext();
 
   const existing = useAppStore((state) => state.alarms.find((alarm) => alarm.id === params.id));
   const shiftTypes = useAppStore((state) => state.shiftTypes);
@@ -65,9 +71,24 @@ export function AlarmEditScreen() {
   const removeAlarm = useAppStore((state) => state.removeAlarm);
 
   const now = useMemo(() => new Date(), []);
-  const [draft, setDraft] = useState<AlarmDraft>(() =>
-    existing ? toDraft(existing) : newAlarmDraft(now),
-  );
+  const [draft, setDraft] = useState<AlarmDraft>(() => {
+    if (existing) return toDraft(existing);
+
+    const fresh = newAlarmDraft(now);
+    const date = params.date as IsoDate | undefined;
+    if (!date) return fresh;
+
+    // Пришли из календаря: разовый будильник на этот день, а если день
+    // рабочий — за час до смены и с её названием.
+    const shiftType = context ? resolveDay(context, date).shiftType : null;
+    const work = shiftType?.kind === 'work' ? shiftType : null;
+    return {
+      ...fresh,
+      time: work ? defaultTimeFor(work) : fresh.time,
+      label: work ? work.name : fresh.label,
+      repeat: { kind: 'once', date },
+    };
+  });
 
   const workTypes = useMemo(
     () => shiftTypes.filter((type) => type.kind === 'work' && type.time),
@@ -89,17 +110,7 @@ export function AlarmEditScreen() {
     );
   }
 
-  const setTime = (time: string): void =>
-    setDraft((current) => ({
-      ...current,
-      time,
-      // У разового будильника дата привязана ко времени: перенёс на утро —
-      // значит, на ближайшее утро, а не на прошедшее сегодняшнее.
-      repeat:
-        current.repeat.kind === 'once'
-          ? { kind: 'once', date: nextDateForTime(time, now) }
-          : current.repeat,
-    }));
+  const setTime = (time: string): void => setDraft((current) => ({ ...current, time }));
 
   const setRepeatKind = (kind: RepeatKind): void =>
     setDraft((current) => {
@@ -145,17 +156,7 @@ export function AlarmEditScreen() {
             Время задаётся ниже, отдельно для каждой смены.
           </AppText>
         ) : (
-          <TimeDialField
-            label="Время"
-            value={draft.time}
-            onChange={setTime}
-            defaultExpanded
-            hint={
-              draft.repeat.kind === 'once'
-                ? `Зазвонит: ${formatDayLong(draft.repeat.date).toLowerCase()}`
-                : undefined
-            }
-          />
+          <TimeDialField label="Время" value={draft.time} onChange={setTime} defaultExpanded />
         )}
         <TextField
           label="Название"
@@ -179,6 +180,21 @@ export function AlarmEditScreen() {
           value={draft.repeat.kind}
           onChange={setRepeatKind}
         />
+
+        {draft.repeat.kind === 'once' ? (
+          <DatePickerField
+            label="Дата"
+            value={draft.repeat.date}
+            onChange={(date) => setDraft((current) => ({ ...current, repeat: { kind: 'once', date } }))}
+            hint={isPastOnce(draft, now) ? undefined : `Зазвонит: ${formatDayLong(draft.repeat.date).toLowerCase()}`}
+          />
+        ) : null}
+
+        {isPastOnce(draft, now) ? (
+          <AppText variant="body" tone="danger">
+            Этот момент уже прошёл — будильник не зазвонит. Выбери другое время или день.
+          </AppText>
+        ) : null}
 
         {draft.repeat.kind === 'weekly' ? (
           <WeekdayPicker

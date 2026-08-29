@@ -6,6 +6,7 @@ import {
   describeTime,
   expiredOnceAlarmIds,
   hasAnyTrigger,
+  isPastOnce,
   newAlarmDraft,
   nextDateForTime,
   nextOccurrences,
@@ -153,6 +154,17 @@ test('отзвонивший разовый будильник помечает�
   const off: Alarm = { ...base, id: 'off', enabled: false, repeat: { kind: 'once', date: '2026-09-01' } };
 
   assert.deepEqual(expiredOnceAlarmIds([fired, future, off], localNoon('2026-09-01')), ['fired']);
+});
+
+test('прошедший момент разового будильника виден форме сразу', () => {
+  const now = localNoon('2026-09-01');
+
+  assert.equal(isPastOnce({ ...base, repeat: { kind: 'once', date: '2026-08-31' } }, now), true);
+  // Сегодня, но время уже прошло: 07:00 против полудня.
+  assert.equal(isPastOnce({ ...base, repeat: { kind: 'once', date: '2026-09-01' } }, now), true);
+  assert.equal(isPastOnce({ ...base, repeat: { kind: 'once', date: '2026-09-02' } }, now), false);
+  // У повторяющегося прошедшего момента не бывает.
+  assert.equal(isPastOnce({ ...base, repeat: { kind: 'weekly', days: [1] } }, now), false);
 });
 
 test('новый будильник встаёт на ближайшие семь утра', () => {

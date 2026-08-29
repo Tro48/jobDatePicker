@@ -188,21 +188,24 @@ export function planAlarms(
 }
 
 /**
+ * Момент разового будильника уже прошёл.
+ *
+ * Нужно в двух местах: форма правки предупреждает об этом сразу, а список
+ * будильников гасит такие записи при ближайшем пересчёте.
+ */
+export function isPastOnce(alarm: Pick<Alarm, 'time' | 'repeat'>, now: Date): boolean {
+  if (alarm.repeat.kind !== 'once') return false;
+  return localDateTimeToMillis(alarm.repeat.date, alarm.time) <= now.getTime();
+}
+
+/**
  * Разовые будильники, чей момент уже прошёл.
  *
  * Такой будильник отзвонил и должен погаснуть сам, как в системных часах.
  * Отследить это может только JS, поэтому проверка идёт при каждом открытии.
  */
 export function expiredOnceAlarmIds(alarms: Alarm[], now: Date): string[] {
-  const nowMillis = now.getTime();
-  return alarms
-    .filter(
-      (alarm) =>
-        alarm.enabled &&
-        alarm.repeat.kind === 'once' &&
-        localDateTimeToMillis(alarm.repeat.date, alarm.time) <= nowMillis,
-    )
-    .map((alarm) => alarm.id);
+  return alarms.filter((alarm) => alarm.enabled && isPastOnce(alarm, now)).map((alarm) => alarm.id);
 }
 
 /** Может ли будильник вообще зазвонить: без дней и без смен — не может. */

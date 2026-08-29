@@ -21,6 +21,7 @@ import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, ChoiceGroup, TextField } from '@/ui';
 import { useTheme } from '@/theme';
+import { DayAlarmSection } from './DayAlarmSection.tsx';
 import { DayPaymentSection } from './DayPaymentSection.tsx';
 import { DayRangeSection } from './DayRangeSection.tsx';
 
@@ -167,6 +168,8 @@ export function DayScreen() {
           />
         </Card>
       ) : null}
+
+      <DayAlarmSection date={date} />
 
       <Card title="Заметка">
         <TextField
