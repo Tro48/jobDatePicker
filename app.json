@@ -7,6 +7,9 @@
     "icon": "./assets/icon.png",
     "scheme": "jobdatepicker",
     "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
     "android": {
       "package": "com.andrey.jobdatepicker",
       "predictiveBackGestureEnabled": false,
@@ -43,6 +46,9 @@
         "projectId": "b31a042f-9401-4059-a663-d47f73586437"
       }
     },
-    "owner": "trofimdev"
+    "owner": "trofimdev",
+    "updates": {
+      "url": "https://u.expo.dev/b31a042f-9401-4059-a663-d47f73586437"
+    }
   }
 }

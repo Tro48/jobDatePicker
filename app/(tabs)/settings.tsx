@@ -4,6 +4,7 @@ import { formatDayShort } from '@/domain/format.ts';
 import { AppText, Button, Card, ChoiceGroup, Screen } from '@/ui';
 import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
+import { UpdateCard } from '@/features/settings/UpdateCard.tsx';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { useTheme } from '@/theme';
 
@@ -59,6 +60,8 @@ export default function SettingsScreen() {
         </AppText>
         <Button title="Настроить выплаты" onPress={() => push('/settings/payroll')} />
       </Card>
+
+      <UpdateCard />
 
       <Card title="Данные">
         <View style={{ gap: theme.spacing.xs }}>

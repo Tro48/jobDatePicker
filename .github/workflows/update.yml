@@ -1,0 +1,50 @@
+# Обновление по воздуху при попадании изменений в main.
+#
+# По воздуху приезжает только JS и ассеты: нативный код Android разрешает
+# менять исключительно установкой подписанного APK. Поэтому обычные правки
+# уходят сюда за секунды и не тратят квоту сборок, а APK собирается отдельным
+# workflow и только когда изменилась нативная часть.
+name: Обновление по воздуху
+
+on:
+  push:
+    branches: [main]
+  # Ручной запуск: перевыложить тот же код, не делая пустой коммит.
+  workflow_dispatch:
+
+concurrency:
+  group: update-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  update:
+    name: EAS Update
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Публикация обновления
+        # Сообщение через переменную окружения, а не подстановкой в команду:
+        # в тексте коммита бывают кавычки и переводы строк.
+        env:
+          MESSAGE: ${{ github.event.head_commit.message || github.sha }}
+        # Ветка обновлений называется так же, как канал в eas.json: сборка с
+        # каналом production получает обновления ветки production.
+        run: eas update --branch production --message "$MESSAGE" --non-interactive
