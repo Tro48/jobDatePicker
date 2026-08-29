@@ -15,7 +15,7 @@ import {
 import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, TextField, TimeField, Toggle } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, TextField, TimeDialField, Toggle } from '@/ui';
 import { useTheme } from '@/theme';
 import { RingtonePicker } from './RingtonePicker.tsx';
 import { WeekdayPicker } from './WeekdayPicker.tsx';
@@ -145,10 +145,11 @@ export function AlarmEditScreen() {
             Время задаётся ниже, отдельно для каждой смены.
           </AppText>
         ) : (
-          <TimeField
+          <TimeDialField
             label="Время"
             value={draft.time}
             onChange={setTime}
+            defaultExpanded
             hint={
               draft.repeat.kind === 'once'
                 ? `Зазвонит: ${formatDayLong(draft.repeat.date).toLowerCase()}`
@@ -214,7 +215,7 @@ export function AlarmEditScreen() {
                     onValueChange={(on) => setScheduleTime(type.id, on ? defaultTimeFor(type) : null)}
                   />
                   {time !== undefined ? (
-                    <TimeField
+                    <TimeDialField
                       label={`Подъём, ${type.name.toLowerCase()}`}
                       value={time}
                       onChange={(next) => setScheduleTime(type.id, next)}

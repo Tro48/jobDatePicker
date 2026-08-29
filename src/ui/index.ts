@@ -7,6 +7,7 @@ export { Placeholder } from './Placeholder.tsx';
 export { Screen } from './Screen.tsx';
 export { Stat } from './Stat.tsx';
 export { TextField } from './TextField.tsx';
-export { TimeField } from './TimeField.tsx';
+export { TimeDial } from './TimeDial.tsx';
+export { TimeDialField } from './TimeDialField.tsx';
 export { Toggle } from './Toggle.tsx';
 export { useReduceMotion } from './useReduceMotion.ts';
