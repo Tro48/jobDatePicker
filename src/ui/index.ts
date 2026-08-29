@@ -15,3 +15,4 @@ export { TimeSelect } from './TimeSelect.tsx';
 export { Toggle } from './Toggle.tsx';
 export { useKeyboardInset } from './useKeyboardInset.ts';
 export { useReduceMotion } from './useReduceMotion.ts';
+export { useNow } from './useNow.ts';
