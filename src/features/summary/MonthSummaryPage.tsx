@@ -61,26 +61,32 @@ export function MonthSummaryPage({
     [context, period, payments],
   );
 
-  const previous = useMemo(
-    () => buildMonthSummary(context, shiftPeriod(period, -1), payments),
-    [context, period, payments],
-  );
+  // Прогноз показывается только пока за месяц не внесено ни одной выплаты: как
+  // только появился факт, догадка становится лишней.
+  const wantsForecast = payroll.forecastFromLastClosedMonth && summary.payments.length === 0;
 
+  /**
+   * Закрытые месяцы, от ближайшего к дальнему.
+   *
+   * Первый нужен всегда — с ним сравнивается текущий. Вся глубина нужна одному
+   * прогнозу, поэтому без него считается ровно один месяц: каждая сводка
+   * разворачивает месяц целиком, а страниц в пейджере три.
+   */
   const history = useMemo<MonthSummary[]>(
     () =>
-      Array.from({ length: HISTORY_DEPTH }, (_, index) =>
+      Array.from({ length: wantsForecast ? HISTORY_DEPTH : 1 }, (_, index) =>
         buildMonthSummary(context, shiftPeriod(period, -(index + 1)), payments),
       ),
-    [context, period, payments],
+    [context, period, payments, wantsForecast],
   );
 
-  const forecast = useMemo(() => {
-    if (!payroll.forecastFromLastClosedMonth) return null;
-    // Прогноз показывается только пока за месяц не внесено ни одной выплаты:
-    // как только появился факт, догадка становится лишней.
-    if (summary.payments.length > 0) return null;
-    return forecastMonth(summary, history, today, context);
-  }, [context, summary, history, today, payroll.forecastFromLastClosedMonth]);
+  // Предыдущий месяц — первый в истории, второй раз его считать незачем.
+  const previous = history[0];
+
+  const forecast = useMemo(
+    () => (wantsForecast ? forecastMonth(summary, history, today, context) : null),
+    [context, summary, history, today, wantsForecast],
+  );
 
   const upcoming = useMemo(
     () => upcomingPayments(payroll.rules, today, 1)[0],
