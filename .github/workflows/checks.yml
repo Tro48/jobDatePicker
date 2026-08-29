@@ -11,10 +11,11 @@ on:
   push:
     branches: [dev]
 
-# Свежий пуш отменяет предыдущий прогон на той же ветке.
-concurrency:
-  group: checks-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# Своей группы concurrency здесь нет намеренно. Внутри workflow_call
+# github.workflow — это имя вызывающего workflow, поэтому две сборки разных
+# профилей попадали в одну группу и гасили друг друга. Ограничения задаются в
+# вызывающих workflow, а лишние параллельные прогоны на публичном репозитории
+# бесплатны.
 
 jobs:
   checks:
