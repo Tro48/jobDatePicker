@@ -15,6 +15,7 @@
     },
     "android": {
       "package": "com.andrey.jobdatepicker",
+      "allowBackup": false,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "backgroundColor": "#0F1115",

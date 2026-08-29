@@ -61,9 +61,13 @@ async function loadManifest(): Promise<ReleaseManifest | null> {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) return null;
     const data = (await response.json()) as Partial<ReleaseManifest>;
-    return typeof data.runtimeVersion === 'string' && typeof data.url === 'string'
-      ? { runtimeVersion: data.runtimeVersion, url: data.url, version: data.version }
-      : null;
+    if (typeof data.runtimeVersion !== 'string' || typeof data.url !== 'string') return null;
+    // Схема проверяется, а не только тип: ссылку приложение отдаёт наружу через
+    // Linking.openURL, а тот на Android открывает и intent://, и схемы чужих
+    // приложений. Список выпусков приходит из сети — верить ему на слово нельзя.
+    if (!data.url.startsWith('https://')) return null;
+
+    return { runtimeVersion: data.runtimeVersion, url: data.url, version: data.version };
   } catch {
     // Нет сети или список выпусков не настроен — это не ошибка приложения.
     return null;
