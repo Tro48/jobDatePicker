@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import type { KeyboardTypeOptions } from 'react-native';
 import { AppText } from './AppText.tsx';
+import { useSheetReveal } from './Sheet.tsx';
 import { useTheme } from '@/theme';
 
 export interface TextFieldProps {
@@ -25,6 +26,10 @@ export function TextField({
 }: TextFieldProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
+  // Клавиатура выезжает поверх содержимого, и поле надо вытащить из-под неё.
+  // Знает об этом шторка, но какое поле правят — известно только здесь.
+  const input = useRef<TextInput>(null);
+  const reveal = useSheetReveal();
 
   return (
     <View style={{ gap: theme.spacing.xs }}>
@@ -34,12 +39,19 @@ export function TextField({
         {label}
       </AppText>
       <TextInput
+        ref={input}
         accessibilityLabel={label}
         accessibilityHint={hint}
         value={value}
         onChangeText={onChangeText}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onFocus={() => {
+          setFocused(true);
+          reveal(input.current);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          reveal(null);
+        }}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textMuted}
         keyboardType={keyboardType}

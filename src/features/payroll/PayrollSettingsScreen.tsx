@@ -45,7 +45,6 @@ export function PayrollSettingsScreen() {
         {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
-        keyboardShouldPersistTaps="handled"
       >
         {payroll.rules.map((rule) => (
           <Card key={rule.kind} title={KIND_TITLES[rule.kind]}>

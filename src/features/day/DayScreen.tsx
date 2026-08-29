@@ -123,7 +123,6 @@ export function DayScreen() {
         {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={padding}
-        keyboardShouldPersistTaps="handled"
       >
         <Card title="Сейчас">
           <AppText variant="heading">{resolved.shiftType.name}</AppText>
