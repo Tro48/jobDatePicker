@@ -1,9 +1,10 @@
+import { monthGridRows } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import type { MonthRef } from '@/domain/months.ts';
 import { HorizontalPager } from '@/ui';
 import { MonthGrid } from './MonthGrid.tsx';
-import { gridMetrics } from './gridMetrics.ts';
+import { gridHeight } from './gridMetrics.ts';
 
 export interface MonthPagerProps {
   months: MonthRef[];
@@ -16,7 +17,12 @@ export interface MonthPagerProps {
   width: number;
 }
 
-/** Листание месяцев календаря: сетка на странице, высота фиксирована. */
+/**
+ * Листание месяцев календаря: сетка на странице.
+ *
+ * Высота — по месяцу, который сейчас открыт: у месяца может быть четыре
+ * недели, пять или шесть, и держать под февралём две пустые строки незачем.
+ */
 export function MonthPager({
   months,
   index,
@@ -27,6 +33,10 @@ export function MonthPager({
   onSelectDay,
   width,
 }: MonthPagerProps) {
+  // Индекс двигают и свайп, и стрелки в шапке — за границы он не уходит,
+  // но высота страницы не то место, где стоит падать.
+  const visible = months[index] ?? months[0];
+
   return (
     <HorizontalPager
       items={months}
@@ -34,7 +44,7 @@ export function MonthPager({
       index={index}
       onIndexChange={onIndexChange}
       width={width}
-      height={gridMetrics(width).height}
+      height={gridHeight(width, monthGridRows(visible.year, visible.month))}
       renderPage={(item) => (
         <MonthGrid
           year={item.year}

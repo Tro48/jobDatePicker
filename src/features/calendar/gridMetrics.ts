@@ -1,14 +1,10 @@
 /** Промежуток между клетками. Два пункта — компромисс ради зоны нажатия. */
 export const GRID_GAP = 2;
 
-/** Строк в сетке всегда шесть: иначе высота прыгает при листании месяцев. */
-export const GRID_ROWS = 6;
-
 export interface GridMetrics {
   cellSize: number;
   /** Реальная ширина сетки: она чуть меньше экрана из-за округления клетки. */
   gridWidth: number;
-  height: number;
 }
 
 /**
@@ -20,10 +16,21 @@ export interface GridMetrics {
  * воскресенья оставались пустыми. Остаток ширины уходит в поля по краям.
  *
  * Лежит отдельно от компонента намеренно: чистую арифметику можно прогнать
- * тестами в обычном Node, а файл с разметкой — нельзя.
+ * тестами в обычном Node, а файл с разметкой — нельзя. По той же причине здесь
+ * нет ни одного импорта: алиасы `@/` в обычном Node не разворачиваются.
  */
 export function gridMetrics(width: number): GridMetrics {
   const cellSize = Math.floor((width - GRID_GAP * 6) / 7);
   const gridWidth = cellSize * 7 + GRID_GAP * 6;
-  return { cellSize, gridWidth, height: GRID_ROWS * (cellSize + GRID_GAP) };
+  return { cellSize, gridWidth };
+}
+
+/**
+ * Высота сетки под заданное число недель.
+ *
+ * Отдельно от ширины потому, что недель у месяца бывает четыре, пять или
+ * шесть, а ширина клетки от месяца не зависит вовсе.
+ */
+export function gridHeight(width: number, rows: number): number {
+  return rows * (gridMetrics(width).cellSize + GRID_GAP);
 }

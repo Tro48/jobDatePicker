@@ -134,21 +134,33 @@ export interface GridDay {
   inMonth: boolean;
 }
 
-/** Строк в сетке всегда шесть: иначе высота прыгает при листании месяцев. */
-export const GRID_ROWS = 6;
+/**
+ * Сколько недель занимает месяц: 4, 5 или 6.
+ *
+ * Четыре — только у февраля, начавшегося с понедельника в невисокосный год.
+ */
+export function monthGridRows(year: number, month: number): number {
+  const first: IsoDate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
+  return Math.ceil((weekday(first) - 1 + daysInMonth(year, month)) / 7);
+}
 
 /**
- * Полная сетка месяца: 42 дня подряд от понедельника той недели, в которую
- * попало первое число. Хвосты соседних месяцев показываются, а не заменяются
+ * Сетка месяца: полные недели от понедельника той недели, в которую попало
+ * первое число, и до воскресенья той, в которую попало последнее.
+ *
+ * Хвосты соседних месяцев внутри этих недель показываются, а не заменяются
  * пустотой, — так устроен привычный календарь, и по нему видно, как смены
- * переходят через границу месяца.
+ * переходят через границу месяца. А вот целиком чужая неделя не показывается:
+ * строка «1–7 марта» под февралём, который сам закончился в воскресенье, — это
+ * уже не хвост, а следующий месяц целиком, и в феврале ему делать нечего.
+ * Расплата — высота сетки зависит от месяца.
  */
 export function monthGridDates(year: number, month: number): GridDay[] {
   const first: IsoDate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
   const start = startOfWeek(first);
   const prefix = first.slice(0, 7);
 
-  return Array.from({ length: GRID_ROWS * 7 }, (_, index) => {
+  return Array.from({ length: monthGridRows(year, month) * 7 }, (_, index) => {
     const date = addDays(start, index);
     return { date, inMonth: date.slice(0, 7) === prefix };
   });
