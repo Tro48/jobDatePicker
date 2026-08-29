@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   clampSnoozeMinutes,
   describeRepeat,
-  describeTime,
   expiredOnceAlarmIds,
   hasAnyTrigger,
   isPastOnce,
@@ -90,26 +89,27 @@ test('сегодняшний день недели берётся, если вр
   assert.equal(found[0].date, '2026-09-01');
 });
 
-test('по графику: у дневной и ночной смены своё время подъёма', () => {
+test('по сменам: звонит в дни выбранных смен, время у будильника одно', () => {
   // 2/2 день-ночь от 1 сентября: 1–2 дневные, 5–6 ночные, дальше цикл.
   const context = contextFor('2-2-mixed', '2026-09-01');
   const alarm: Alarm = {
     ...base,
-    repeat: { kind: 'schedule', times: { day12: '06:30', night12: '18:30' } },
+    time: '06:30',
+    repeat: { kind: 'schedule', shiftTypeIds: ['day12', 'night12'] },
   };
 
   const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 4);
 
   assert.deepEqual(
     found.map((item) => `${item.date} ${item.time}`),
-    ['2026-09-02 06:30', '2026-09-05 18:30', '2026-09-06 18:30', '2026-09-09 06:30'],
+    ['2026-09-02 06:30', '2026-09-05 06:30', '2026-09-06 06:30', '2026-09-09 06:30'],
   );
   assert.equal(found[0].subtitle, 'Дневная смена, начало в 08:00');
 });
 
-test('по графику: смена без отметки будильника пропускается', () => {
+test('по сменам: неотмеченная смена пропускается', () => {
   const context = contextFor('2-2-mixed', '2026-09-01');
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: { night12: '18:30' } } };
+  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', shiftTypeIds: ['night12'] } };
 
   const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 2);
 
@@ -119,8 +119,8 @@ test('по графику: смена без отметки будильника
   );
 });
 
-test('по графику без выбранного графика звонить нечему', () => {
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: { day12: '06:30' } } };
+test('по сменам без выбранного графика звонить нечему', () => {
+  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', shiftTypeIds: ['day12'] } };
 
   assert.deepEqual(nextOccurrences(alarm, null, localNoon('2026-09-01')), []);
 });
@@ -129,7 +129,7 @@ test('ручная правка дня меняет расписание буд�
   const context = contextFor('2-2-mixed', '2026-09-01');
   // 3 сентября по графику выходной; ставим подработку — будильник появляется.
   context.overrides.set('2026-09-03', { date: '2026-09-03', shiftTypeId: 'night12' });
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: { night12: '18:30' } } };
+  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', shiftTypeIds: ['night12'] } };
 
   const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 1);
 
@@ -185,16 +185,8 @@ test('повтор описывается человеческим тексто�
   assert.equal(describe({ ...base, repeat: { kind: 'weekly', days: [6, 7] } }), 'По выходным');
   assert.equal(describe({ ...base, repeat: { kind: 'weekly', days: [5, 1] } }), 'Пн, Пт');
   assert.equal(
-    describe({ ...base, repeat: { kind: 'schedule', times: { day12: '06:30', night12: '18:30' } } }),
-    'По графику: дневная смена, ночная смена',
-  );
-});
-
-test('в списке у графика показываются все его времена', () => {
-  assert.equal(describeTime(base), '07:00');
-  assert.equal(
-    describeTime({ ...base, repeat: { kind: 'schedule', times: { night12: '18:30', day12: '06:30' } } }),
-    '06:30 · 18:30',
+    describe({ ...base, repeat: { kind: 'schedule', shiftTypeIds: ['day12', 'night12'] } }),
+    'По сменам: дневная смена, ночная смена',
   );
 });
 

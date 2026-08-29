@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { mmkvStateStorage } from './storage.ts';
+import { migrateAlarm } from './migrations.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { DEFAULT_SHIFT_TYPES } from '@/domain/shifts.ts';
 import { DEFAULT_PAYMENT_RULES } from '@/domain/payday.ts';
@@ -21,7 +22,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -218,6 +219,6 @@ export function migrateState(persisted: Partial<AppState>, _version: number): Ap
   // До версии 4 будильник был не списком, а одним набором настроек по типам
   // смен. Переносить оттуда нечего: звонить он не успел ни разу, ни одна
   // сборка с нативной частью не выходила.
-  const alarms = Array.isArray(persisted.alarms) ? persisted.alarms : [];
+  const alarms = Array.isArray(persisted.alarms) ? persisted.alarms.map(migrateAlarm) : [];
   return { ...INITIAL_STATE, ...persisted, alarms, shiftTypes: DEFAULT_SHIFT_TYPES };
 }

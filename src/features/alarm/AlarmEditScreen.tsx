@@ -30,7 +30,7 @@ type RepeatKind = AlarmRepeat['kind'];
 const REPEAT_CHOICES: Array<{ value: RepeatKind; label: string; hint: string }> = [
   { value: 'once', label: 'Один раз', hint: 'Зазвонит один раз и выключится сам' },
   { value: 'weekly', label: 'По дням недели', hint: 'Обычный повтор: понедельник, среда, пятница' },
-  { value: 'schedule', label: 'По графику', hint: 'Только в рабочие дни, у каждой смены своё время' },
+  { value: 'schedule', label: 'По сменам', hint: 'Только в дни выбранных смен' },
 ];
 
 /** Час до начала смены — то, что обычно и ставят. Дальше правится руками. */
@@ -122,16 +122,21 @@ export function AlarmEditScreen() {
         return { ...current, repeat: { kind: 'once', date: nextDateForTime(current.time, now) } };
       }
       if (kind === 'weekly') return { ...current, repeat: { kind: 'weekly', days: EVERY_DAY } };
-      return { ...current, repeat: { kind: 'schedule', times: {} } };
+      return { ...current, repeat: { kind: 'schedule', shiftTypeIds: [] } };
     });
 
-  const setScheduleTime = (shiftTypeId: string, time: string | null): void =>
+  const toggleShiftType = (shiftTypeId: string, selected: boolean): void =>
     setDraft((current) => {
       if (current.repeat.kind !== 'schedule') return current;
-      const times = { ...current.repeat.times };
-      if (time === null) delete times[shiftTypeId];
-      else times[shiftTypeId] = time;
-      return { ...current, repeat: { kind: 'schedule', times } };
+      const ids = current.repeat.shiftTypeIds.filter((id) => id !== shiftTypeId);
+      return {
+        ...current,
+        // Порядок как в справочнике смен: так список не прыгает при включении.
+        repeat: {
+          kind: 'schedule',
+          shiftTypeIds: selected ? [...ids, shiftTypeId] : ids,
+        },
+      };
     });
 
   const save = (): void => {
@@ -154,13 +159,7 @@ export function AlarmEditScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Card title="Когда звонить">
-        {draft.repeat.kind === 'schedule' ? (
-          <AppText variant="body" tone="muted">
-            Время задаётся ниже, отдельно для каждой смены.
-          </AppText>
-        ) : (
-          <TimeDialField label="Время" value={draft.time} onChange={setTime} defaultExpanded />
-        )}
+        <TimeDialField label="Время" value={draft.time} onChange={setTime} defaultExpanded />
         <TextField
           label="Название"
           value={draft.label}
@@ -215,38 +214,36 @@ export function AlarmEditScreen() {
 
         {draft.repeat.kind === 'schedule' && !schedule ? (
           <AppText variant="body" tone="muted">
-            График не выбран, поэтому рабочих дней приложение пока не знает. Выбери график в
-            настройках — смены появятся здесь сами.
+            График не выбран, поэтому смен приложение пока не знает. Выбери график в
+            настройках — они появятся здесь сами.
           </AppText>
         ) : null}
 
         {draft.repeat.kind === 'schedule' && schedule ? (
-          <View style={{ gap: theme.spacing.lg }}>
+          <View style={{ gap: theme.spacing.md }}>
             <AppText variant="caption" tone="muted">
-              Отметь смены, перед которыми надо вставать. Ночные и дневные чередуются — у
-              каждой своё время подъёма.
+              Отметь смены, перед которыми надо вставать. Будильник зазвонит в {draft.time}
+              только в эти дни.
             </AppText>
             {workTypes.map((type) => {
-              const times = draft.repeat.kind === 'schedule' ? draft.repeat.times : {};
-              const time = times[type.id];
+              const ids = draft.repeat.kind === 'schedule' ? draft.repeat.shiftTypeIds : [];
+              const selected = ids.includes(type.id);
               const start = type.time?.start ?? '';
-              const late = time !== undefined && start !== '' && time >= start;
+              // Звонок позже начала смены — не ошибка, но почти всегда опечатка.
+              const late = selected && start !== '' && draft.time >= start;
 
               return (
-                <View key={type.id} style={{ gap: theme.spacing.sm }}>
+                <View key={type.id} style={{ gap: theme.spacing.xs }}>
                   <Toggle
                     label={type.name}
                     hint={start ? `Начало смены в ${start}` : undefined}
-                    value={time !== undefined}
-                    onValueChange={(on) => setScheduleTime(type.id, on ? defaultTimeFor(type) : null)}
+                    value={selected}
+                    onValueChange={(on) => toggleShiftType(type.id, on)}
                   />
-                  {time !== undefined ? (
-                    <TimeDialField
-                      label={`Подъём, ${type.name.toLowerCase()}`}
-                      value={time}
-                      onChange={(next) => setScheduleTime(type.id, next)}
-                      hint={late ? 'Позже начала смены — звонок придётся уже на смену' : undefined}
-                    />
+                  {late ? (
+                    <AppText variant="caption" tone="muted">
+                      {draft.time} позже начала смены — звонок придётся уже на смену
+                    </AppText>
                   ) : null}
                 </View>
               );

@@ -18,17 +18,17 @@ export type AlarmRepeat =
   /** По дням недели. Пустой список — не звонит никогда, экран об этом предупреждает. */
   | { kind: 'weekly'; days: Weekday[] }
   /**
-   * По графику: звонит только в рабочие дни. Ключ — id типа смены, значение —
-   * время подъёма именно для неё. Тип смены без записи будильника не даёт,
-   * поэтому «дневная в 06:30, ночная в 18:30» — это одна запись, а не две.
+   * По сменам: звонит в дни выбранных типов смен и только в них. Время у
+   * будильника одно, как и в остальных режимах: «дневная в 06:30, ночная в
+   * 18:30» — это два будильника, каждый со своими сменами.
    */
-  | { kind: 'schedule'; times: Record<string, string> };
+  | { kind: 'schedule'; shiftTypeIds: string[] };
 
 export interface Alarm {
   id: string;
   /** Название вроде «На смену». Пустое допустимо — тогда в списке просто время. */
   label: string;
-  /** «ЧЧ:ММ». В режиме «по графику» не используется: там своё время у каждой смены. */
+  /** «ЧЧ:ММ». Одно на будильник во всех режимах повтора. */
   time: string;
   /** Выключенный будильник остаётся в списке со всеми настройками — это пауза. */
   enabled: boolean;
@@ -96,13 +96,6 @@ export function nextDateForTime(time: string, now: Date): IsoDate {
   return localDateTimeToMillis(today, time) > now.getTime() ? today : addDays(today, 1);
 }
 
-/** Время срабатывания в конкретный день по типу смены или по самому будильнику. */
-function timeOn(alarm: Alarm, shiftTypeId: string | null): string | null {
-  if (alarm.repeat.kind !== 'schedule') return alarm.time;
-  if (!shiftTypeId) return null;
-  return alarm.repeat.times[shiftTypeId] ?? null;
-}
-
 /**
  * Ближайшие срабатывания одного будильника.
  *
@@ -155,15 +148,15 @@ export function nextOccurrences(
     return found;
   }
 
-  // По графику: без выбранного графика будить не по чему.
+  // По сменам: без выбранного графика будить не по чему.
   if (!context) return [];
+  const { shiftTypeIds } = alarm.repeat;
   for (let offset = 0; offset < PLANNING_HORIZON_DAYS && found.length < count; offset += 1) {
     const date = addDays(today, offset);
     const { shiftType } = resolveDay(context, date);
-    const time = timeOn(alarm, shiftType.id);
-    if (!time) continue;
+    if (!shiftTypeIds.includes(shiftType.id)) continue;
     const start = shiftType.time ? `, начало в ${shiftType.time.start}` : '';
-    push(date, time, `${shiftType.name}${start}`);
+    push(date, alarm.time, `${shiftType.name}${start}`);
   }
   return found;
 }
@@ -211,7 +204,7 @@ export function expiredOnceAlarmIds(alarms: Alarm[], now: Date): string[] {
 /** Может ли будильник вообще зазвонить: без дней и без смен — не может. */
 export function hasAnyTrigger(alarm: Alarm): boolean {
   if (alarm.repeat.kind === 'weekly') return alarm.repeat.days.length > 0;
-  if (alarm.repeat.kind === 'schedule') return Object.keys(alarm.repeat.times).length > 0;
+  if (alarm.repeat.kind === 'schedule') return alarm.repeat.shiftTypeIds.length > 0;
   return true;
 }
 
@@ -226,14 +219,7 @@ export function sortWeekdays(days: Weekday[]): Weekday[] {
   return WEEKDAY_ORDER.filter((day) => days.includes(day));
 }
 
-/** Время в списке: у графика их может быть несколько — «06:30 · 18:30». */
-export function describeTime(alarm: Alarm): string {
-  if (alarm.repeat.kind !== 'schedule') return alarm.time;
-  const times = [...new Set(Object.values(alarm.repeat.times))].sort();
-  return times.length > 0 ? times.join(' · ') : '—';
-}
-
-/** Повтор человеческим текстом: «Каждый день», «Пн, Ср, Пт», «По графику: ночная». */
+/** Повтор человеческим текстом: «Каждый день», «Пн, Ср, Пт», «По сменам: ночная». */
 export function describeRepeat(alarm: Alarm, shiftTypes: Map<string, ShiftType>): string {
   if (alarm.repeat.kind === 'once') {
     return `Один раз, ${formatDayShort(alarm.repeat.date)}`;
@@ -248,10 +234,10 @@ export function describeRepeat(alarm: Alarm, shiftTypes: Map<string, ShiftType>)
     return days.map((day) => capitalize(WEEKDAYS_SHORT[day - 1])).join(', ');
   }
 
-  const names = Object.keys(alarm.repeat.times)
+  const names = alarm.repeat.shiftTypeIds
     .map((id) => shiftTypes.get(id)?.name.toLowerCase())
     .filter((name): name is string => Boolean(name));
-  return names.length > 0 ? `По графику: ${names.join(', ')}` : 'По графику: смены не выбраны';
+  return names.length > 0 ? `По сменам: ${names.join(', ')}` : 'По сменам: смены не выбраны';
 }
 
 /** Отсрочка в разумных пределах: меньше минуты бессмысленно, больше часа — не отсрочка. */

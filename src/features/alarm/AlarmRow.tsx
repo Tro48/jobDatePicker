@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Switch, View } from 'react-native';
-import { describeRepeat, describeTime } from '@/domain/alarm.ts';
+import { describeRepeat } from '@/domain/alarm.ts';
 import type { Alarm, AlarmOccurrence } from '@/domain/alarm.ts';
 import { formatDayShort, formatDuration } from '@/domain/format.ts';
 import type { ShiftType } from '@/domain/types.ts';
@@ -40,7 +40,7 @@ export function AlarmRow({
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
 
-  const time = describeTime(alarm);
+  const time = alarm.time;
   const repeat = describeRepeat(alarm, shiftTypes);
   const name = alarm.label.trim();
   const status = alarm.enabled
