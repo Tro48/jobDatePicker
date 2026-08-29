@@ -14,25 +14,16 @@ const base: Alarm = {
   snoozeMinutes: 10,
 };
 
-test('версия 4: времена по типам смен схлопываются в одно, самое раннее', () => {
+test('версия 5: выбранные вручную смены отбрасываются, время остаётся', () => {
   const legacy = {
     ...base,
-    repeat: { kind: 'schedule', times: { night12: '18:30', day12: '06:30' } },
+    repeat: { kind: 'schedule', shiftTypeIds: ['day12', 'night12'] },
   } as unknown as Alarm;
 
   const migrated = migrateAlarm(legacy);
 
-  assert.equal(migrated.time, '06:30');
-  assert.deepEqual(migrated.repeat, { kind: 'schedule', shiftTypeIds: ['night12', 'day12'] });
-});
-
-test('версия 4: пустой набор смен не ломает время будильника', () => {
-  const legacy = { ...base, repeat: { kind: 'schedule', times: {} } } as unknown as Alarm;
-
-  const migrated = migrateAlarm(legacy);
-
   assert.equal(migrated.time, '07:00');
-  assert.deepEqual(migrated.repeat, { kind: 'schedule', shiftTypeIds: [] });
+  assert.deepEqual(migrated.repeat, { kind: 'schedule', times: {} });
 });
 
 test('будильники остальных режимов миграция не трогает', () => {
@@ -41,6 +32,6 @@ test('будильники остальных режимов миграция н
   const once: Alarm = { ...base, repeat: { kind: 'once', date: '2026-09-02' } };
   assert.equal(migrateAlarm(once), once);
 
-  const already: Alarm = { ...base, repeat: { kind: 'schedule', shiftTypeIds: ['day12'] } };
+  const already: Alarm = { ...base, repeat: { kind: 'schedule', times: { day12: '06:30' } } };
   assert.equal(migrateAlarm(already), already);
 });

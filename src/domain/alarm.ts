@@ -18,17 +18,20 @@ export type AlarmRepeat =
   /** По дням недели. Пустой список — не звонит никогда, экран об этом предупреждает. */
   | { kind: 'weekly'; days: Weekday[] }
   /**
-   * По сменам: звонит в дни выбранных типов смен и только в них. Время у
-   * будильника одно, как и в остальных режимах: «дневная в 06:30, ночная в
-   * 18:30» — это два будильника, каждый со своими сменами.
+   * По графику: звонит в каждый рабочий день. Выбирать смены руками не нужно —
+   * график уже выбран в настройках.
+   *
+   * times — время подъёма для конкретного типа смены. Пусто, если в графике
+   * смена одна: тогда звонит общее время будильника. Когда дневные чередуются
+   * с ночными, вставать надо в разное время, и здесь лежит по записи на смену.
    */
-  | { kind: 'schedule'; shiftTypeIds: string[] };
+  | { kind: 'schedule'; times: Record<string, string> };
 
 export interface Alarm {
   id: string;
   /** Название вроде «На смену». Пустое допустимо — тогда в списке просто время. */
   label: string;
-  /** «ЧЧ:ММ». Одно на будильник во всех режимах повтора. */
+  /** «ЧЧ:ММ». Общее время будильника; в графике его перекрывает repeat.times. */
   time: string;
   /** Выключенный будильник остаётся в списке со всеми настройками — это пауза. */
   enabled: boolean;
@@ -148,15 +151,21 @@ export function nextOccurrences(
     return found;
   }
 
-  // По сменам: без выбранного графика будить не по чему.
+  // По графику: без выбранного графика будить не по чему.
   if (!context) return [];
-  const { shiftTypeIds } = alarm.repeat;
+  const { times } = alarm.repeat;
   for (let offset = 0; offset < PLANNING_HORIZON_DAYS && found.length < count; offset += 1) {
     const date = addDays(today, offset);
     const { shiftType } = resolveDay(context, date);
-    if (!shiftTypeIds.includes(shiftType.id)) continue;
-    const start = shiftType.time ? `, начало в ${shiftType.time.start}` : '';
-    push(date, alarm.time, `${shiftType.name}${start}`);
+
+    // Выходной, отсыпной и отпуск — не рабочие дни, будить незачем.
+    if (shiftType.kind !== 'work' || !shiftType.time) continue;
+
+    push(
+      date,
+      times[shiftType.id] ?? alarm.time,
+      `${shiftType.name}, начало в ${shiftType.time.start}`,
+    );
   }
   return found;
 }
@@ -201,10 +210,22 @@ export function expiredOnceAlarmIds(alarms: Alarm[], now: Date): string[] {
   return alarms.filter((alarm) => alarm.enabled && isPastOnce(alarm, now)).map((alarm) => alarm.id);
 }
 
-/** Может ли будильник вообще зазвонить: без дней и без смен — не может. */
+/**
+ * Запуск будильника заново.
+ *
+ * Отзвонивший разовый будильник не выбрасывается: нажал «запустить» — он встаёт
+ * на ближайший день, когда это время ещё впереди. Дату потом видно на экране
+ * правки и можно поменять. Остальные режимы возвращать некуда, они повторяются
+ * сами.
+ */
+export function restartOnce(alarm: Alarm, now: Date): Alarm {
+  if (!isPastOnce(alarm, now)) return alarm;
+  return { ...alarm, repeat: { kind: 'once', date: nextDateForTime(alarm.time, now) } };
+}
+
+/** Может ли будильник вообще зазвонить: без единого дня недели — не может. */
 export function hasAnyTrigger(alarm: Alarm): boolean {
   if (alarm.repeat.kind === 'weekly') return alarm.repeat.days.length > 0;
-  if (alarm.repeat.kind === 'schedule') return alarm.repeat.shiftTypeIds.length > 0;
   return true;
 }
 
@@ -219,7 +240,19 @@ export function sortWeekdays(days: Weekday[]): Weekday[] {
   return WEEKDAY_ORDER.filter((day) => days.includes(day));
 }
 
-/** Повтор человеческим текстом: «Каждый день», «Пн, Ср, Пт», «По сменам: ночная». */
+/**
+ * Время в списке: у графика с разными сменами их несколько — «06:30 · 18:30».
+ *
+ * Пустой repeat.times означает «звонит по общему времени»: так экран правки
+ * пишет его, когда в графике всего одна смена.
+ */
+export function describeTime(alarm: Alarm): string {
+  if (alarm.repeat.kind !== 'schedule') return alarm.time;
+  const times = [...new Set(Object.values(alarm.repeat.times))].sort();
+  return times.length > 0 ? times.join(' · ') : alarm.time;
+}
+
+/** Повтор человеческим текстом: «Каждый день», «Пн, Ср, Пт», «Рабочие дни». */
 export function describeRepeat(alarm: Alarm, shiftTypes: Map<string, ShiftType>): string {
   if (alarm.repeat.kind === 'once') {
     return `Один раз, ${formatDayShort(alarm.repeat.date)}`;
@@ -234,10 +267,10 @@ export function describeRepeat(alarm: Alarm, shiftTypes: Map<string, ShiftType>)
     return days.map((day) => capitalize(WEEKDAYS_SHORT[day - 1])).join(', ');
   }
 
-  const names = alarm.repeat.shiftTypeIds
+  const names = Object.keys(alarm.repeat.times)
     .map((id) => shiftTypes.get(id)?.name.toLowerCase())
     .filter((name): name is string => Boolean(name));
-  return names.length > 0 ? `По сменам: ${names.join(', ')}` : 'По сменам: смены не выбраны';
+  return names.length > 0 ? `Рабочие дни: ${names.join(', ')}` : 'Рабочие дни по графику';
 }
 
 /** Отсрочка в разумных пределах: меньше минуты бессмысленно, больше часа — не отсрочка. */

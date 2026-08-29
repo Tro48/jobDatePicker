@@ -7,30 +7,23 @@ import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
  * надо проверять тестами, а не выяснять на телефоне после обновления.
  */
 
-/** Как режим «по сменам» выглядел в версии 4: своё время у каждого типа смены. */
+/** В версии 5 режим «по графику» хранил выбранные пользователем типы смен. */
 interface LegacyScheduleRepeat {
   kind: 'schedule';
-  times: Record<string, string>;
+  shiftTypeIds: string[];
 }
 
 /**
- * Будильник с версии 4 на 5.
+ * Будильник с версии 5 на 6.
  *
- * Время стало одним на будильник, поэтому из набора времён берётся самое
- * раннее, а типы смен превращаются в список дней. Разделить такой будильник на
- * два миграция не пытается: угадывать за пользователя хуже, чем оставить одно
- * время и дать поправить руками.
+ * Смены больше не выбираются руками — будильник звонит в каждый рабочий день
+ * графика, а времена берутся из самого графика. Выбранный когда-то список смен
+ * переносить некуда, поэтому он просто отбрасывается: время будильника при
+ * этом сохраняется, и звонить он продолжит.
  */
 export function migrateAlarm(alarm: Alarm): Alarm {
   const repeat = alarm.repeat as AlarmRepeat | LegacyScheduleRepeat;
-  if (repeat.kind !== 'schedule' || !('times' in repeat)) return alarm;
+  if (repeat.kind !== 'schedule' || !('shiftTypeIds' in repeat)) return alarm;
 
-  const entries = Object.entries(repeat.times ?? {});
-  const earliest = entries.map(([, time]) => time).sort()[0];
-
-  return {
-    ...alarm,
-    time: earliest ?? alarm.time,
-    repeat: { kind: 'schedule', shiftTypeIds: entries.map(([shiftTypeId]) => shiftTypeId) },
-  };
+  return { ...alarm, repeat: { kind: 'schedule', times: {} } };
 }

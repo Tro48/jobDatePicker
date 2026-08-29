@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Pressable, Switch, View } from 'react-native';
-import { describeRepeat } from '@/domain/alarm.ts';
+import { Alert, Pressable, View } from 'react-native';
+import { describeRepeat, describeTime } from '@/domain/alarm.ts';
 import type { Alarm, AlarmOccurrence } from '@/domain/alarm.ts';
 import { formatDayShort, formatDuration } from '@/domain/format.ts';
 import type { ShiftType } from '@/domain/types.ts';
-import { AppText } from '@/ui';
+import { AppText, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 
 /** «Через 8 ч 20 мин» для ближайших суток, дальше — просто день и время. */
@@ -18,8 +18,8 @@ function describeNext(occurrence: AlarmOccurrence, now: number): string {
 /**
  * Строка списка будильников.
  *
- * Переключатель вынесен из нажимаемой области намеренно: вложенный в неё, он
- * давал бы два элемента с одной зоной нажатия — скринридер читает такое как
+ * Кнопки вынесены из нажимаемой области намеренно: вложенные в неё, они давали
+ * бы несколько элементов с одной зоной нажатия — скринридер читает такое как
  * одну кнопку с непонятным действием.
  */
 export function AlarmRow({
@@ -29,6 +29,7 @@ export function AlarmRow({
   now,
   onEdit,
   onToggle,
+  onDelete,
 }: {
   alarm: Alarm;
   next: AlarmOccurrence | null;
@@ -36,11 +37,12 @@ export function AlarmRow({
   now: number;
   onEdit: () => void;
   onToggle: (enabled: boolean) => void;
+  onDelete: () => void;
 }) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
 
-  const time = alarm.time;
+  const time = describeTime(alarm);
   const repeat = describeRepeat(alarm, shiftTypes);
   const name = alarm.label.trim();
   const status = alarm.enabled
@@ -90,12 +92,26 @@ export function AlarmRow({
           </AppText>
         </View>
       </Pressable>
-      <Switch
-        accessibilityLabel={`${time}${name ? `, ${name}` : ''}`}
-        accessibilityHint="Включает и выключает будильник"
-        value={alarm.enabled}
-        onValueChange={onToggle}
-        trackColor={{ true: theme.colors.accent, false: theme.colors.border }}
+      <IconButton
+        name={alarm.enabled ? 'pause' : 'play'}
+        label={
+          alarm.enabled
+            ? `Поставить на паузу будильник ${time}`
+            : `Включить будильник ${time}`
+        }
+        onPress={() => onToggle(!alarm.enabled)}
+      />
+      <IconButton
+        name="trash-outline"
+        label={`Удалить будильник ${time}`}
+        onPress={() =>
+          // Удаление руками не отменить, поэтому спрашиваем. Диалог системный:
+          // он читается скринридером и закрывается кнопкой «назад».
+          Alert.alert('Удалить будильник?', `${time}${name ? `, ${name}` : ''}`, [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Удалить', style: 'destructive', onPress: onDelete },
+          ])
+        }
       />
     </View>
   );

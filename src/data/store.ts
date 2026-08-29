@@ -5,7 +5,7 @@ import { migrateAlarm } from './migrations.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { DEFAULT_SHIFT_TYPES } from '@/domain/shifts.ts';
 import { DEFAULT_PAYMENT_RULES } from '@/domain/payday.ts';
-import { clampSnoozeMinutes } from '@/domain/alarm.ts';
+import { clampSnoozeMinutes, restartOnce } from '@/domain/alarm.ts';
 import type { Alarm } from '@/domain/alarm.ts';
 import { addDays } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
@@ -22,7 +22,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -58,7 +58,10 @@ export interface AppActions {
   addAlarm: (alarm: Omit<Alarm, 'id'>) => string;
   updateAlarm: (id: string, patch: Partial<Omit<Alarm, 'id'>>) => void;
   removeAlarm: (id: string) => void;
-  /** Пауза и запуск: настройки будильника при этом сохраняются. */
+  /**
+   * Пауза и запуск: настройки сохраняются, а отзвонивший разовый будильник при
+   * запуске переезжает на ближайший день с этим временем.
+   */
   setAlarmEnabled: (id: string, enabled: boolean) => void;
   /** Гасит разом несколько будильников — так выключаются отзвонившие разовые. */
   disableAlarms: (ids: string[]) => void;
@@ -139,7 +142,11 @@ export const useAppStore = create<AppState & AppActions>()(
 
       setAlarmEnabled: (id, enabled) =>
         set((state) => ({
-          alarms: state.alarms.map((alarm) => (alarm.id === id ? { ...alarm, enabled } : alarm)),
+          alarms: state.alarms.map((alarm) =>
+            alarm.id === id
+              ? { ...(enabled ? restartOnce(alarm, new Date()) : alarm), enabled }
+              : alarm,
+          ),
         })),
 
       disableAlarms: (ids) =>

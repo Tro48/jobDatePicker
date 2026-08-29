@@ -19,6 +19,7 @@ export function AlarmScreen() {
   const alarms = useAppStore((state) => state.alarms);
   const shiftTypes = useAppStore((state) => state.shiftTypes);
   const setAlarmEnabled = useAppStore((state) => state.setAlarmEnabled);
+  const removeAlarm = useAppStore((state) => state.removeAlarm);
 
   const { occurrences, scheduled, permissions, available, needsExactAlarmPermission } =
     useAlarmSyncState();
@@ -96,6 +97,7 @@ export function AlarmScreen() {
                 now={now}
                 onEdit={() => push(`/alarm/${alarm.id}`)}
                 onToggle={(enabled) => setAlarmEnabled(alarm.id, enabled)}
+                onDelete={() => removeAlarm(alarm.id)}
               />
             ))}
           </View>
@@ -107,19 +109,6 @@ export function AlarmScreen() {
             приложения.
           </AppText>
         ) : null}
-      </Card>
-
-      <Card title="Что может помешать">
-        {/* Честно: это не лечится кодом, и молчать об этом хуже, чем сказать. */}
-        <AppText variant="body" tone="muted">
-          Оболочки Xiaomi, Huawei, Oppo, Vivo и Samsung выгружают приложения из памяти. Если
-          будильник не звонит — разреши автозапуск и сними ограничение батареи для «Смен» в
-          настройках телефона.
-        </AppText>
-        <AppText variant="body" tone="muted">
-          Принудительная остановка приложения снимает все его будильники до следующего
-          запуска — так устроен Android.
-        </AppText>
       </Card>
     </Screen>
   );

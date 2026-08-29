@@ -1,5 +1,5 @@
 import { addDays, daysBetween, floorMod, parseTimeToMinutes, startOfWeek, weekday } from './date.ts';
-import type { IsoDate } from './date.ts';
+import type { IsoDate, Weekday } from './date.ts';
 import type {
   ActiveSchedule,
   DayOverride,
@@ -54,6 +54,22 @@ export function resolvePlannedShiftId(schedule: ActiveSchedule, date: IsoDate): 
   const weeksApart = Math.floor(daysBetween(startOfWeek(schedule.anchorDate), startOfWeek(date)) / 7);
   const week = pattern.weeks[floorMod(weeksApart, pattern.weeks.length)];
   return week[weekday(date)];
+}
+
+/**
+ * Какие типы смен вообще встречаются в графике, по порядку появления.
+ *
+ * Нужно будильнику: когда в графике чередуются дневные и ночные, время
+ * подъёма у них разное, и экран правки показывает столько полей времени,
+ * сколько смен в графике, — спрашивать это у пользователя незачем.
+ */
+export function patternShiftTypeIds(pattern: SchedulePattern): string[] {
+  const ids =
+    pattern.kind === 'cycle'
+      ? pattern.slots
+      : pattern.weeks.flatMap((week) => [1, 2, 3, 4, 5, 6, 7].map((day) => week[day as Weekday]));
+
+  return [...new Set(ids)];
 }
 
 /** Итоговый день календаря: график плюс ручная правка поверх него. */

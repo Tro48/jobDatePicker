@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   clampSnoozeMinutes,
   describeRepeat,
+  describeTime,
   expiredOnceAlarmIds,
   hasAnyTrigger,
   isPastOnce,
@@ -10,6 +11,7 @@ import {
   nextDateForTime,
   nextOccurrences,
   planAlarms,
+  restartOnce,
 } from '../alarm.ts';
 import type { Alarm } from '../alarm.ts';
 import type { ScheduleContext } from '../engine.ts';
@@ -89,38 +91,38 @@ test('сегодняшний день недели берётся, если вр
   assert.equal(found[0].date, '2026-09-01');
 });
 
-test('по сменам: звонит в дни выбранных смен, время у будильника одно', () => {
-  // 2/2 день-ночь от 1 сентября: 1–2 дневные, 5–6 ночные, дальше цикл.
+test('по графику: у дневной и ночной смены своё время подъёма', () => {
+  // 2/2 день-ночь от 1 сентября: 1–2 дневные, 3–4 выходные, 5–6 ночные.
   const context = contextFor('2-2-mixed', '2026-09-01');
   const alarm: Alarm = {
     ...base,
-    time: '06:30',
-    repeat: { kind: 'schedule', shiftTypeIds: ['day12', 'night12'] },
+    repeat: { kind: 'schedule', times: { day12: '06:30', night12: '18:30' } },
   };
 
   const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 4);
 
+  // Выходные пропущены: будить в них незачем.
   assert.deepEqual(
     found.map((item) => `${item.date} ${item.time}`),
-    ['2026-09-02 06:30', '2026-09-05 06:30', '2026-09-06 06:30', '2026-09-09 06:30'],
+    ['2026-09-02 06:30', '2026-09-05 18:30', '2026-09-06 18:30', '2026-09-09 06:30'],
   );
   assert.equal(found[0].subtitle, 'Дневная смена, начало в 08:00');
 });
 
-test('по сменам: неотмеченная смена пропускается', () => {
+test('по графику: смена без своего времени звонит общим', () => {
   const context = contextFor('2-2-mixed', '2026-09-01');
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', shiftTypeIds: ['night12'] } };
+  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: { night12: '18:30' } } };
 
   const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 2);
 
   assert.deepEqual(
-    found.map((item) => item.date),
-    ['2026-09-05', '2026-09-06'],
+    found.map((item) => `${item.date} ${item.time}`),
+    ['2026-09-02 07:00', '2026-09-05 18:30'],
   );
 });
 
-test('по сменам без выбранного графика звонить нечему', () => {
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', shiftTypeIds: ['day12'] } };
+test('по графику без выбранного графика звонить нечему', () => {
+  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: {} } };
 
   assert.deepEqual(nextOccurrences(alarm, null, localNoon('2026-09-01')), []);
 });
@@ -129,11 +131,14 @@ test('ручная правка дня меняет расписание буд�
   const context = contextFor('2-2-mixed', '2026-09-01');
   // 3 сентября по графику выходной; ставим подработку — будильник появляется.
   context.overrides.set('2026-09-03', { date: '2026-09-03', shiftTypeId: 'night12' });
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', shiftTypeIds: ['night12'] } };
+  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: {} } };
 
-  const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 1);
+  const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 2);
 
-  assert.equal(found[0].date, '2026-09-03');
+  assert.deepEqual(
+    found.map((item) => item.date),
+    ['2026-09-02', '2026-09-03'],
+  );
 });
 
 test('все будильники сливаются в один список по времени и режутся по потолку', () => {
@@ -167,6 +172,25 @@ test('прошедший момент разового будильника ви
   assert.equal(isPastOnce({ ...base, repeat: { kind: 'weekly', days: [1] } }, now), false);
 });
 
+test('отзвонивший разовый будильник запускается заново на ближайший день', () => {
+  const now = localNoon('2026-09-01');
+  const fired: Alarm = { ...base, repeat: { kind: 'once', date: '2026-08-30' } };
+
+  // 07:00 сегодня уже прошло — значит, завтра.
+  assert.deepEqual(restartOnce(fired, now).repeat, { kind: 'once', date: '2026-09-02' });
+  // Вечернее время сегодняшнего дня ещё впереди.
+  assert.deepEqual(restartOnce({ ...fired, time: '23:00' }, now).repeat, {
+    kind: 'once',
+    date: '2026-09-01',
+  });
+
+  // Будущий разовый и повторяющиеся не трогаются.
+  const future: Alarm = { ...base, repeat: { kind: 'once', date: '2026-09-05' } };
+  assert.equal(restartOnce(future, now), future);
+  const weekly: Alarm = { ...base, repeat: { kind: 'weekly', days: [1] } };
+  assert.equal(restartOnce(weekly, now), weekly);
+});
+
 test('новый будильник встаёт на ближайшие семь утра', () => {
   assert.equal(nextDateForTime('07:00', localNoon('2026-09-01')), '2026-09-02');
   assert.equal(nextDateForTime('23:00', localNoon('2026-09-01')), '2026-09-01');
@@ -185,9 +209,20 @@ test('повтор описывается человеческим тексто�
   assert.equal(describe({ ...base, repeat: { kind: 'weekly', days: [6, 7] } }), 'По выходным');
   assert.equal(describe({ ...base, repeat: { kind: 'weekly', days: [5, 1] } }), 'Пн, Пт');
   assert.equal(
-    describe({ ...base, repeat: { kind: 'schedule', shiftTypeIds: ['day12', 'night12'] } }),
-    'По сменам: дневная смена, ночная смена',
+    describe({ ...base, repeat: { kind: 'schedule', times: { day12: '06:30', night12: '18:30' } } }),
+    'Рабочие дни: дневная смена, ночная смена',
   );
+  assert.equal(describe({ ...base, repeat: { kind: 'schedule', times: {} } }), 'Рабочие дни по графику');
+});
+
+test('в списке у графика показываются все его времена', () => {
+  assert.equal(describeTime(base), '07:00');
+  assert.equal(
+    describeTime({ ...base, repeat: { kind: 'schedule', times: { night12: '18:30', day12: '06:30' } } }),
+    '06:30 · 18:30',
+  );
+  // Без своих времён список показывает общее время будильника.
+  assert.equal(describeTime({ ...base, repeat: { kind: 'schedule', times: {} } }), '07:00');
 });
 
 test('отсрочка держится в разумных пределах', () => {

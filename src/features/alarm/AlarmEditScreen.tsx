@@ -3,7 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { formatMinutesAsTime, parseTimeToMinutes } from '@/domain/date.ts';
 import type { IsoDate, Weekday } from '@/domain/date.ts';
-import { resolveDay } from '@/domain/engine.ts';
+import { patternShiftTypeIds, resolveDay } from '@/domain/engine.ts';
 import { formatDayLong } from '@/domain/format.ts';
 import {
   DEFAULT_SNOOZE_MINUTES,
@@ -18,7 +18,7 @@ import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, TextField, TimeDialField, Toggle } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, TextField, TimeSelect, Toggle } from '@/ui';
 import { useTheme } from '@/theme';
 import { DatePickerField } from './DatePickerField.tsx';
 import { RingtonePicker } from './RingtonePicker.tsx';
@@ -30,7 +30,7 @@ type RepeatKind = AlarmRepeat['kind'];
 const REPEAT_CHOICES: Array<{ value: RepeatKind; label: string; hint: string }> = [
   { value: 'once', label: 'Один раз', hint: 'Зазвонит один раз и выключится сам' },
   { value: 'weekly', label: 'По дням недели', hint: 'Обычный повтор: понедельник, среда, пятница' },
-  { value: 'schedule', label: 'По сменам', hint: 'Только в дни выбранных смен' },
+  { value: 'schedule', label: 'По графику', hint: 'Только в рабочие дни выбранного графика' },
 ];
 
 /** Час до начала смены — то, что обычно и ставят. Дальше правится руками. */
@@ -93,10 +93,26 @@ export function AlarmEditScreen() {
     };
   });
 
-  const workTypes = useMemo(
-    () => shiftTypes.filter((type) => type.kind === 'work' && type.time),
-    [shiftTypes],
-  );
+  /**
+   * Рабочие смены самого графика. Спрашивать их у пользователя незачем —
+   * график уже выбран в настройках; здесь они нужны только затем, чтобы у
+   * чередующихся дневных и ночных было по своему времени подъёма.
+   */
+  const scheduleShifts = useMemo(() => {
+    if (!schedule) return [];
+    const index = new Map(shiftTypes.map((type) => [type.id, type]));
+    return patternShiftTypeIds(schedule.pattern)
+      .map((id) => index.get(id))
+      .filter((type): type is ShiftType => Boolean(type?.time) && type?.kind === 'work');
+  }, [schedule, shiftTypes]);
+
+  const perShiftTimes = draft.repeat.kind === 'schedule' && scheduleShifts.length > 1;
+
+  /** Время смены: заданное пользователем или час до её начала. */
+  const timeFor = (type: ShiftType): string =>
+    draft.repeat.kind === 'schedule'
+      ? (draft.repeat.times[type.id] ?? defaultTimeFor(type))
+      : draft.time;
 
   const padding = { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl };
 
@@ -122,26 +138,33 @@ export function AlarmEditScreen() {
         return { ...current, repeat: { kind: 'once', date: nextDateForTime(current.time, now) } };
       }
       if (kind === 'weekly') return { ...current, repeat: { kind: 'weekly', days: EVERY_DAY } };
-      return { ...current, repeat: { kind: 'schedule', shiftTypeIds: [] } };
+      return { ...current, repeat: { kind: 'schedule', times: {} } };
     });
 
-  const toggleShiftType = (shiftTypeId: string, selected: boolean): void =>
+  const setShiftTime = (shiftTypeId: string, time: string): void =>
     setDraft((current) => {
       if (current.repeat.kind !== 'schedule') return current;
-      const ids = current.repeat.shiftTypeIds.filter((id) => id !== shiftTypeId);
       return {
         ...current,
-        // Порядок как в справочнике смен: так список не прыгает при включении.
-        repeat: {
-          kind: 'schedule',
-          shiftTypeIds: selected ? [...ids, shiftTypeId] : ids,
-        },
+        repeat: { kind: 'schedule', times: { ...current.repeat.times, [shiftTypeId]: time } },
       };
     });
 
   const save = (): void => {
-    if (isNew) addAlarm(draft);
-    else updateAlarm(params.id, draft);
+    // Времена смен дозаполняются перед сохранением: то, что показано на
+    // экране, и то, что уходит в хранилище, должно совпадать до значения.
+    const saved: AlarmDraft = perShiftTimes
+      ? {
+          ...draft,
+          repeat: {
+            kind: 'schedule',
+            times: Object.fromEntries(scheduleShifts.map((type) => [type.id, timeFor(type)])),
+          },
+        }
+      : draft;
+
+    if (isNew) addAlarm(saved);
+    else updateAlarm(params.id, saved);
     router.back();
   };
 
@@ -159,7 +182,30 @@ export function AlarmEditScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Card title="Когда звонить">
-        <TimeDialField label="Время" value={draft.time} onChange={setTime} defaultExpanded />
+        {perShiftTimes ? (
+          <>
+            {/* В графике чередуются дневные и ночные — вставать надо в разное
+                время, поэтому полей столько, сколько смен в графике. */}
+            <AppText variant="body" tone="muted">
+              В графике несколько смен, и время подъёма у них разное.
+            </AppText>
+            {scheduleShifts.map((type) => (
+              <TimeSelect
+                key={type.id}
+                label={type.name}
+                value={timeFor(type)}
+                onChange={(time) => setShiftTime(type.id, time)}
+                hint={
+                  type.time && timeFor(type) >= type.time.start
+                    ? `Начало смены в ${type.time.start} — звонок придётся уже на смену`
+                    : `Начало смены в ${type.time?.start ?? ''}`
+                }
+              />
+            ))}
+          </>
+        ) : (
+          <TimeSelect label="Время" value={draft.time} onChange={setTime} />
+        )}
         <TextField
           label="Название"
           value={draft.label}
@@ -220,35 +266,10 @@ export function AlarmEditScreen() {
         ) : null}
 
         {draft.repeat.kind === 'schedule' && schedule ? (
-          <View style={{ gap: theme.spacing.md }}>
-            <AppText variant="caption" tone="muted">
-              Отметь смены, перед которыми надо вставать. Будильник зазвонит в {draft.time}
-              только в эти дни.
-            </AppText>
-            {workTypes.map((type) => {
-              const ids = draft.repeat.kind === 'schedule' ? draft.repeat.shiftTypeIds : [];
-              const selected = ids.includes(type.id);
-              const start = type.time?.start ?? '';
-              // Звонок позже начала смены — не ошибка, но почти всегда опечатка.
-              const late = selected && start !== '' && draft.time >= start;
-
-              return (
-                <View key={type.id} style={{ gap: theme.spacing.xs }}>
-                  <Toggle
-                    label={type.name}
-                    hint={start ? `Начало смены в ${start}` : undefined}
-                    value={selected}
-                    onValueChange={(on) => toggleShiftType(type.id, on)}
-                  />
-                  {late ? (
-                    <AppText variant="caption" tone="muted">
-                      {draft.time} позже начала смены — звонок придётся уже на смену
-                    </AppText>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
+          <AppText variant="body" tone="muted">
+            Звонит в каждый рабочий день графика. Выходные, отсыпные, отпуск и больничный
+            пропускаются, ручные правки дней учитываются.
+          </AppText>
         ) : null}
 
         {silent ? (
