@@ -1,10 +1,15 @@
-# Обновление по воздуху при попадании изменений в main.
+# Что уезжает на телефон при попадании изменений в main.
 #
-# По воздуху приезжает только JS и ассеты: нативный код Android разрешает
-# менять исключительно установкой подписанного APK. Поэтому обычные правки
-# уходят сюда за секунды и не тратят квоту сборок, а APK собирается отдельным
-# workflow и только когда изменилась нативная часть.
-name: Обновление по воздуху
+# Развилка одна и решает её отпечаток нативной части. Правки экранов и расчётов
+# уходят обновлением по воздуху за секунды и квоту сборок не трогают. А вот
+# нативный код Android разрешает менять только установкой подписанного APK —
+# если отпечаток разошёлся с уже выпущенным, обновление никому не доедет, и
+# вместо него запускается сборка.
+#
+# Раньше сборка стояла отдельно и запускалась руками. Это и подводило: мерж с
+# нативной правкой публиковал обновление под новым отпечатком, которого нет ни
+# на одном телефоне, и напомнить об этом было некому.
+name: Выкатка в main
 
 on:
   push:
@@ -16,18 +21,63 @@ concurrency:
   group: update-${{ github.ref }}
   cancel-in-progress: false
 
+# Нужно джобе версии, чтобы запушить подъём, и вызываемой сборке, чтобы создать
+# релиз с APK.
+permissions:
+  contents: write
+
 jobs:
   checks:
     uses: ./.github/workflows/checks.yml
 
+  native:
+    name: Менялась ли нативная часть
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Сверка отпечатков
+        id: compare
+        run: |
+          set -euo pipefail
+
+          # APP_VARIANT намеренно не задан: считаем отпечаток рабочего варианта,
+          # его же несёт production-сборка. Версию приложения отпечаток не
+          # учитывает — так настроен fingerprint.config.js, иначе каждый подъём
+          # версии выглядел бы сменой нативной части.
+          current=$(npx expo-updates fingerprint:generate --platform android | jq -er '.hash')
+
+          # Отпечаток уже выпущенного APK лежит в том же android.json, который
+          # читает само приложение, — второго источника правды заводить незачем.
+          # Нет выпуска или не достучались: считаем, что нативная часть менялась.
+          # Лишняя сборка обходится дешевле, чем правка, молча не доехавшая до
+          # телефона.
+          shipped=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/android.json" | jq -er '.runtimeVersion') || shipped=""
+
+          if [ "$current" = "$shipped" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Отпечаток тот же ($current). Хватит обновления по воздуху." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Отпечаток разошёлся: было ${shipped:-выпуска нет}, стало $current. Нужна сборка APK." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   version:
     name: Версия
     # Ждёт проверок: без этого версия поднималась и уезжала в main даже тогда,
-    # когда тесты красные и обновление публиковать нечем.
+    # когда тесты красные и выкатывать нечего.
     needs: checks
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -52,9 +102,21 @@ jobs:
           git commit -am "Версия $next [skip ci]"
           git push
 
+  # Нативная часть изменилась — по воздуху её не доставить, собираем APK.
+  build:
+    name: Сборка APK
+    needs: [version, native]
+    if: needs.native.outputs.changed == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      profile: production
+    secrets: inherit
+
+  # Изменился только JS — обновление уезжает на телефон само.
   update:
     name: EAS Update
-    needs: [checks, version]
+    needs: [version, native]
+    if: needs.native.outputs.changed == 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
