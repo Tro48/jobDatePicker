@@ -16,6 +16,8 @@ export interface ReleaseManifest {
   /** Прямая ссылка на APK. */
   url: string;
   version?: string;
+  /** Когда собран APK. Показывается рядом с версией, чтобы было видно, что приехало. */
+  builtAt?: string;
 }
 
 export type UpdateStatus =
@@ -67,7 +69,12 @@ async function loadManifest(): Promise<ReleaseManifest | null> {
     // приложений. Список выпусков приходит из сети — верить ему на слово нельзя.
     if (!data.url.startsWith('https://')) return null;
 
-    return { runtimeVersion: data.runtimeVersion, url: data.url, version: data.version };
+    return {
+      runtimeVersion: data.runtimeVersion,
+      url: data.url,
+      version: data.version,
+      builtAt: data.builtAt,
+    };
   } catch {
     // Нет сети или список выпусков не настроен — это не ошибка приложения.
     return null;
@@ -90,6 +97,10 @@ export function useAppUpdate(): AppUpdateState {
   const [newBuild, setNewBuild] = useState<ReleaseManifest | null>(null);
 
   const checkNewBuild = useCallback(async () => {
+    // Отпечатка нет только в отладочной сборке: сравнивать не с чем, а звать
+    // человека ставить рабочий APK поверх отладочного — вредный совет.
+    if (!Updates.runtimeVersion) return;
+
     const manifest = await loadManifest();
     // Отпечаток совпал — установлена свежая нативная часть.
     setNewBuild(manifest && manifest.runtimeVersion !== Updates.runtimeVersion ? manifest : null);
