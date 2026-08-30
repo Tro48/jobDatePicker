@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
 import { formatTimeUntil } from '@/domain/format.ts';
 import { indexShiftTypes } from '@/domain/shifts.ts';
@@ -8,8 +8,9 @@ import {
   openExactAlarmSettings,
   openFullScreenIntentSettings,
   openNotificationSettings,
+  requestNotifications,
 } from '@modules/shift-alarm';
-import { AppText, Button, Card, Fab, Screen } from '@/ui';
+import { AppText, Button, Card, Fab, Screen, useNow } from '@/ui';
 import { useTheme } from '@/theme';
 import { AlarmRow } from './AlarmRow.tsx';
 import { useAlarmSyncState } from './AlarmSyncProvider.tsx';
@@ -25,10 +26,17 @@ export function AlarmScreen() {
   const setAlarmEnabled = useAppStore((state) => state.setAlarmEnabled);
   const removeAlarm = useAppStore((state) => state.removeAlarm);
 
-  const { occurrences, permissions, available, needsExactAlarmPermission } = useAlarmSyncState();
+  const { occurrences, permissions, available, needsExactAlarmPermission, refreshPermissions } =
+    useAlarmSyncState();
 
   const index = useMemo(() => indexShiftTypes(shiftTypes), [shiftTypes]);
-  const now = Date.now();
+  // Раз в минуту: строка «звонок через …» иначе замирает на значении, которое
+  // посчиталось при первом рендере экрана.
+  const now = useNow();
+
+  const askNotifications = useCallback(() => {
+    void requestNotifications().then(refreshPermissions);
+  }, [refreshPermissions]);
 
   /** Ближайшее срабатывание каждого будильника — то, что показывает карточка. */
   const nextByAlarm = useMemo(() => {
@@ -75,7 +83,15 @@ export function AlarmScreen() {
               Звонок идёт через уведомление. Пока они запрещены, экран будильника может не
               показаться.
             </AppText>
-            <Button title="Включить уведомления" onPress={openNotificationSettings} />
+            {/* Сначала системный диалог: с Android 13 разрешение не выдано по
+                умолчанию, и гонять человека в настройки телефона за тем, о чём
+                система готова спросить сама, незачем. */}
+            <Button title="Разрешить" variant="primary" onPress={askNotifications} />
+            <AppText variant="caption" tone="muted">
+              Если диалог не появился, Android больше не спрашивает — тогда разрешение
+              включается только в настройках телефона.
+            </AppText>
+            <Button title="Настройки уведомлений" onPress={openNotificationSettings} />
           </Card>
         ) : null}
 

@@ -26,6 +26,7 @@ interface ShiftAlarmNativeModule {
   openExactAlarmSettings(): void;
   openFullScreenIntentSettings(): void;
   openNotificationSettings(): void;
+  requestNotifications(): Promise<boolean>;
   schedule(alarms: NativeAlarm[]): Promise<number>;
   cancelAll(): Promise<void>;
   listRingtones(): Promise<Ringtone[]>;
@@ -76,6 +77,18 @@ export function openFullScreenIntentSettings(): void {
 
 export function openNotificationSettings(): void {
   native?.openNotificationSettings();
+}
+
+/**
+ * Спросить разрешение на уведомления системным диалогом.
+ *
+ * Возвращает, выдано ли оно в итоге. false приходит и когда человек отказал, и
+ * когда система больше не спрашивает — тогда остаётся только ссылка в
+ * настройки телефона.
+ */
+export async function requestNotifications(): Promise<boolean> {
+  if (!native) return false;
+  return native.requestNotifications();
 }
 
 /** Заменяет весь набор будильников. Возвращает, сколько поставлено. */

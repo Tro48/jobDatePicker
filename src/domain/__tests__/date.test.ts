@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, floorMod, monthDays, monthGridDates, startOfWeek, toIsoDateLocal, weekday } from '../date.ts';
+import {
+  addDays,
+  floorMod,
+  monthDays,
+  monthGridDates,
+  monthGridRows,
+  startOfWeek,
+  toIsoDateLocal,
+  weekday,
+} from '../date.ts';
 
 test('день недели по ISO: понедельник 1, воскресенье 7', () => {
   assert.equal(weekday('2026-08-28'), 5); // пятница
@@ -39,12 +48,41 @@ test('дата берётся по локальному времени, а не 
   assert.equal(toIsoDateLocal(new Date(2026, 11, 31, 23, 59)), '2026-12-31');
 });
 
-test('сетка месяца — ровно 42 дня подряд, начиная с понедельника', () => {
+test('сетка месяца — целые недели подряд, начиная с понедельника', () => {
   const grid = monthGridDates(2026, 9);
-  assert.equal(grid.length, 42);
+  assert.equal(grid.length, 35);
   assert.equal(weekday(grid[0].date), 1);
+  assert.equal(weekday(grid[grid.length - 1].date), 7);
   for (let i = 1; i < grid.length; i += 1) {
     assert.equal(grid[i].date, addDays(grid[i - 1].date, 1), `разрыв перед ${grid[i].date}`);
+  }
+});
+
+/**
+ * Регрессия: февраль 2027 начинается с понедельника и кончается воскресеньем,
+ * и под ним рисовались две полные недели марта — не хвост месяца, а следующий
+ * месяц целиком.
+ */
+test('целиком чужая неделя в сетку не попадает', () => {
+  assert.equal(monthGridRows(2027, 2), 4);
+  const grid = monthGridDates(2027, 2);
+  assert.equal(grid.length, 28);
+  assert.equal(grid[0].date, '2027-02-01');
+  assert.equal(grid[27].date, '2027-02-28');
+  assert.ok(grid.every((day) => day.inMonth));
+});
+
+test('число недель в месяце — от четырёх до шести', () => {
+  // Май 2027: 1 мая — суббота, 31 день, последнее число падает на шестую неделю.
+  assert.equal(monthGridRows(2027, 5), 6);
+  assert.equal(monthGridRows(2026, 9), 5);
+
+  for (let year = 2024; year <= 2032; year += 1) {
+    for (let month = 1; month <= 12; month += 1) {
+      const rows = monthGridRows(year, month);
+      assert.ok(rows >= 4 && rows <= 6, `${year}-${month}: ${rows} строк`);
+      assert.equal(monthGridDates(year, month).length, rows * 7);
+    }
   }
 });
 

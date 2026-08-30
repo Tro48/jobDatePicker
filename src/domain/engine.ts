@@ -75,17 +75,25 @@ export function patternShiftTypeIds(pattern: SchedulePattern): string[] {
 /** Итоговый день календаря: график плюс ручная правка поверх него. */
 export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay {
   const override = context.overrides.get(date);
-  const shiftTypeId = override?.shiftTypeId ?? resolvePlannedShiftId(context.schedule, date);
+  const plannedId = resolvePlannedShiftId(context.schedule, date);
+  const shiftTypeId = override?.shiftTypeId ?? plannedId;
   const shiftType = context.shiftTypes.get(shiftTypeId);
 
   if (!shiftType) {
     throw new ReferenceError(`Неизвестный тип смены "${shiftTypeId}" на дату ${date}`);
   }
 
+  // Правка, которая ничего не меняет по существу, — это заметка, а не
+  // изменённый день. Иначе одна подпись «вышел за Сергея» зажигала бы точку в
+  // клетке и попадала в счёт правок за месяц.
+  const changed =
+    override !== undefined &&
+    (override.shiftTypeId !== undefined || override.workedMinutesOverride !== undefined);
+
   return {
     date,
     shiftType,
-    source: override ? 'override' : 'schedule',
+    source: changed ? 'override' : 'schedule',
     workedMinutes: override?.workedMinutesOverride ?? shiftDurationMinutes(shiftType),
     note: override?.note,
   };
@@ -97,8 +105,12 @@ export function resolveRange(context: ScheduleContext, dates: IsoDate[]): Resolv
 
 /**
  * Проверяет, что пресет ссылается только на существующие смены и покрывает все
- * семь дней недели. Вызывается на старте приложения и в тестах, чтобы новый
- * график не падал в рантайме на середине месяца.
+ * семь дней недели.
+ *
+ * Вызывается тестами: справочник пресетов задан кодом, значит и проверять его
+ * надо до выпуска, а не на телефоне. От уже сохранённого у пользователя
+ * графика, чья смена исчезла из справочника, защищает scheduleUsesKnownShifts
+ * при подъёме состояния.
  */
 export function validatePreset(preset: SchedulePreset, shiftTypes: Map<string, ShiftType>): string[] {
   const errors: string[] = [];
@@ -126,6 +138,22 @@ export function validatePreset(preset: SchedulePreset, shiftTypes: Map<string, S
   return errors;
 }
 
+/**
+ * Все ли смены сохранённого графика есть в справочнике.
+ *
+ * Паттерн копируется в хранилище при выборе графика, а справочник смен всегда
+ * берётся из кода. Значит, выпуск, переименовавший id смены, приезжает по
+ * воздуху и делает сохранённый график неразрешимым: resolveDay начинает падать
+ * на каждой дате, а вместе с ним календарь, сводка и планировщик будильников.
+ * Проверяется при подъёме состояния, до первого рендера.
+ */
+export function scheduleUsesKnownShifts(
+  schedule: ActiveSchedule,
+  shiftTypes: Map<string, ShiftType>,
+): boolean {
+  return patternShiftTypeIds(schedule.pattern).every((id) => shiftTypes.has(id));
+}
+
 /** Непрерывный отрезок одинаковых ручных правок вокруг даты. */
 export interface OverrideRun {
   start: IsoDate;
@@ -147,7 +175,10 @@ export function findOverrideRun(
   date: IsoDate,
 ): OverrideRun | null {
   const current = overrides.get(date);
-  if (!current) return null;
+  // Правка без смены — это заметка или часы, отпуском она не бывает. Без этой
+  // проверки два соседних дня с заметками склеились бы в «отрезок» из двух
+  // undefined.
+  if (!current?.shiftTypeId) return null;
 
   const sameType = (candidate: IsoDate): boolean =>
     overrides.get(candidate)?.shiftTypeId === current.shiftTypeId;

@@ -13,6 +13,7 @@ data class StoredAlarm(
   val triggerAtMillis: Long,
   val title: String,
   val subtitle: String,
+  /** 0 — отсрочки нет: кнопку «Отложить» ни экран, ни уведомление не показывают. */
   val snoozeMinutes: Int,
   /** URI выбранной мелодии. null — сигнал будильника по умолчанию. */
   val soundUri: String?,
@@ -26,6 +27,9 @@ data class StoredAlarm(
    * «Отложить» не знает и, пересчитывая расписание, снёс бы его.
    */
   val isSnooze: Boolean get() = id.contains(SNOOZE_MARK)
+
+  /** Есть ли что откладывать. */
+  val canSnooze: Boolean get() = snoozeMinutes > 0
 
   fun toJson(): JSONObject = JSONObject()
     .put(KEY_ID, id)
@@ -53,7 +57,7 @@ data class StoredAlarm(
       triggerAtMillis = json.getLong(KEY_TRIGGER),
       title = json.optString(KEY_TITLE),
       subtitle = json.optString(KEY_SUBTITLE),
-      snoozeMinutes = json.optInt(KEY_SNOOZE, 10),
+      snoozeMinutes = json.optInt(KEY_SNOOZE, 0),
       soundUri = if (json.isNull(KEY_SOUND)) null else json.optString(KEY_SOUND).ifEmpty { null },
       vibrate = json.optBoolean(KEY_VIBRATE, true)
     )

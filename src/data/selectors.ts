@@ -22,8 +22,10 @@ export function useScheduleContext(): ScheduleContext | null {
     // Правки на удалённый тип смены отбрасываются здесь, а не в домене.
     // resolveDay намеренно падает на неизвестном id, а календарь разворачивает
     // через него весь месяц — одна битая запись уронила бы экран целиком.
-    const usable = Object.entries(overrides).filter(([, override]) =>
-      index.has(override.shiftTypeId),
+    // Правка без смены (заметка или часы) проходит всегда: смену для такого дня
+    // даёт сам график.
+    const usable = Object.entries(overrides).filter(
+      ([, override]) => override.shiftTypeId === undefined || index.has(override.shiftTypeId),
     );
 
     return {

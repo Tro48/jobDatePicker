@@ -42,8 +42,15 @@ export interface Alarm {
   snoozeMinutes: number;
 }
 
-export const DEFAULT_SNOOZE_MINUTES = 10;
-export const MIN_SNOOZE_MINUTES = 1;
+/** Отсрочки нет: на экране звонка не будет кнопки «Отложить». */
+export const SNOOZE_OFF = 0;
+
+/**
+ * Новый будильник заводится без отсрочки. «Отложить» — не свойство будильника
+ * по умолчанию, а осознанный выбор: кто ставит будильник на смену, обычно как
+ * раз и не хочет кнопки, которая позволяет проспать ещё десять минут.
+ */
+export const DEFAULT_SNOOZE_MINUTES = SNOOZE_OFF;
 export const MAX_SNOOZE_MINUTES = 60;
 
 /**
@@ -273,8 +280,25 @@ export function describeRepeat(alarm: Alarm, shiftTypes: Map<string, ShiftType>)
   return names.length > 0 ? `Рабочие дни: ${names.join(', ')}` : 'Рабочие дни по графику';
 }
 
-/** Отсрочка в разумных пределах: меньше минуты бессмысленно, больше часа — не отсрочка. */
+/** Отсрочка в разумных пределах: ноль — её нет, больше часа — это уже не отсрочка. */
 export function clampSnoozeMinutes(minutes: number): number {
-  if (!Number.isFinite(minutes)) return DEFAULT_SNOOZE_MINUTES;
-  return Math.max(MIN_SNOOZE_MINUTES, Math.min(Math.round(minutes), MAX_SNOOZE_MINUTES));
+  if (!Number.isFinite(minutes)) return SNOOZE_OFF;
+  return Math.max(SNOOZE_OFF, Math.min(Math.round(minutes), MAX_SNOOZE_MINUTES));
+}
+
+/**
+ * Минуты отсрочки из поля ввода.
+ *
+ * Разбор живёт здесь, а не в экране: поле хранит ровно то, что набрали, —
+ * пустое остаётся пустым и ничего в себя не подставляет, — а к числу текст
+ * приводится один раз, при сохранении. Пусто и мусор — это «без отсрочки».
+ */
+export function parseSnoozeMinutes(text: string): number {
+  const digits = text.replace(/\D/g, '');
+  return digits === '' ? SNOOZE_OFF : clampSnoozeMinutes(Number(digits));
+}
+
+/** Показывать ли кнопку «Отложить»: при нулевой отсрочке откладывать некуда. */
+export function hasSnooze(alarm: Pick<Alarm, 'snoozeMinutes'>): boolean {
+  return alarm.snoozeMinutes > SNOOZE_OFF;
 }

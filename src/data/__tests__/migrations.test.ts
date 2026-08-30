@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { migrateAlarm } from '../migrations.ts';
+import { migrateAlarm, migrateSchedule } from '../migrations.ts';
+import { DEFAULT_SHIFT_TYPES } from '../../domain/shifts.ts';
 import type { Alarm } from '../../domain/alarm.ts';
+import type { ActiveSchedule } from '../../domain/types.ts';
 
 const base: Alarm = {
   id: 'a1',
@@ -34,4 +36,25 @@ test('будильники остальных режимов миграция н
 
   const already: Alarm = { ...base, repeat: { kind: 'schedule', times: { day12: '06:30' } } };
   assert.equal(migrateAlarm(already), already);
+});
+
+test('версия 7: график на исчезнувшую смену сбрасывается, а не роняет календарь', () => {
+  const broken: ActiveSchedule = {
+    presetId: '2-2-day',
+    pattern: { kind: 'cycle', slots: ['day12', 'ghost', 'off', 'off'] },
+    anchorDate: '2026-09-01',
+  };
+
+  assert.equal(migrateSchedule(broken, DEFAULT_SHIFT_TYPES), null);
+});
+
+test('целый график миграция отдаёт как есть', () => {
+  const usable: ActiveSchedule = {
+    presetId: '2-2-day',
+    pattern: { kind: 'cycle', slots: ['day12', 'day12', 'off', 'off'] },
+    anchorDate: '2026-09-01',
+  };
+
+  assert.equal(migrateSchedule(usable, DEFAULT_SHIFT_TYPES), usable);
+  assert.equal(migrateSchedule(null, DEFAULT_SHIFT_TYPES), null);
 });

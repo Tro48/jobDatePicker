@@ -104,7 +104,7 @@ object AlarmScheduler {
       triggerAtMillis = intent.getLongExtra(StoredAlarm.KEY_TRIGGER, 0L),
       title = intent.getStringExtra(StoredAlarm.KEY_TITLE).orEmpty(),
       subtitle = intent.getStringExtra(StoredAlarm.KEY_SUBTITLE).orEmpty(),
-      snoozeMinutes = intent.getIntExtra(StoredAlarm.KEY_SNOOZE, 10),
+      snoozeMinutes = intent.getIntExtra(StoredAlarm.KEY_SNOOZE, 0),
       soundUri = intent.getStringExtra(StoredAlarm.KEY_SOUND),
       vibrate = intent.getBooleanExtra(StoredAlarm.KEY_VIBRATE, true)
     )

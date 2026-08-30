@@ -2,8 +2,19 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AlarmSyncProvider } from '@/features/alarm/AlarmSyncProvider.tsx';
+import { AppErrorScreen } from '@/features/errors/AppErrorScreen.tsx';
 import { useReduceMotion } from '@/ui';
 import { ThemeProvider, useTheme } from '@/theme';
+
+/**
+ * Запасной экран вместо белого поля.
+ *
+ * expo-router подставляет этот экспорт, когда что-то в дереве бросило исключение.
+ * Домен бросает намеренно — на неизвестном типе смены и на пустом цикле, — и без
+ * этой страховки такая ошибка означала бы приложение, из которого нельзя выйти
+ * иначе как переустановкой.
+ */
+export { AppErrorScreen as ErrorBoundary };
 
 /**
  * Корень навигации. Табы лежат в группе (tabs); всё, что вызывается изнутри

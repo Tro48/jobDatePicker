@@ -11,6 +11,7 @@ import { useScheduleContext } from '@/data/selectors.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
+import { AlarmPermissionNotice } from '@/features/alarm/AlarmPermissionNotice.tsx';
 import { Legend } from './Legend.tsx';
 import { WeekdayHeader } from './MonthGrid.tsx';
 import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
@@ -107,6 +108,8 @@ export function CalendarScreen() {
         />
       </View>
 
+      <AlarmPermissionNotice />
+
       <View style={{ marginBottom: theme.spacing.md }}>
         <TodayCard day={todayDay} />
       </View>
@@ -129,9 +132,12 @@ export function CalendarScreen() {
       {summary ? (
         <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.md }}>
           <Legend totals={summary.byShiftType} colorTokens={colorTokens} />
+          {/* Только смены и часы. Число ручных правок отсюда убрано: после
+              двухнедельного отпуска строка «правок: 14» читается как «что-то
+              сломалось на четырнадцати днях», хотя это одна проставленная
+              запись. Кому нужен счёт — он есть в сводке за месяц. */}
           <AppText variant="body" tone="muted">
             {pluralize(summary.workedDays, SHIFT_FORMS)} · {formatTotalHours(summary.workedMinutes)}
-            {summary.adjustedDays > 0 ? ` · правок: ${summary.adjustedDays}` : ''}
           </AppText>
         </View>
       ) : null}

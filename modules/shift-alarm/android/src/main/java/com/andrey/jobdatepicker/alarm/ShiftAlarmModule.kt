@@ -1,11 +1,14 @@
 package com.andrey.jobdatepicker.alarm
 
+import android.Manifest
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import expo.modules.interfaces.permissions.PermissionsStatus
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -23,7 +26,8 @@ class AlarmRecord : Record {
 
   @Field var subtitle: String = ""
 
-  @Field var snoozeMinutes: Int = 10
+  /** 0 — отсрочки нет, кнопки «Отложить» не будет. */
+  @Field var snoozeMinutes: Int = 0
 
   @Field var soundUri: String? = null
 
@@ -86,6 +90,30 @@ class ShiftAlarmModule : Module() {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         startSettings(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, withPackage = true)
       }
+    }
+
+    /**
+     * Разрешение на уведомления системным диалогом.
+     *
+     * С Android 13 оно не выдано по умолчанию, а без него не срабатывает
+     * полноэкранный intent: звук будет, а экрана будильника — нет. Пока система
+     * готова спросить сама, гонять человека в настройки телефона незачем;
+     * ссылка ниже остаётся на случай, когда он уже отказал.
+     */
+    AsyncFunction("requestNotifications") { promise: Promise ->
+      val manager = appContext.permissions
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || manager == null) {
+        promise.resolve(notificationManager().areNotificationsEnabled())
+        return@AsyncFunction
+      }
+
+      manager.askForPermissions(
+        { result ->
+          val status = result[Manifest.permission.POST_NOTIFICATIONS]?.status
+          promise.resolve(status == PermissionsStatus.GRANTED)
+        },
+        Manifest.permission.POST_NOTIFICATIONS
+      )
     }
 
     Function("openNotificationSettings") {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,7 +42,30 @@ export function DayScreen() {
   const setOverride = useAppStore((state) => state.setOverride);
   const clearOverride = useAppStore((state) => state.clearOverride);
 
+  /**
+   * Черновики полей. В хранилище они уходят по уходу фокуса, а не на каждую
+   * букву: одна нажатая клавиша иначе пересобирает контекст графика,
+   * перерисовывает календарь под шторкой и заново ставит все будильники в
+   * системе. null — «поле не трогали», показывается сохранённое значение.
+   */
   const [hoursText, setHoursText] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState<string | null>(null);
+
+  // Шторку закрывают и смахиванием — тогда поле не успевает потерять фокус, и
+  // набранное пропало бы. Ref держит последнюю версию замыкания и заполняется
+  // ниже; сам эффект отрабатывает один раз, при размонтировании. Хуки стоят до
+  // ветки «график не выбран»: ниже неё их вызывать уже нельзя.
+  const flush = useRef<() => void>(() => {});
+  useEffect(() => () => flush.current(), []);
+
+  /**
+   * Набирали ли что-то с последней записи.
+   *
+   * Без флага «Готово» записывало бы дважды: замыкание, дописывающее поля при
+   * размонтировании, ещё не знает, что их только что сохранили, — сброс
+   * состояния до него не доезжает.
+   */
+  const pending = useRef(false);
 
   // Отступ снизу свой: у шторки под содержимым системная полоса навигации.
   const padding = {
@@ -86,36 +109,62 @@ export function DayScreen() {
     })),
   ];
 
-  const applyShiftType = (value: string) => {
-    setHoursText(null);
-    if (value === FOLLOW_SCHEDULE) {
-      clearOverride(date);
-      return;
-    }
-    // Часы сбрасываются вместе со сменой: у новой смены своя штатная длительность.
-    setOverride({ date, shiftTypeId: value, note: override?.note });
+  /** Черновик часов правится у себя; в хранилище он уходит из commitDrafts. */
+  const editHours = (text: string) => {
+    pending.current = true;
+    setHoursText(text);
   };
 
-  const applyHours = (text: string) => {
-    setHoursText(text);
-    const minutes = parseHoursToMinutes(text);
-    if (minutes === null) return;
+  const editNote = (text: string) => {
+    pending.current = true;
+    setNoteText(text);
+  };
+
+  /** Черновики набраны заново — то, что было в полях, больше не нужно. */
+  const dropDrafts = () => {
+    pending.current = false;
+    setHoursText(null);
+    setNoteText(null);
+  };
+
+  const applyShiftType = (value: string) => {
+    // Часы сбрасываются вместе со сменой: у новой смены своя штатная
+    // длительность. Заметка переживает смену — это разные вещи.
+    dropDrafts();
     setOverride({
       date,
-      shiftTypeId: resolved.shiftType.id,
-      workedMinutesOverride: minutes,
+      shiftTypeId: value === FOLLOW_SCHEDULE ? undefined : value,
       note: override?.note,
     });
   };
 
-  const applyNote = (note: string) => {
+  /**
+   * Дописать черновики в хранилище. Смена в правке не проставляется: заметка и
+   * часы сами по себе день от графика не отвязывают, иначе сдвиг даты первой
+   * смены переставал бы такие дни трогать.
+   */
+  const commitDrafts = () => {
+    if (!pending.current) return;
+
+    const minutes = hoursText === null ? undefined : parseHoursToMinutes(hoursText);
+    const note = noteText?.trim();
+
+    // Мусор в поле часов не сохраняется: поле вернётся к сохранённому значению.
+    const nextMinutes = minutes ?? override?.workedMinutesOverride;
+    const nextNote = note === undefined ? override?.note : note.length > 0 ? note : undefined;
+
+    dropDrafts();
+
+    if (nextMinutes === override?.workedMinutesOverride && nextNote === override?.note) return;
     setOverride({
       date,
-      shiftTypeId: resolved.shiftType.id,
-      workedMinutesOverride: override?.workedMinutesOverride,
-      note: note.length > 0 ? note : undefined,
+      shiftTypeId: override?.shiftTypeId,
+      workedMinutesOverride: nextMinutes,
+      note: nextNote,
     });
   };
+
+  flush.current = commitDrafts;
 
   return (
     <Sheet title={formatDayLong(date)} onClose={() => router.back()}>
@@ -123,7 +172,6 @@ export function DayScreen() {
         {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={padding}
-        keyboardShouldPersistTaps="handled"
       >
         <Card title="Сейчас">
           <AppText variant="heading">{resolved.shiftType.name}</AppText>
@@ -145,7 +193,7 @@ export function DayScreen() {
           <ChoiceGroup
             label="Смена в этот день"
             choices={choices}
-            value={override ? override.shiftTypeId : FOLLOW_SCHEDULE}
+            value={override?.shiftTypeId ?? FOLLOW_SCHEDULE}
             onChange={applyShiftType}
           />
         </Card>
@@ -159,7 +207,8 @@ export function DayScreen() {
             <TextField
               label="Отработано часов"
               value={hoursValue}
-              onChangeText={applyHours}
+              onChangeText={editHours}
+              onBlur={commitDrafts}
               keyboardType="decimal-pad"
               hint={`Штатно за эту смену — ${formatDuration(plannedMinutes)}`}
             />
@@ -171,8 +220,9 @@ export function DayScreen() {
         <Card title="Заметка">
           <TextField
             label="Заметка к дню"
-            value={override?.note ?? ''}
-            onChangeText={applyNote}
+            value={noteText ?? override?.note ?? ''}
+            onChangeText={editNote}
+            onBlur={commitDrafts}
             placeholder="Например: вышел за Сергея"
             multiline
           />
@@ -185,14 +235,21 @@ export function DayScreen() {
             <Button
               title="Вернуть по графику"
               variant="danger"
-              accessibilityHint="Удаляет ручную правку этого дня"
+              accessibilityHint="Удаляет правку этого дня целиком, вместе с заметкой"
               onPress={() => {
-                setHoursText(null);
+                dropDrafts();
                 clearOverride(date);
               }}
             />
           ) : null}
-          <Button title="Готово" variant="primary" onPress={() => router.back()} />
+          <Button
+            title="Готово"
+            variant="primary"
+            onPress={() => {
+              commitDrafts();
+              router.back();
+            }}
+          />
         </View>
       </ScrollView>
     </Sheet>

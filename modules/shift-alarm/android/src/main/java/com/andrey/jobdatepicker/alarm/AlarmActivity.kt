@@ -36,6 +36,21 @@ class AlarmActivity : Activity() {
     setContentView(buildLayout())
   }
 
+  /**
+   * Второй будильник, пока экран уже открыт.
+   *
+   * Активность объявлена singleInstance, поэтому система приносит новый intent
+   * сюда, а не создаёт экран заново. Без этого на экране остался бы заголовок
+   * первого будильника, а «Отложить» откладывало бы его вместо того, который
+   * звонит.
+   */
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    alarm = AlarmScheduler.alarmFromIntent(intent)
+    setContentView(buildLayout())
+  }
+
   /** Кнопка «назад» будильник не выключает — иначе его глушат случайно. */
   @Suppress("DEPRECATION")
   override fun onBackPressed() = Unit
@@ -74,12 +89,16 @@ class AlarmActivity : Activity() {
       }
     )
 
-    val snooze = alarm?.snoozeMinutes ?: 10
-    root.addView(
-      button("Отложить на $snooze мин", SURFACE, TEXT) {
-        sendToService(AlarmService.ACTION_SNOOZE)
-      }
-    )
+    // Отсрочка выключена — кнопки нет вовсе. Неактивная кнопка спросонья
+    // читается как «не сработало», а не как «так задумано».
+    val snooze = alarm?.takeIf { it.canSnooze }?.snoozeMinutes
+    if (snooze != null) {
+      root.addView(
+        button("Отложить на $snooze мин", SURFACE, TEXT) {
+          sendToService(AlarmService.ACTION_SNOOZE)
+        }
+      )
+    }
 
     return root
   }

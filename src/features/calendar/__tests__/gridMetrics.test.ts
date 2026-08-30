@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GRID_GAP, gridMetrics } from '../gridMetrics.ts';
+import { GRID_GAP, gridHeight, gridMetrics } from '../gridMetrics.ts';
 
 /**
  * Регрессия на реальную поломку: при дробной ширине клетки семь клеток и шесть
@@ -24,7 +24,9 @@ test('остаток ширины меньше семи пунктов — по�
   }
 });
 
-test('высота считается по шести строкам', () => {
-  const { cellSize, height } = gridMetrics(360);
-  assert.equal(height, 6 * (cellSize + GRID_GAP));
+test('высота считается по числу недель месяца', () => {
+  const { cellSize } = gridMetrics(360);
+  for (const rows of [4, 5, 6]) {
+    assert.equal(gridHeight(360, rows), rows * (cellSize + GRID_GAP), `${rows} строк`);
+  }
 });
