@@ -9,6 +9,8 @@ import { clampSnoozeMinutes, restartOnce } from '@/domain/alarm.ts';
 import type { Alarm } from '@/domain/alarm.ts';
 import { addDays } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
+import { LATEST_RELEASE_ID } from '@/domain/releaseNotes.ts';
+import type { ReleaseManifest } from '@/domain/release.ts';
 import type {
   ActiveSchedule,
   DayOverride,
@@ -22,9 +24,29 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
+
+/**
+ * Что известно про вышедшую сборку APK.
+ *
+ * Кеш, а не данные пользователя: список выпусков лежит в сети, а календарь
+ * должен знать про новую сборку сразу при открытии, не дожидаясь запроса и не
+ * дёргая сеть на каждом запуске.
+ */
+export interface BuildCheck {
+  /** Когда последний раз ходили за списком выпусков. 0 — ещё ни разу. */
+  checkedAt: number;
+  /** Сборка новее установленной или null. */
+  build: ReleaseManifest | null;
+  /**
+   * Отпечаток сборки, про которую человек уже сказал «понял». Полоска на
+   * календаре молчит, пока не выйдет следующая сборка или пока он сам не
+   * нажмёт проверку в настройках.
+   */
+  dismissedRuntime: string | null;
+}
 
 export interface AppState {
   appearance: ThemePreference;
@@ -42,6 +64,12 @@ export interface AppState {
   /** Ручные правки по датам: ключ — дата в формате YYYY-MM-DD. */
   overrides: Record<IsoDate, DayOverride>;
   payments: PaymentRecord[];
+  /**
+   * До какой записи «что нового» человек уже дочитал. null — не видел ничего:
+   * так выглядит обновление с прошлой схемы хранилища.
+   */
+  lastSeenReleaseId: string | null;
+  buildCheck: BuildCheck;
 }
 
 /** Часть состояния, которая переживает перезапуск. */
@@ -73,6 +101,15 @@ export interface AppActions {
   clearOverrideRange: (startDate: IsoDate, days: number) => void;
   addPayment: (payment: Omit<PaymentRecord, 'id'>) => void;
   removePayment: (id: string) => void;
+  /** «Что нового» прочитано: полоска на календаре больше не показывается. */
+  markReleasesSeen: () => void;
+  /** Отметка похода в сеть — ставится до запроса, чтобы два экрана не пошли разом. */
+  markBuildChecked: (checkedAt: number) => void;
+  setKnownBuild: (build: ReleaseManifest | null) => void;
+  /** «Понял»: полоска про эту сборку молчит до следующей. */
+  dismissBuildNotice: () => void;
+  /** Ручная проверка в настройках снимает молчание — иначе оно навсегда. */
+  allowBuildNotice: () => void;
 }
 
 const DEFAULT_PAYROLL: PayrollSettings = {
@@ -89,6 +126,10 @@ export const INITIAL_STATE: AppState = {
   alarms: [],
   overrides: {},
   payments: [],
+  // Новая установка «что нового» не видит: рассказывать про изменения тому,
+  // кто только поставил приложение, нечего.
+  lastSeenReleaseId: LATEST_RELEASE_ID,
+  buildCheck: { checkedAt: 0, build: null, dismissedRuntime: null },
 };
 
 /** Единственное место, где чинятся значения из формы: отсрочка вне диапазона. */
@@ -205,6 +246,24 @@ export const useAppStore = create<AppState & AppActions>()(
 
       removePayment: (id) =>
         set((state) => ({ payments: state.payments.filter((item) => item.id !== id) })),
+
+      markReleasesSeen: () => set({ lastSeenReleaseId: LATEST_RELEASE_ID }),
+
+      markBuildChecked: (checkedAt) =>
+        set((state) => ({ buildCheck: { ...state.buildCheck, checkedAt } })),
+
+      setKnownBuild: (build) => set((state) => ({ buildCheck: { ...state.buildCheck, build } })),
+
+      dismissBuildNotice: () =>
+        set((state) => ({
+          buildCheck: {
+            ...state.buildCheck,
+            dismissedRuntime: state.buildCheck.build?.runtimeVersion ?? null,
+          },
+        })),
+
+      allowBuildNotice: () =>
+        set((state) => ({ buildCheck: { ...state.buildCheck, dismissedRuntime: null } })),
     }),
     {
       name: 'app-state',
@@ -218,6 +277,8 @@ export const useAppStore = create<AppState & AppActions>()(
         alarms: state.alarms,
         overrides: state.overrides,
         payments: state.payments,
+        lastSeenReleaseId: state.lastSeenReleaseId,
+        buildCheck: state.buildCheck,
       }),
       migrate: (persisted, version) => migrateState(persisted as Partial<AppState>, version),
     },
@@ -235,6 +296,9 @@ export const useAppStore = create<AppState & AppActions>()(
  * В версии 7 смена в ручной правке стала необязательной: правка может держать
  * одну заметку, не отвязывая день от графика. Старые записи читаются как есть —
  * смена в них указана всегда.
+ *
+ * В версии 8 появились отметка прочитанного «что нового» и кеш проверки
+ * выпусков.
  */
 export function migrateState(persisted: Partial<AppState>, _version: number): AppState {
   // До версии 4 будильник был не списком, а одним набором настроек по типам
@@ -246,5 +310,17 @@ export function migrateState(persisted: Partial<AppState>, _version: number): Ap
   // справочника: разложить такой график нельзя, а падает он на каждой дате.
   const schedule = migrateSchedule(persisted.schedule, DEFAULT_SHIFT_TYPES);
 
-  return { ...INITIAL_STATE, ...persisted, schedule, alarms, shiftTypes: DEFAULT_SHIFT_TYPES };
+  return {
+    ...INITIAL_STATE,
+    ...persisted,
+    schedule,
+    alarms,
+    shiftTypes: DEFAULT_SHIFT_TYPES,
+    // Обновление со старой схемы — это человек, который только что получил
+    // новую версию: ему «что нового» показать надо, поэтому null, а не
+    // значение по умолчанию для новой установки.
+    lastSeenReleaseId: persisted.lastSeenReleaseId ?? null,
+    // Кеш проверки достраивается по частям: в старом снимке его нет вовсе.
+    buildCheck: { ...INITIAL_STATE.buildCheck, ...persisted.buildCheck },
+  };
 }

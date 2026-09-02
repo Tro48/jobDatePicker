@@ -19,6 +19,7 @@ import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 import { AlarmPermissionNotice } from '@/features/alarm/AlarmPermissionNotice.tsx';
+import { UpdateNotice } from '@/features/updates/UpdateNotice.tsx';
 import { Legend } from './Legend.tsx';
 import { WeekdayHeader } from './MonthGrid.tsx';
 import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
@@ -66,7 +67,11 @@ export function CalendarScreen() {
         style={{ flex: 1, backgroundColor: theme.colors.background }}
         contentContainerStyle={padding}
       >
-        <AppText variant="display" accessibilityRole="header" style={{ marginBottom: theme.spacing.lg }}>
+        <AppText
+          variant="display"
+          accessibilityRole="header"
+          style={{ marginBottom: theme.spacing.lg }}
+        >
           Календарь
         </AppText>
         <Card title="График не выбран">
@@ -119,7 +124,11 @@ export function CalendarScreen() {
 
       <AlarmPermissionNotice />
 
-      <View style={{ marginBottom: theme.spacing.md }}>
+      {/* Обновление — новость, а не работа: полоска стоит после разрешений
+          будильника, которые чинить надо прямо сейчас, и перед календарём,
+          иначе её никто не увидит. */}
+      <View style={{ marginBottom: theme.spacing.md, gap: theme.spacing.md }}>
+        <UpdateNotice />
         <TodayCard day={todayDay} />
       </View>
 

@@ -116,12 +116,18 @@ jobs:
             exit 0
           fi
 
+          # Что изменилось — из того же списка, который показывает шторка «Что
+          # нового». Телефону со старым JS взять этот текст больше неоткуда:
+          # обновление под новым отпечатком до него не доезжает.
+          notes=$(node --experimental-strip-types scripts/release-notes.ts)
+
           jq -n \
             --arg runtimeVersion "$runtime" \
             --arg url "https://github.com/${{ github.repository }}/releases/download/$tag/$apk" \
             --arg version "$version" \
             --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{runtimeVersion: $runtimeVersion, url: $url, version: $version, builtAt: $builtAt}' \
+            --arg notes "$notes" \
+            '{runtimeVersion: $runtimeVersion, url: $url, version: $version, builtAt: $builtAt, notes: $notes}' \
             > android.json
 
           gh release create "$tag" "$apk" android.json \

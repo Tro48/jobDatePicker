@@ -62,6 +62,7 @@ function RootStack() {
         <Stack.Screen name="day/[date]" options={sheet} />
         <Stack.Screen name="alarm/[id]" options={sheet} />
         <Stack.Screen name="summary/year" options={sheet} />
+        <Stack.Screen name="whats-new" options={sheet} />
         <Stack.Screen name="settings/schedule" options={sheet} />
         <Stack.Screen name="settings/payroll" options={sheet} />
       </Stack>
