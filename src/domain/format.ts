@@ -103,13 +103,49 @@ export function formatTimeUntil(minutes: number): string {
   return `${rest}\u00A0мин`;
 }
 
+/**
+ * Часы без единицы измерения: 10320 → «172», 10350 → «172,5».
+ *
+ * Общая основа для итога, соотношения и отклонения — иначе один и тот же
+ * месяц округлялся бы в трёх местах по-разному.
+ */
+export function formatHours(minutes: number): string {
+  const rounded = Math.round((minutes / 60) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace('.', ',');
+}
+
 /** Итог за месяц: «172 ч», «172,5 ч». */
 export function formatTotalHours(minutes: number): string {
-  const hours = minutes / 60;
-  const rounded = Math.round(hours * 10) / 10;
-  return Number.isInteger(rounded)
-    ? `${rounded}\u00A0ч`
-    : `${rounded.toFixed(1).replace('.', ',')}\u00A0ч`;
+  return `${formatHours(minutes)}\u00A0ч`;
+}
+
+/** «144/192 ч» — сколько из запланированного на месяц уже отработано. */
+export function formatHoursRatio(done: number, total: number): string {
+  return `${formatHours(done)}/${formatHours(total)}\u00A0ч`;
+}
+
+/**
+ * Отклонение факта от нормы смены для клетки календаря: «+2», «−1,5».
+ *
+ * Знак пишется всегда: переработка и недоработка не должны различаться одним
+ * лишь цветом. Минус — типографский (U+2212), а не дефис: в мелком кегле
+ * дефис теряется.
+ */
+export function formatOvertimeShort(minutes: number): string {
+  if (minutes === 0) return '';
+  return `${minutes > 0 ? '+' : '\u2212'}${formatHours(Math.abs(minutes))}`;
+}
+
+/** То же отклонение с единицей измерения: «+6 ч», «−3 ч». */
+export function formatOvertimeTotal(minutes: number): string {
+  return minutes === 0 ? '0\u00A0ч' : `${formatOvertimeShort(minutes)}\u00A0ч`;
+}
+
+/** Отклонение для скринридера: «переработка 2 часа», «недоработка 1 час 30 минут». */
+export function formatOvertimeSpoken(minutes: number): string {
+  if (minutes === 0) return '';
+  const word = minutes > 0 ? 'переработка' : 'недоработка';
+  return `${word} ${formatDurationSpoken(Math.abs(minutes))}`;
 }
 
 /** Длительность для скринридера: «12 часов», «7 часов 30 минут». */

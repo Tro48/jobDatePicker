@@ -4,7 +4,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import { resolveDay } from '@/domain/engine.ts';
-import { SHIFT_FORMS, formatMonthTitle, formatTotalHours, pluralize } from '@/domain/format.ts';
+import {
+  SHIFT_FORMS,
+  formatHoursRatio,
+  formatMonthTitle,
+  formatTotalHours,
+  plural,
+  pluralize,
+} from '@/domain/format.ts';
 import { periodOf } from '@/domain/payday.ts';
 import { buildMonthSummary } from '@/domain/summary.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
@@ -31,8 +38,8 @@ export function CalendarScreen() {
   const visible = months[index];
 
   const summary = useMemo(
-    () => (context ? buildMonthSummary(context, visible.period, []) : null),
-    [context, visible.period],
+    () => (context ? buildMonthSummary(context, visible.period, [], today) : null),
+    [context, visible.period, today],
   );
 
   const colorTokens = useMemo(() => {
@@ -77,6 +84,8 @@ export function CalendarScreen() {
   }
 
   const todayDay = resolveDay(context, today);
+  // Прошлый месяц отработан целиком — дробить его числа незачем.
+  const monthClosed = summary === null || summary.elapsedWorkedDays === summary.workedDays;
 
   return (
     <ScrollView
@@ -132,15 +141,64 @@ export function CalendarScreen() {
       {summary ? (
         <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.md }}>
           <Legend totals={summary.byShiftType} colorTokens={colorTokens} />
-          {/* Только смены и часы. Число ручных правок отсюда убрано: после
-              двухнедельного отпуска строка «правок: 14» читается как «что-то
-              сломалось на четырнадцати днях», хотя это одна проставленная
-              запись. Кому нужен счёт — он есть в сводке за месяц. */}
-          <AppText variant="body" tone="muted">
-            {pluralize(summary.workedDays, SHIFT_FORMS)} · {formatTotalHours(summary.workedMinutes)}
-          </AppText>
+          <View style={{ gap: theme.spacing.xs }}>
+            {/* Только смены и часы. Число ручных правок отсюда убрано: после
+                двухнедельного отпуска строка «правок: 14» читается как «что-то
+                сломалось на четырнадцати днях», хотя это одна проставленная
+                запись. Кому нужен счёт — он есть в сводке за месяц.
+
+                В незакрытом месяце числа идут дробью: «7/16 смен» — сколько из
+                запланированного уже отработано. */}
+            <AppText
+              variant="body"
+              tone="muted"
+              accessibilityLabel={
+                monthClosed
+                  ? `${pluralize(summary.workedDays, SHIFT_FORMS)}, ${formatTotalHours(summary.workedMinutes)}`
+                  : `Отработано ${summary.elapsedWorkedDays} из ${pluralize(summary.workedDays, SHIFT_FORMS)}, ${formatTotalHours(summary.elapsedWorkedMinutes)} из ${formatTotalHours(summary.workedMinutes)}`
+              }
+            >
+              {monthClosed
+                ? `${pluralize(summary.workedDays, SHIFT_FORMS)} · ${formatTotalHours(summary.workedMinutes)}`
+                : `${summary.elapsedWorkedDays}/${summary.workedDays} ${plural(summary.workedDays, SHIFT_FORMS)} · ${formatHoursRatio(summary.elapsedWorkedMinutes, summary.workedMinutes)}`}
+            </AppText>
+            <OvertimeLine minutes={summary.overtimeMinutes} />
+          </View>
         </View>
       ) : null}
     </ScrollView>
+  );
+}
+
+/**
+ * Итог переработки за месяц одной строкой: точка того же цвета, что и в
+ * клетках, плюс часы. Точка здесь работает легендой к календарю — потому и
+ * стоит прямо под ним.
+ *
+ * Плюсы и минусы месяца складываются, и в ноль они сходятся редко; сошлись —
+ * строки нет, показывать «0 ч» незачем.
+ */
+function OvertimeLine({ minutes }: { minutes: number }) {
+  const theme = useTheme();
+  if (minutes === 0) return null;
+
+  const over = minutes > 0;
+  const color = over ? theme.colors.positive : theme.colors.danger;
+  const hours = formatTotalHours(Math.abs(minutes));
+
+  return (
+    <View
+      accessibilityRole="text"
+      accessibilityLabel={`${over ? 'Переработка' : 'Недоработка'} за месяц: ${hours}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs }}
+    >
+      <View
+        importantForAccessibility="no"
+        style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }}
+      />
+      <AppText variant="body" color={color} importantForAccessibility="no">
+        {over ? 'Переработка' : 'Недоработка'} {hours}
+      </AppText>
+    </View>
   );
 }

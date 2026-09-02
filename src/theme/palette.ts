@@ -20,6 +20,13 @@ export interface Palette {
   border: string;
   accent: string;
   onAccent: string;
+  /**
+   * Переработка: цифра «+2» в клетке календаря. Читается поверх любой заливки
+   * смены, а не только поверх фона, — поэтому отдельный токен, а не оттенок
+   * акцента. Недоработка берёт danger: минус в углу клетки и есть сигнал
+   * «недобрал», отдельного цвета для него заводить незачем.
+   */
+  positive: string;
   /** Кольцо фокуса для навигации с клавиатуры и переключателей. */
   focus: string;
   danger: string;
@@ -35,6 +42,7 @@ export const lightPalette: Palette = {
   border: '#8A93A0',
   accent: '#1D4ED8',
   onAccent: '#FFFFFF',
+  positive: '#14532D',
   focus: '#1D4ED8',
   danger: '#B42318',
   shifts: {
@@ -60,6 +68,7 @@ export const darkPalette: Palette = {
   border: '#69727F',
   accent: '#93B4FF',
   onAccent: '#0F1115',
+  positive: '#86EFAC',
   focus: '#93B4FF',
   danger: '#FF9A92',
   shifts: {
@@ -77,3 +86,30 @@ export const darkPalette: Palette = {
 };
 
 export const palettes = { light: lightPalette, dark: darkPalette };
+
+/**
+ * Насколько заливка уже отработанной смены уходит в нейтральный серый.
+ *
+ * Приглушается только фон клетки, подпись остаётся исходной: прозрачность
+ * всего элемента уронила бы контраст буквы ниже проверенного порога, а
+ * смешение с серым его, наоборот, поднимает — заливка отходит от подписи, а
+ * не приближается к ней.
+ */
+export const WORKED_FADE = 0.65;
+
+/** Доля цвета `to` в цвете `from`: 0 — только from, 1 — только to. */
+export function mixHex(from: string, to: string, amount: number): string {
+  const channels = [0, 2, 4].map((offset) => {
+    const a = parseInt(from.slice(1 + offset, 3 + offset), 16);
+    const b = parseInt(to.slice(1 + offset, 3 + offset), 16);
+    return Math.round(a + (b - a) * amount)
+      .toString(16)
+      .padStart(2, '0');
+  });
+  return `#${channels.join('')}`.toUpperCase();
+}
+
+/** Пара цветов для отработанной смены: заливка приглушена, подпись не тронута. */
+export function fadedShiftPair(pair: ColorPair, neutral: string): ColorPair {
+  return { surface: mixHex(pair.surface, neutral, WORKED_FADE), on: pair.on };
+}

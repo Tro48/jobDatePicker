@@ -6,7 +6,7 @@
  * фокуса 3:1. Скрипт возвращает ненулевой код, если что-то не проходит, —
  * чтобы палитру нельзя было «поправить на глаз» и сломать доступность.
  */
-import { palettes } from '../src/theme/palette.ts';
+import { fadedShiftPair, palettes } from '../src/theme/palette.ts';
 import type { Palette } from '../src/theme/palette.ts';
 
 function channelLuminance(value: number): number {
@@ -51,11 +51,25 @@ function checksFor(palette: Palette): Check[] {
     { label: 'кольцо фокуса на фоне', foreground: palette.focus, background: palette.background, minimum: 3 },
     { label: 'кольцо фокуса на панели', foreground: palette.focus, background: palette.surface, minimum: 3 },
     { label: 'цвет ошибки на фоне', foreground: palette.danger, background: palette.background, minimum: 4.5 },
+    { label: 'цвет ошибки на панели', foreground: palette.danger, background: palette.surface, minimum: 4.5 },
+    { label: 'переработка на фоне', foreground: palette.positive, background: palette.background, minimum: 4.5 },
+    { label: 'переработка на панели', foreground: palette.positive, background: palette.surface, minimum: 4.5 },
   ];
 
   for (const [token, pair] of Object.entries(palette.shifts)) {
+    // Заливка отработанной смены — не «примерно та же»: цифра отклонения и
+    // буква-маркер живут на ней, значит и порог она проходит отдельно.
+    const faded = fadedShiftPair(pair, palette.surface);
+
     checks.push({ label: `${token}: подпись на заливке`, foreground: pair.on, background: pair.surface, minimum: 4.5 });
     checks.push({ label: `${token}: кольцо фокуса на заливке`, foreground: palette.focus, background: pair.surface, minimum: 3 });
+    checks.push({ label: `${token}: подпись на приглушённой заливке`, foreground: faded.on, background: faded.surface, minimum: 4.5 });
+    checks.push({ label: `${token}: кольцо фокуса на приглушённой заливке`, foreground: palette.focus, background: faded.surface, minimum: 3 });
+
+    for (const [state, color] of [['переработка', palette.positive], ['недоработка', palette.danger]] as const) {
+      checks.push({ label: `${token}: ${state} на заливке`, foreground: color, background: pair.surface, minimum: 4.5 });
+      checks.push({ label: `${token}: ${state} на приглушённой заливке`, foreground: color, background: faded.surface, minimum: 4.5 });
+    }
   }
   return checks;
 }

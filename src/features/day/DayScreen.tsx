@@ -6,6 +6,7 @@ import { todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import {
   findOverrideRun,
+  overtimeMinutes,
   resolveDay,
   resolvePlannedShiftId,
   shiftDurationMinutes,
@@ -14,12 +15,13 @@ import {
   formatDayLong,
   formatDuration,
   formatMinutesAsHoursInput,
+  formatOvertimeSpoken,
   formatTimeRange,
   parseHoursToMinutes,
 } from '@/domain/format.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, Sheet, TextField, useSheetScroll } from '@/ui';
+import { AppText, Button, Card, Select, Sheet, TextField, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 import { DayAlarmSection } from './DayAlarmSection.tsx';
 import { DayPaymentSection } from './DayPaymentSection.tsx';
@@ -96,18 +98,25 @@ export function DayScreen() {
 
   const resolved = resolveDay(context, date);
   const isWork = resolved.shiftType.kind === 'work';
-  const plannedMinutes = shiftDurationMinutes(resolved.shiftType);
+  const shiftNormMinutes = shiftDurationMinutes(resolved.shiftType);
   const hoursValue = hoursText ?? formatMinutesAsHoursInput(resolved.workedMinutes);
+  const overtime = overtimeMinutes(resolved);
   const run = findOverrideRun(context.overrides, date);
 
-  const choices = [
-    { value: FOLLOW_SCHEDULE, label: `По графику — ${planned.name.toLowerCase()}` },
-    ...shiftTypes.map((type) => ({
-      value: type.id,
-      label: type.name,
-      hint: type.multiDay ? 'можно поставить на несколько дней подряд' : undefined,
-    })),
-  ];
+  /**
+   * Список смен без отдельной строки «по графику»: она называлась бы так же,
+   * как сама смена из графика, и в списке стояли бы два одинаковых названия
+   * подряд. Вместо этого смена из графика подписана снизу, а выбор её же
+   * означает «следовать графику» — правка удаляется.
+   */
+  const shiftOptions = shiftTypes.map((type) => {
+    const hints = [
+      type.id === planned.id ? 'по графику' : null,
+      type.multiDay ? 'можно поставить на несколько дней подряд' : null,
+    ].filter(Boolean);
+
+    return { value: type.id, label: type.name, hint: hints.join(' · ') || undefined };
+  });
 
   /** Черновик часов правится у себя; в хранилище он уходит из commitDrafts. */
   const editHours = (text: string) => {
@@ -177,7 +186,7 @@ export function DayScreen() {
           <AppText variant="heading">{resolved.shiftType.name}</AppText>
           {isWork ? (
             <AppText variant="body" tone="muted">
-              {resolved.shiftType.time && resolved.workedMinutes === plannedMinutes
+              {resolved.shiftType.time && resolved.workedMinutes === shiftNormMinutes
                 ? `${formatTimeRange(resolved.shiftType.time.start, resolved.shiftType.time.end)} · ${formatDuration(resolved.workedMinutes)}`
                 : formatDuration(resolved.workedMinutes)}
             </AppText>
@@ -190,11 +199,14 @@ export function DayScreen() {
         </Card>
 
         <Card title="Смена">
-          <ChoiceGroup
+          {/* Выпадающий список, а не десять строк подряд: справочник смен
+              растянул карточку дня на два экрана, и часы с заметкой уезжали
+              под сгиб. */}
+          <Select
             label="Смена в этот день"
-            choices={choices}
-            value={override?.shiftTypeId ?? FOLLOW_SCHEDULE}
-            onChange={applyShiftType}
+            options={shiftOptions}
+            value={override?.shiftTypeId ?? planned.id}
+            onChange={(value) => applyShiftType(value === planned.id ? FOLLOW_SCHEDULE : value)}
           />
         </Card>
 
@@ -210,8 +222,19 @@ export function DayScreen() {
               onChangeText={editHours}
               onBlur={commitDrafts}
               keyboardType="decimal-pad"
-              hint={`Штатно за эту смену — ${formatDuration(plannedMinutes)}`}
+              hint={`Штатно за эту смену — ${formatDuration(shiftNormMinutes)}`}
             />
+            {/* То же число, что стоит в клетке календаря рядом с буквой смены:
+                иначе непонятно, откуда там взялось «+2». */}
+            {overtime !== 0 ? (
+              <AppText
+                variant="caption"
+                color={overtime > 0 ? theme.colors.positive : theme.colors.danger}
+                accessibilityLabel={formatOvertimeSpoken(overtime)}
+              >
+                {overtime > 0 ? 'Переработка' : 'Недоработка'}: {formatDuration(Math.abs(overtime))}
+              </AppText>
+            ) : null}
           </Card>
         ) : null}
 

@@ -7,10 +7,10 @@ import type { Period } from '@/domain/payday.ts';
 import { PAYMENT_KINDS, PAYMENT_KIND_LABELS, isCompensationPayment } from '@/domain/payments.ts';
 import type { PaymentKind } from '@/domain/types.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, IconButton, TextField } from '@/ui';
+import { AppText, Button, Card, IconButton, Select, TextField } from '@/ui';
 import { useTheme } from '@/theme';
 
-const KIND_CHOICES = PAYMENT_KINDS.map((kind) => ({
+const KIND_OPTIONS = PAYMENT_KINDS.map((kind) => ({
   value: kind,
   label: PAYMENT_KIND_LABELS[kind],
 }));
@@ -86,9 +86,9 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
         </View>
       ))}
 
-      <ChoiceGroup
+      <Select
         label="Тип выплаты"
-        choices={KIND_CHOICES}
+        options={KIND_OPTIONS}
         value={kind}
         onChange={(next) => {
           setKind(next);

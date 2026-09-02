@@ -1,10 +1,11 @@
 import { monthDays } from './date.ts';
-import { resolveRange } from './engine.ts';
+import type { IsoDate } from './date.ts';
+import { overtimeMinutes, resolveRange } from './engine.ts';
 import type { ScheduleContext } from './engine.ts';
 import type { Period } from './payday.ts';
-import { assertPeriod, periodOf } from './payday.ts';
+import { assertPeriod } from './payday.ts';
 import { PAYMENT_KINDS, isCompensationPayment } from './payments.ts';
-import type { PaymentKind, PaymentRecord, ResolvedDay } from './types.ts';
+import type { PaymentKind, PaymentRecord } from './types.ts';
 
 export interface ShiftTypeTotals {
   shiftTypeId: string;
@@ -16,8 +17,19 @@ export interface ShiftTypeTotals {
 
 export interface MonthSummary {
   period: Period;
+  /** Все смены месяца, включая ещё не наступившие. */
   workedDays: number;
   workedMinutes: number;
+  /**
+   * Сколько из этого уже позади: смены по указанную дату включительно. Для
+   * закрытого месяца совпадает с workedDays и workedMinutes, для будущего — 0.
+   */
+  elapsedWorkedDays: number;
+  elapsedWorkedMinutes: number;
+  /** Сумма отклонений факта от нормы смен, со знаком: плюс — переработка. */
+  overtimeMinutes: number;
+  /** Сколько дней разошлись с нормой — в любую сторону. */
+  overtimeDays: number;
   restDays: number;
   /** Дни, где план был изменён вручную: подработки и незапланированные выходные. */
   adjustedDays: number;
@@ -54,6 +66,7 @@ export function buildMonthSummary(
   context: ScheduleContext,
   period: Period,
   allPayments: PaymentRecord[],
+  today: IsoDate,
 ): MonthSummary {
   assertPeriod(period);
   const year = Number(period.slice(0, 4));
@@ -63,6 +76,10 @@ export function buildMonthSummary(
   const totals = new Map<string, ShiftTypeTotals>();
   let workedDays = 0;
   let workedMinutes = 0;
+  let elapsedWorkedDays = 0;
+  let elapsedWorkedMinutes = 0;
+  let overtime = 0;
+  let overtimeDays = 0;
   let restDays = 0;
   let adjustedDays = 0;
 
@@ -82,9 +99,23 @@ export function buildMonthSummary(
     if (shiftType.kind === 'work') {
       workedDays += 1;
       workedMinutes += day.workedMinutes;
+      // Сегодняшняя смена считается отработанной целиком: приложение не знает
+      // ни времени, ни того, ушёл ли человек раньше. Дробить её по часам —
+      // выдумывать точность, которой нет.
+      if (day.date <= today) {
+        elapsedWorkedDays += 1;
+        elapsedWorkedMinutes += day.workedMinutes;
+      }
     } else {
       restDays += 1;
     }
+
+    const deviation = overtimeMinutes(day);
+    if (deviation !== 0) {
+      overtime += deviation;
+      overtimeDays += 1;
+    }
+
     if (day.source === 'override') adjustedDays += 1;
   }
 
@@ -111,6 +142,10 @@ export function buildMonthSummary(
     period,
     workedDays,
     workedMinutes,
+    elapsedWorkedDays,
+    elapsedWorkedMinutes,
+    overtimeMinutes: overtime,
+    overtimeDays,
     restDays,
     adjustedDays,
     byShiftType: [...totals.values()].sort((a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name)),
@@ -139,12 +174,7 @@ export interface MonthForecast {
  * последнего закрытого месяца, поэтому результат всегда подписывается как
  * прогноз, а не как заработок.
  */
-export function forecastMonth(
-  current: MonthSummary,
-  history: MonthSummary[],
-  today: string,
-  context: ScheduleContext,
-): MonthForecast | null {
+export function forecastMonth(current: MonthSummary, history: MonthSummary[]): MonthForecast | null {
   const reference = history
     .filter((summary) => summary.period < current.period && summary.effectiveHourlyRate !== null)
     .sort((a, b) => b.period.localeCompare(a.period))[0];
@@ -152,19 +182,14 @@ export function forecastMonth(
   if (!reference || reference.effectiveHourlyRate === null) return null;
 
   const hourlyRate = reference.effectiveHourlyRate;
-  const year = Number(current.period.slice(0, 4));
-  const month = Number(current.period.slice(5, 7));
-  const elapsed = periodOf(today) === current.period
-    ? resolveRange(context, monthDays(year, month).filter((date) => date <= today))
-    : [];
-
-  const elapsedMinutes = elapsed.reduce((sum: number, day: ResolvedDay) => sum + day.workedMinutes, 0);
 
   return {
     basedOnPeriod: reference.period,
     hourlyRate,
     projectedTotal: hourlyRate * (current.workedMinutes / 60),
-    earnedSoFar: hourlyRate * (elapsedMinutes / 60),
+    // Отработанные часы месяц уже посчитал сам — второй раз разворачивать его
+    // по дням незачем.
+    earnedSoFar: hourlyRate * (current.elapsedWorkedMinutes / 60),
   };
 }
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { describeDay } from '@/domain/describe.ts';
+import { overtimeMinutes } from '@/domain/engine.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type { ResolvedDay } from '@/domain/types.ts';
 import { AppText } from '@/ui';
@@ -12,6 +13,8 @@ export interface DayCellProps {
   /** false — день соседнего месяца: показывается приглушённо, но остаётся нажимаемым. */
   inMonth: boolean;
   isToday: boolean;
+  /** Смена этого дня уже позади: заливка уходит в серый. */
+  isWorked: boolean;
   isSelected: boolean;
   onPress: (date: IsoDate) => void;
 }
@@ -23,9 +26,9 @@ export interface DayCellProps {
  * полной озвучкой. Одной заливки недостаточно — она не читается ни при
  * дальтонизме, ни скринридером.
  */
-export function DayCell({ day, size, inMonth, isToday, isSelected, onPress }: DayCellProps) {
+export function DayCell({ day, size, inMonth, isToday, isWorked, isSelected, onPress }: DayCellProps) {
   const theme = useTheme();
-  const shiftColors = useShiftColors(day.shiftType.colorToken);
+  const shiftColors = useShiftColors(day.shiftType.colorToken, { faded: isWorked });
   const [focused, setFocused] = useState(false);
 
   /**
@@ -40,11 +43,21 @@ export function DayCell({ day, size, inMonth, isToday, isSelected, onPress }: Da
   const dayNumber = Number(day.date.slice(8, 10));
   const outlined = focused || isSelected || (isToday && inMonth);
 
+  /**
+   * Отклонение факта от графика. В клетке от него остаётся только цветная
+   * точка: часы в углу — это третье число на сорока шести пунктах, и они
+   * спорят с самим числом дня. Сколько именно вышло — говорит карточка дня и
+   * озвучка клетки.
+   */
+  const overtime = overtimeMinutes(day);
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={
-        inMonth ? describeDay(day, { isToday }) : `${describeDay(day)}, соседний месяц`
+        inMonth
+          ? describeDay(day, { isToday, isWorked })
+          : `${describeDay(day, { isWorked })}, соседний месяц`
       }
       accessibilityState={{ selected: isSelected }}
       onPress={() => onPress(day.date)}
@@ -86,7 +99,10 @@ export function DayCell({ day, size, inMonth, isToday, isSelected, onPress }: Da
         </AppText>
       </View>
 
-      {day.source === 'override' ? (
+      {/* Точка отмечает расхождение с графиком, а не саму правку: правок за
+          отпуск набирается две недели подряд, и точка на каждой клетке ничего
+          не выделяла. Зелёная — переработка, красная — недоработка. */}
+      {overtime !== 0 ? (
         <View
           importantForAccessibility="no"
           style={{
@@ -96,7 +112,7 @@ export function DayCell({ day, size, inMonth, isToday, isSelected, onPress }: Da
             width: 6,
             height: 6,
             borderRadius: 3,
-            backgroundColor: colors.on,
+            backgroundColor: overtime > 0 ? theme.colors.positive : theme.colors.danger,
           }}
         />
       ) : null}

@@ -4,8 +4,10 @@ import {
   DAY_FORMS,
   SHIFT_FORMS,
   formatDayShort,
+  formatHours,
   formatMonthTitle,
   formatMoney,
+  formatOvertimeTotal,
   formatTotalHours,
   plural,
   pluralize,
@@ -57,8 +59,8 @@ export function MonthSummaryPage({
   const theme = useTheme();
 
   const summary = useMemo(
-    () => buildMonthSummary(context, period, payments),
-    [context, period, payments],
+    () => buildMonthSummary(context, period, payments, today),
+    [context, period, payments, today],
   );
 
   // Прогноз показывается только пока за месяц не внесено ни одной выплаты: как
@@ -75,17 +77,17 @@ export function MonthSummaryPage({
   const history = useMemo<MonthSummary[]>(
     () =>
       Array.from({ length: wantsForecast ? HISTORY_DEPTH : 1 }, (_, index) =>
-        buildMonthSummary(context, shiftPeriod(period, -(index + 1)), payments),
+        buildMonthSummary(context, shiftPeriod(period, -(index + 1)), payments, today),
       ),
-    [context, period, payments, wantsForecast],
+    [context, period, payments, today, wantsForecast],
   );
 
   // Предыдущий месяц — первый в истории, второй раз его считать незачем.
   const previous = history[0];
 
   const forecast = useMemo(
-    () => (wantsForecast ? forecastMonth(summary, history, today, context) : null),
-    [context, summary, history, today, wantsForecast],
+    () => (wantsForecast ? forecastMonth(summary, history) : null),
+    [summary, history, wantsForecast],
   );
 
   const upcoming = useMemo(
@@ -95,6 +97,15 @@ export function MonthSummaryPage({
 
   const year = Number(period.slice(0, 4));
   const month = Number(period.slice(5, 7));
+  // Месяц закрыт, когда все его смены уже позади: тогда «отработано» и
+  // «запланировано» — одно и то же число.
+  const monthClosed = summary.elapsedWorkedDays === summary.workedDays;
+  // Плюсы и минусы за месяц складываются: два дня «+2» и «−2» дают ноль, и это
+  // не «нет отклонений», а «сошлось». Формулировка это различает.
+  const overtimeSpoken =
+    summary.overtimeMinutes === 0
+      ? `Переработка и недоработка сошлись в ноль на ${pluralize(summary.overtimeDays, DAY_FORMS)}`
+      : `${summary.overtimeMinutes > 0 ? 'Переработка' : 'Недоработка'} за месяц: ${formatTotalHours(Math.abs(summary.overtimeMinutes))} на ${pluralize(summary.overtimeDays, DAY_FORMS)}`;
   const currency = payroll.currency;
   const currentTitle = formatMonthTitle(year, month);
   const previousPeriod = shiftPeriod(period, -1);
@@ -113,15 +124,33 @@ export function MonthSummaryPage({
       }}
     >
       <View style={{ flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.lg }}>
+        {/* В незакрытом месяце показывается дробь «сделано из запланированного»:
+            без неё «192 ч» в начале месяца читается как уже отработанные часы.
+            В закрытом месяце дробь не рисуется — «192/192 ч» ничего не
+            добавляет. */}
         <Stat
-          value={formatTotalHours(summary.workedMinutes)}
+          value={
+            monthClosed
+              ? formatTotalHours(summary.workedMinutes)
+              : formatHours(summary.elapsedWorkedMinutes)
+          }
+          total={monthClosed ? undefined : formatTotalHours(summary.workedMinutes)}
           label="отработано"
-          spoken={`Отработано ${formatTotalHours(summary.workedMinutes)}`}
+          spoken={
+            monthClosed
+              ? `Отработано ${formatTotalHours(summary.workedMinutes)}`
+              : `Отработано ${formatTotalHours(summary.elapsedWorkedMinutes)} из ${formatTotalHours(summary.workedMinutes)}`
+          }
         />
         <Stat
-          value={String(summary.workedDays)}
+          value={String(monthClosed ? summary.workedDays : summary.elapsedWorkedDays)}
+          total={monthClosed ? undefined : String(summary.workedDays)}
           label={plural(summary.workedDays, SHIFT_FORMS)}
-          spoken={pluralize(summary.workedDays, SHIFT_FORMS)}
+          spoken={
+            monthClosed
+              ? pluralize(summary.workedDays, SHIFT_FORMS)
+              : `Отработано ${summary.elapsedWorkedDays} из ${pluralize(summary.workedDays, SHIFT_FORMS)}`
+          }
         />
         <Stat
           value={String(summary.restDays)}
@@ -149,6 +178,12 @@ export function MonthSummaryPage({
             </AppText>
           </View>
         ))}
+        {summary.overtimeDays > 0 ? (
+          <AppText variant="caption" tone="muted" accessibilityLabel={overtimeSpoken}>
+            Сверх нормы смен: {formatOvertimeTotal(summary.overtimeMinutes)} на{' '}
+            {pluralize(summary.overtimeDays, DAY_FORMS)}
+          </AppText>
+        ) : null}
         {summary.adjustedDays > 0 ? (
           <AppText variant="caption" tone="muted">
             Изменено вручную: {pluralize(summary.adjustedDays, DAY_FORMS)}

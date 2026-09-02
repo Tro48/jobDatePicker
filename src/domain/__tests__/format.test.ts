@@ -5,9 +5,14 @@ import {
   formatDayShort,
   formatDuration,
   formatDurationSpoken,
+  formatHours,
+  formatHoursRatio,
   formatMoney,
   formatMinutesAsHoursInput,
   formatMonthTitle,
+  formatOvertimeShort,
+  formatOvertimeSpoken,
+  formatOvertimeTotal,
   formatRussianDate,
   formatTimeUntil,
   formatTotalHours,
@@ -142,4 +147,27 @@ test('остаток времени: минуты, часы, дни', () => {
   assert.equal(formatTimeUntil(9 * 60), '9\u00A0ч');
   assert.equal(formatTimeUntil(36 * 60), '1 день 12\u00A0ч');
   assert.equal(formatTimeUntil(48 * 60), '2 дня');
+});
+
+test('часы без единицы измерения округляются до десятых', () => {
+  assert.equal(formatHours(172 * 60), '172');
+  assert.equal(formatHours(172 * 60 + 30), '172,5');
+  assert.equal(formatHours(0), '0');
+});
+
+test('дробь «отработано из плана» пишется с одной единицей измерения', () => {
+  assert.equal(formatHoursRatio(96 * 60, 192 * 60), '96/192\u00A0ч');
+});
+
+test('отклонение всегда со знаком, ноль не показывается', () => {
+  assert.equal(formatOvertimeShort(2 * 60), '+2');
+  assert.equal(formatOvertimeShort(-90), '\u22121,5');
+  assert.equal(formatOvertimeShort(0), '');
+  assert.equal(formatOvertimeTotal(-3 * 60), '\u22123\u00A0ч');
+});
+
+test('отклонение для скринридера называется словом, а не знаком', () => {
+  assert.equal(formatOvertimeSpoken(2 * 60), 'переработка 2 часа');
+  assert.equal(formatOvertimeSpoken(-90), 'недоработка 1 час 30 минут');
+  assert.equal(formatOvertimeSpoken(0), '');
 });

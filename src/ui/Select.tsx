@@ -6,19 +6,25 @@ import { Button } from './Button.tsx';
 import { useReduceMotion } from './useReduceMotion.ts';
 import { useTheme } from '@/theme';
 
-export interface SelectOption {
-  value: string;
+export interface SelectOption<T extends string = string> {
+  value: T;
   label: string;
+  /** Пояснение под названием в раскрытом списке: «можно поставить на несколько дней». */
+  hint?: string;
 }
 
-export interface SelectProps {
+export interface SelectProps<T extends string> {
   label: string;
-  value: string;
-  options: SelectOption[];
-  onChange: (value: string) => void;
+  value: T;
+  options: ReadonlyArray<SelectOption<T>>;
+  onChange: (value: T) => void;
 }
 
-/** Высота строки списка фиксирована: по ней считается прокрутка к выбранному. */
+/**
+ * Высота строки списка. По ней считается прокрутка к выбранному значению;
+ * строка с пояснением бывает выше, и тогда прокрутка попадает примерно —
+ * этого достаточно, чтобы выбранное оказалось на экране.
+ */
 const ROW_HEIGHT = 48;
 
 /**
@@ -29,7 +35,7 @@ const ROW_HEIGHT = 48;
  * поэтому кнопка «назад» его закрывает, а фокус скринридера не убегает на
  * экран под ним.
  */
-export function Select({ label, value, options, onChange }: SelectProps) {
+export function Select<T extends string>({ label, value, options, onChange }: SelectProps<T>) {
   const theme = useTheme();
   const reduceMotion = useReduceMotion();
   const [open, setOpen] = useState(false);
@@ -63,13 +69,16 @@ export function Select({ label, value, options, onChange }: SelectProps) {
           gap: theme.spacing.sm,
           minHeight: theme.minTouchTarget,
           paddingHorizontal: theme.spacing.md,
+          paddingVertical: theme.spacing.sm,
           borderRadius: theme.radius.md,
           borderWidth: focused ? theme.focusRingWidth : 1,
           borderColor: focused ? theme.colors.focus : theme.colors.border,
           backgroundColor: theme.colors.surfaceElevated,
         }}
       >
-        <AppText variant="title" importantForAccessibility="no">
+        {/* Значение сжимается, а не выталкивает стрелку за границу поля:
+            «Сокращённый день» в ширину кнопки не помещается. */}
+        <AppText variant="heading" importantForAccessibility="no" style={{ flexShrink: 1 }}>
           {current?.label ?? value}
         </AppText>
         <Ionicons
@@ -131,25 +140,35 @@ export function Select({ label, value, options, onChange }: SelectProps) {
                       accessibilityRole="radio"
                       accessibilityState={{ selected, checked: selected }}
                       accessibilityLabel={option.label}
+                      accessibilityHint={option.hint}
                       onPress={() => {
                         onChange(option.value);
                         setOpen(false);
                       }}
                       style={{
-                        height: ROW_HEIGHT,
+                        minHeight: ROW_HEIGHT,
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
+                        gap: theme.spacing.sm,
                         paddingHorizontal: theme.spacing.md,
+                        paddingVertical: theme.spacing.sm,
                       }}
                     >
-                      <AppText
-                        variant="body"
-                        importantForAccessibility="no"
-                        style={{ fontWeight: selected ? '700' : '400' }}
-                      >
-                        {option.label}
-                      </AppText>
+                      <View style={{ flex: 1 }}>
+                        <AppText
+                          variant="body"
+                          importantForAccessibility="no"
+                          style={{ fontWeight: selected ? '700' : '400' }}
+                        >
+                          {option.label}
+                        </AppText>
+                        {option.hint ? (
+                          <AppText variant="caption" tone="muted" importantForAccessibility="no">
+                            {option.hint}
+                          </AppText>
+                        ) : null}
+                      </View>
                       {/* Галочка дублирует состояние, уже озвученное ролью. */}
                       {selected ? (
                         <Ionicons
