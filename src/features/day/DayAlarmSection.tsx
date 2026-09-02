@@ -54,7 +54,12 @@ export function DayAlarmSection({ date }: { date: IsoDate }) {
               <AppText variant="heading" importantForAccessibility="no">
                 {occurrence.time}
               </AppText>
-              <AppText variant="body" tone="muted" importantForAccessibility="no" style={{ flex: 1 }}>
+              <AppText
+                variant="body"
+                tone="muted"
+                importantForAccessibility="no"
+                style={{ flex: 1 }}
+              >
                 {occurrence.title}
               </AppText>
             </Pressable>

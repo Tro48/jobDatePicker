@@ -26,7 +26,15 @@ export interface DayCellProps {
  * полной озвучкой. Одной заливки недостаточно — она не читается ни при
  * дальтонизме, ни скринридером.
  */
-export function DayCell({ day, size, inMonth, isToday, isWorked, isSelected, onPress }: DayCellProps) {
+export function DayCell({
+  day,
+  size,
+  inMonth,
+  isToday,
+  isWorked,
+  isSelected,
+  onPress,
+}: DayCellProps) {
   const theme = useTheme();
   const shiftColors = useShiftColors(day.shiftType.colorToken, { faded: isWorked });
   const [focused, setFocused] = useState(false);

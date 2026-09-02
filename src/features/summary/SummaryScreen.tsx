@@ -35,15 +35,26 @@ export function SummaryScreen() {
 
   if (!context) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }} contentContainerStyle={padding}>
-        <AppText variant="display" accessibilityRole="header" style={{ marginBottom: theme.spacing.lg }}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: theme.colors.background }}
+        contentContainerStyle={padding}
+      >
+        <AppText
+          variant="display"
+          accessibilityRole="header"
+          style={{ marginBottom: theme.spacing.lg }}
+        >
           Сводка
         </AppText>
         <Card title="График не выбран">
           <AppText variant="body" tone="muted">
             Считать часы не по чему. Выбери график — сводка появится сама.
           </AppText>
-          <Button title="Выбрать график" variant="primary" onPress={() => push('/settings/schedule')} />
+          <Button
+            title="Выбрать график"
+            variant="primary"
+            onPress={() => push('/settings/schedule')}
+          />
         </Card>
       </ScrollView>
     );
@@ -96,7 +107,9 @@ export function SummaryScreen() {
             payroll={payroll}
             today={today}
             width={width}
-            onOpenYear={() => push({ pathname: '/summary/year', params: { year: String(item.year) } })}
+            onOpenYear={() =>
+              push({ pathname: '/summary/year', params: { year: String(item.year) } })
+            }
           />
         )}
       />

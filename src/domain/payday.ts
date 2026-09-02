@@ -47,9 +47,7 @@ export function applyWeekendShift(date: IsoDate, mode: PaymentRule['weekendShift
   if (mode === 'none') return date;
   const day = weekday(date);
   if (day < 6) return date;
-  return mode === 'before'
-    ? addDays(date, day === 6 ? -1 : -2)
-    : addDays(date, day === 6 ? 2 : 1);
+  return mode === 'before' ? addDays(date, day === 6 ? -1 : -2) : addDays(date, day === 6 ? 2 : 1);
 }
 
 /**

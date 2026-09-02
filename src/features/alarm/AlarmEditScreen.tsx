@@ -17,7 +17,17 @@ import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, Sheet, TextField, TimeSelect, Toggle, useSheetScroll } from '@/ui';
+import {
+  AppText,
+  Button,
+  Card,
+  ChoiceGroup,
+  Sheet,
+  TextField,
+  TimeSelect,
+  Toggle,
+  useSheetScroll,
+} from '@/ui';
 import { useTheme } from '@/theme';
 import { DatePickerField } from './DatePickerField.tsx';
 import { RingtonePicker } from './RingtonePicker.tsx';
@@ -186,11 +196,7 @@ export function AlarmEditScreen() {
 
   return (
     <Sheet title={isNew ? 'Новый будильник' : 'Будильник'} onClose={() => router.back()}>
-      <ScrollView
-        {...scroll}
-        style={{ flex: 1 }}
-        contentContainerStyle={padding}
-      >
+      <ScrollView {...scroll} style={{ flex: 1 }} contentContainerStyle={padding}>
         <Card title="Когда звонить">
           {perShiftTimes ? (
             <>
@@ -234,8 +240,7 @@ export function AlarmEditScreen() {
         <Card title={fromCalendar ? 'День' : 'Повтор'}>
           {fromCalendar ? (
             <AppText variant="body" tone="muted">
-              Разовый будильник на выбранный день. Повторы настраиваются на вкладке
-              «Будильник».
+              Разовый будильник на выбранный день. Повторы настраиваются на вкладке «Будильник».
             </AppText>
           ) : (
             <ChoiceGroup
@@ -250,8 +255,14 @@ export function AlarmEditScreen() {
             <DatePickerField
               label="Дата"
               value={draft.repeat.date}
-              onChange={(date) => setDraft((current) => ({ ...current, repeat: { kind: 'once', date } }))}
-              hint={isPastOnce(draft, now) ? undefined : `Зазвонит: ${formatDayLong(draft.repeat.date).toLowerCase()}`}
+              onChange={(date) =>
+                setDraft((current) => ({ ...current, repeat: { kind: 'once', date } }))
+              }
+              hint={
+                isPastOnce(draft, now)
+                  ? undefined
+                  : `Зазвонит: ${formatDayLong(draft.repeat.date).toLowerCase()}`
+              }
             />
           ) : null}
 
@@ -264,14 +275,16 @@ export function AlarmEditScreen() {
           {draft.repeat.kind === 'weekly' ? (
             <WeekdayPicker
               days={draft.repeat.days}
-              onChange={(days) => setDraft((current) => ({ ...current, repeat: { kind: 'weekly', days } }))}
+              onChange={(days) =>
+                setDraft((current) => ({ ...current, repeat: { kind: 'weekly', days } }))
+              }
             />
           ) : null}
 
           {draft.repeat.kind === 'schedule' && !schedule ? (
             <AppText variant="body" tone="muted">
-              График не выбран, поэтому смен приложение пока не знает. Выбери график в
-              настройках — они появятся здесь сами.
+              График не выбран, поэтому смен приложение пока не знает. Выбери график в настройках —
+              они появятся здесь сами.
             </AppText>
           ) : null}
 

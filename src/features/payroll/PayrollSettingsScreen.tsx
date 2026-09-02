@@ -92,7 +92,10 @@ export function PayrollSettingsScreen() {
                 на словах не считывается. */}
             <AppText variant="caption" tone="muted">
               {KIND_TITLES[rule.kind]} за{' '}
-              {formatMonthTitle(Number(period.slice(0, 4)), Number(period.slice(5, 7))).toLowerCase()}{' '}
+              {formatMonthTitle(
+                Number(period.slice(0, 4)),
+                Number(period.slice(5, 7)),
+              ).toLowerCase()}{' '}
               придёт {formatDayShort(expectedPaymentDate(rule, period))}
             </AppText>
           </Card>
@@ -108,7 +111,9 @@ export function PayrollSettingsScreen() {
             label="Прогноз для незакрытого месяца"
             hint="Считает по ставке последнего месяца, где есть и часы, и выплаты"
             value={payroll.forecastFromLastClosedMonth}
-            onValueChange={(value) => setPayroll({ ...payroll, forecastFromLastClosedMonth: value })}
+            onValueChange={(value) =>
+              setPayroll({ ...payroll, forecastFromLastClosedMonth: value })
+            }
           />
         </Card>
       </ScrollView>

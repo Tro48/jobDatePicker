@@ -28,7 +28,12 @@ const septemberPayments: PaymentRecord[] = [
 ];
 
 test('5/2 с короткой пятницей: 22 рабочих дня и 172 часа в сентябре 2026', () => {
-  const summary = buildMonthSummary(contextFor('5-2-short-friday', '2026-09-01'), '2026-09', [], AFTER_ALL);
+  const summary = buildMonthSummary(
+    contextFor('5-2-short-friday', '2026-09-01'),
+    '2026-09',
+    [],
+    AFTER_ALL,
+  );
   assert.equal(summary.workedDays, 22);
   assert.equal(summary.restDays, 8);
   assert.equal(summary.workedMinutes, 172 * 60);
@@ -47,13 +52,23 @@ test('2/2 дневные: 16 смен и 192 часа в сентябре 2026',
 });
 
 test('деньги берутся по месяцу, ЗА который выплата, а не по дате поступления', () => {
-  const summary = buildMonthSummary(contextFor('5-2-short-friday', '2026-09-01'), '2026-09', septemberPayments, AFTER_ALL);
+  const summary = buildMonthSummary(
+    contextFor('5-2-short-friday', '2026-09-01'),
+    '2026-09',
+    septemberPayments,
+    AFTER_ALL,
+  );
   assert.equal(summary.payments.length, 2);
   assert.equal(summary.totalPaid, 75_000);
 });
 
 test('ставка за час выводится делением суммы месяца на отработанные часы', () => {
-  const summary = buildMonthSummary(contextFor('5-2-short-friday', '2026-09-01'), '2026-09', septemberPayments, AFTER_ALL);
+  const summary = buildMonthSummary(
+    contextFor('5-2-short-friday', '2026-09-01'),
+    '2026-09',
+    septemberPayments,
+    AFTER_ALL,
+  );
   assert.ok(summary.effectiveHourlyRate !== null);
   assert.equal(Math.round(summary.effectiveHourlyRate * 100) / 100, 436.05); // 75000 / 172
   assert.equal(Math.round(summary.effectiveShiftRate! * 100) / 100, 3409.09); // 75000 / 22
@@ -67,7 +82,11 @@ test('без внесённых выплат ставка не выдумыва�
 
 test('ручные правки считаются отдельно и меняют часы', () => {
   const context = contextFor('2-2-day', '2026-09-01');
-  context.overrides.set('2026-09-03', { date: '2026-09-03', shiftTypeId: 'extra', workedMinutesOverride: 240 });
+  context.overrides.set('2026-09-03', {
+    date: '2026-09-03',
+    shiftTypeId: 'extra',
+    workedMinutesOverride: 240,
+  });
   context.overrides.set('2026-09-05', { date: '2026-09-05', shiftTypeId: 'off' });
 
   const summary = buildMonthSummary(context, '2026-09', [], AFTER_ALL);
@@ -107,7 +126,12 @@ test('отпускные входят в сумму месяца, но не в �
     { id: 'v', kind: 'vacationPay', period: '2026-09', receivedOn: '2026-09-05', amount: 20_000 },
     { id: 'b', kind: 'sickPay', period: '2026-09', receivedOn: '2026-09-20', amount: 5_000 },
   ];
-  const summary = buildMonthSummary(contextFor('5-2-short-friday', '2026-09-01'), '2026-09', payments, AFTER_ALL);
+  const summary = buildMonthSummary(
+    contextFor('5-2-short-friday', '2026-09-01'),
+    '2026-09',
+    payments,
+    AFTER_ALL,
+  );
 
   assert.equal(summary.totalPaid, 100_000);
   assert.equal(summary.compensationPaid, 25_000);
@@ -123,7 +147,12 @@ test('разбивка по видам выплат идёт в порядке �
     { id: 'a1', kind: 'advance', period: '2026-09', receivedOn: '2026-08-27', amount: 30_000 },
     { id: 'a2', kind: 'advance', period: '2026-09', receivedOn: '2026-08-28', amount: 1_000 },
   ];
-  const summary = buildMonthSummary(contextFor('2-2-day', '2026-09-01'), '2026-09', payments, AFTER_ALL);
+  const summary = buildMonthSummary(
+    contextFor('2-2-day', '2026-09-01'),
+    '2026-09',
+    payments,
+    AFTER_ALL,
+  );
 
   assert.deepEqual(
     summary.byPaymentKind.map((entry) => [entry.kind, entry.amount, entry.count]),
@@ -138,7 +167,12 @@ test('месяц без аванса и зарплаты, но с больнич
   const payments: PaymentRecord[] = [
     { id: 'b', kind: 'sickPay', period: '2026-09', receivedOn: '2026-09-20', amount: 5_000 },
   ];
-  const summary = buildMonthSummary(contextFor('2-2-day', '2026-09-01'), '2026-09', payments, AFTER_ALL);
+  const summary = buildMonthSummary(
+    contextFor('2-2-day', '2026-09-01'),
+    '2026-09',
+    payments,
+    AFTER_ALL,
+  );
 
   assert.equal(summary.totalPaid, 5_000);
   assert.equal(summary.workPaid, 0);
@@ -164,12 +198,20 @@ test('годовые итоги: месяц выплаты — тот, ЗА ко
   assert.equal(months[7].total, 41_000);
   assert.equal(months[8].total, 75_000);
   assert.equal(months[8].compensation, 0);
-  assert.equal(months.reduce((sum, item) => sum + item.total, 0), 168_000);
+  assert.equal(
+    months.reduce((sum, item) => sum + item.total, 0),
+    168_000,
+  );
 });
 
 test('отработанное считается по дату включительно, план — на весь месяц', () => {
   // 2/2 от 1 сентября: смены 1, 2, 5, 6, 9, 10, 13, 14 — к 14-му отработано восемь.
-  const summary = buildMonthSummary(contextFor('2-2-day', '2026-09-01'), '2026-09', [], '2026-09-14');
+  const summary = buildMonthSummary(
+    contextFor('2-2-day', '2026-09-01'),
+    '2026-09',
+    [],
+    '2026-09-14',
+  );
 
   assert.equal(summary.workedDays, 16);
   assert.equal(summary.elapsedWorkedDays, 8);

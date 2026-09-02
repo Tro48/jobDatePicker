@@ -173,7 +173,12 @@ export function MonthSummaryPage({
             <AppText variant="body" tone="muted" importantForAccessibility="no">
               {pluralize(item.days, DAY_FORMS)}
             </AppText>
-            <AppText variant="body" tone="muted" importantForAccessibility="no" style={{ minWidth: 72, textAlign: 'right' }}>
+            <AppText
+              variant="body"
+              tone="muted"
+              importantForAccessibility="no"
+              style={{ minWidth: 72, textAlign: 'right' }}
+            >
               {item.minutes > 0 ? formatTotalHours(item.minutes) : '—'}
             </AppText>
           </View>
@@ -196,7 +201,10 @@ export function MonthSummaryPage({
           <>
             <MoneyRow label="Итого" value={formatMoney(summary.totalPaid, currency)} emphasis />
             {summary.effectiveShiftRate !== null ? (
-              <MoneyRow label="За смену" value={formatMoney(summary.effectiveShiftRate, currency)} />
+              <MoneyRow
+                label="За смену"
+                value={formatMoney(summary.effectiveShiftRate, currency)}
+              />
             ) : null}
             {summary.effectiveHourlyRate !== null ? (
               <MoneyRow label="За час" value={formatMoney(summary.effectiveHourlyRate, currency)} />
@@ -215,8 +223,8 @@ export function MonthSummaryPage({
 
             {summary.compensationPaid > 0 ? (
               <AppText variant="caption" tone="muted">
-                За смену и за час — по авансу и зарплате. Отпускные и больничные в ставку
-                не входят: они не заработаны часами этого месяца.
+                За смену и за час — по авансу и зарплате. Отпускные и больничные в ставку не входят:
+                они не заработаны часами этого месяца.
               </AppText>
             ) : null}
             {summary.workPaid > 0 && summary.workedMinutes === 0 ? (
@@ -227,8 +235,8 @@ export function MonthSummaryPage({
           </>
         ) : (
           <AppText variant="body" tone="muted">
-            За этот месяц выплат ещё не внесено. Сумма вносится в карточке дня, в который
-            она пришла.
+            За этот месяц выплат ещё не внесено. Сумма вносится в карточке дня, в который она
+            пришла.
           </AppText>
         )}
 
@@ -240,7 +248,9 @@ export function MonthSummaryPage({
               Number(upcoming.period.slice(5, 7)),
             ).toLowerCase()}
             , {formatDayShort(upcoming.date)}
-            {upcoming.daysAway === 0 ? ' — сегодня' : `, через ${pluralize(upcoming.daysAway, DAY_FORMS)}`}
+            {upcoming.daysAway === 0
+              ? ' — сегодня'
+              : `, через ${pluralize(upcoming.daysAway, DAY_FORMS)}`}
           </AppText>
         ) : null}
 
@@ -289,7 +299,8 @@ export function MonthSummaryPage({
           {/* Прогноз всегда подписан источником: приложение не знает ставку,
               оно взяло её из последнего закрытого месяца. */}
           <AppText variant="caption" tone="muted">
-            Это прогноз, а не факт: ставка {formatMoney(forecast.hourlyRate, currency)} за час взята из{' '}
+            Это прогноз, а не факт: ставка {formatMoney(forecast.hourlyRate, currency)} за час взята
+            из{' '}
             {formatMonthTitle(
               Number(forecast.basedOnPeriod.slice(0, 4)),
               Number(forecast.basedOnPeriod.slice(5, 7)),

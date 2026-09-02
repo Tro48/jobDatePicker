@@ -107,8 +107,15 @@ test('месяц, начинающийся с понедельника, не т�
 });
 
 test('каждый день месяца попадает в сетку ровно один раз', () => {
-  for (const [year, month] of [[2027, 2], [2028, 2], [2026, 12], [2026, 8]] as const) {
-    const inMonth = monthGridDates(year, month).filter((day) => day.inMonth).map((day) => day.date);
+  for (const [year, month] of [
+    [2027, 2],
+    [2028, 2],
+    [2026, 12],
+    [2026, 8],
+  ] as const) {
+    const inMonth = monthGridDates(year, month)
+      .filter((day) => day.inMonth)
+      .map((day) => day.date);
     assert.deepEqual(inMonth, monthDays(year, month), `месяц ${year}-${month}`);
   }
 });

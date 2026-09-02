@@ -1,5 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
-import { Animated, PanResponder, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import {
+  Animated,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent, ScrollViewProps } from 'react-native';
 import type { ReactNode, RefObject } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,7 +37,9 @@ const DRAG_SLOP = 8;
 
 /** Что-нибудь, у чего можно спросить его место на экране. */
 interface Measurable {
-  measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => void;
+  measureInWindow: (
+    callback: (x: number, y: number, width: number, height: number) => void,
+  ) => void;
 }
 
 interface SheetScroll {
@@ -128,7 +137,10 @@ export function Sheet({ title, children, onClose }: SheetProps) {
       node.measureInWindow((_x, y, _width, fieldHeight) => {
         const overflow = y + fieldHeight + REVEAL_GAP - (height - inset);
         if (overflow <= 0) return;
-        scrollRef.current?.scrollTo({ y: scrollOffset.current + overflow, animated: !reduceMotion });
+        scrollRef.current?.scrollTo({
+          y: scrollOffset.current + overflow,
+          animated: !reduceMotion,
+        });
       }),
     );
   }, [height, reduceMotion]);

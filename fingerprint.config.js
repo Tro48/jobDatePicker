@@ -10,7 +10,16 @@
  *
  * ExpoConfigVersions выбрасывает из подсчёта version, versionCode и buildNumber
  * и оставляет всё остальное: модули, разрешения, иконки, плагины.
+ *
+ * PackageJsonScriptsAll выбрасывает npm-скрипты. Без него добавленный скрипт
+ * линтера менял отпечаток и требовал сборки APK с ручной установкой на телефон
+ * — при том что на сам APK скрипты не влияют. Проверено сверкой отпечатков до
+ * и после.
+ *
+ * Важно: если в скриптах появится хук сборки EAS (eas-build-pre-install,
+ * eas-build-post-install и подобные), скип надо снять — такой скрипт на APK
+ * влияет напрямую.
  */
 module.exports = {
-  sourceSkips: ['ExpoConfigVersions'],
+  sourceSkips: ['ExpoConfigVersions', 'PackageJsonScriptsAll'],
 };

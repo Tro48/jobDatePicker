@@ -148,7 +148,9 @@ export function buildMonthSummary(
     overtimeDays,
     restDays,
     adjustedDays,
-    byShiftType: [...totals.values()].sort((a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name)),
+    byShiftType: [...totals.values()].sort(
+      (a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name),
+    ),
     totalPaid,
     workPaid,
     compensationPaid,
@@ -174,7 +176,10 @@ export interface MonthForecast {
  * последнего закрытого месяца, поэтому результат всегда подписывается как
  * прогноз, а не как заработок.
  */
-export function forecastMonth(current: MonthSummary, history: MonthSummary[]): MonthForecast | null {
+export function forecastMonth(
+  current: MonthSummary,
+  history: MonthSummary[],
+): MonthForecast | null {
   const reference = history
     .filter((summary) => summary.period < current.period && summary.effectiveHourlyRate !== null)
     .sort((a, b) => b.period.localeCompare(a.period))[0];

@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { isAlarmModuleAvailable, listRingtones, previewRingtone, stopRingtonePreview } from '@modules/shift-alarm';
+import {
+  isAlarmModuleAvailable,
+  listRingtones,
+  previewRingtone,
+  stopRingtonePreview,
+} from '@modules/shift-alarm';
 import type { Ringtone } from '@modules/shift-alarm';
 import { AppText, Button, ChoiceGroup } from '@/ui';
 import { useTheme } from '@/theme';
@@ -44,7 +49,8 @@ export function RingtonePicker({
   // Уходя с экрана, глушим прослушивание: иначе мелодия играет поверх списка.
   useEffect(() => () => void stopRingtonePreview(), []);
 
-  const current = value === null ? DEFAULT_LABEL : ringtones.find((item) => item.uri === value)?.title;
+  const current =
+    value === null ? DEFAULT_LABEL : ringtones.find((item) => item.uri === value)?.title;
 
   const select = (next: string): void => {
     const uri = next === DEFAULT_VALUE ? null : next;
@@ -62,9 +68,7 @@ export function RingtonePicker({
 
   return (
     <View style={{ gap: theme.spacing.sm }}>
-      <AppText variant="body">
-        Мелодия: {current ?? 'выбранная мелодия недоступна'}
-      </AppText>
+      <AppText variant="body">Мелодия: {current ?? 'выбранная мелодия недоступна'}</AppText>
       <Button
         title={expanded ? 'Свернуть список' : 'Выбрать мелодию'}
         onPress={() => {

@@ -42,8 +42,18 @@ export const SCHEDULE_PRESETS: SchedulePreset[] = [
     pattern: {
       kind: 'cycle',
       slots: [
-        'day12', 'day12', 'day12', 'off', 'off', 'off',
-        'night12', 'night12', 'night12', 'off', 'off', 'off',
+        'day12',
+        'day12',
+        'day12',
+        'off',
+        'off',
+        'off',
+        'night12',
+        'night12',
+        'night12',
+        'off',
+        'off',
+        'off',
       ],
     },
   },
@@ -56,7 +66,8 @@ export const SCHEDULE_PRESETS: SchedulePreset[] = [
   {
     id: '5-2-short-friday',
     name: '5/2 по 8 часов, пятница короче',
-    description: 'Пятидневка: понедельник — четверг по 8 часов, пятница 7, выходные суббота и воскресенье',
+    description:
+      'Пятидневка: понедельник — четверг по 8 часов, пятница 7, выходные суббота и воскресенье',
     pattern: {
       kind: 'weekly',
       weeks: [{ 1: 'work8', 2: 'work8', 3: 'work8', 4: 'work8', 5: 'work7', 6: 'off', 7: 'off' }],

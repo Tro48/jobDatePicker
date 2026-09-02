@@ -177,11 +177,7 @@ export function DayScreen() {
 
   return (
     <Sheet title={formatDayLong(date)} onClose={() => router.back()}>
-      <ScrollView
-        {...scroll}
-        style={{ flex: 1 }}
-        contentContainerStyle={padding}
-      >
+      <ScrollView {...scroll} style={{ flex: 1 }} contentContainerStyle={padding}>
         <Card title="Сейчас">
           <AppText variant="heading">{resolved.shiftType.name}</AppText>
           {isWork ? (

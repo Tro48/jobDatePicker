@@ -105,7 +105,9 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
         keyboardType="decimal-pad"
         placeholder="30 000"
         hint={
-          amountText.length > 0 && amount === null ? 'Только цифры, пробелы между разрядами можно' : undefined
+          amountText.length > 0 && amount === null
+            ? 'Только цифры, пробелы между разрядами можно'
+            : undefined
         }
       />
 
@@ -119,7 +121,11 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
             label="Предыдущий месяц"
             onPress={() => setPeriodOverride(shiftPeriod(period, -1))}
           />
-          <AppText variant="body" accessibilityLiveRegion="polite" style={{ flex: 1, textAlign: 'center' }}>
+          <AppText
+            variant="body"
+            accessibilityLiveRegion="polite"
+            style={{ flex: 1, textAlign: 'center' }}
+          >
             {formatMonthTitle(Number(period.slice(0, 4)), Number(period.slice(5, 7)))}
           </AppText>
           <IconButton

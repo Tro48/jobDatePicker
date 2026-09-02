@@ -34,7 +34,12 @@ test('все пресеты ссылаются только на существ�
 
 test('validatePreset ловит ссылку на несуществующую смену', () => {
   const errors = validatePreset(
-    { id: 'broken', name: '', description: '', pattern: { kind: 'cycle', slots: ['day12', 'ghost'] } },
+    {
+      id: 'broken',
+      name: '',
+      description: '',
+      pattern: { kind: 'cycle', slots: ['day12', 'ghost'] },
+    },
     shiftTypes,
   );
   assert.equal(errors.length, 1);
@@ -67,7 +72,15 @@ test('3/3 день-ночь — цикл из двенадцати дней', ()
 test('5/2 привязана к дням недели, а не к дате отсчёта', () => {
   const fromTuesday = contextFor('5-2-short-friday', '2026-09-01');
   const fromSaturday = contextFor('5-2-short-friday', '2026-09-05');
-  const week = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13'];
+  const week = [
+    '2026-09-07',
+    '2026-09-08',
+    '2026-09-09',
+    '2026-09-10',
+    '2026-09-11',
+    '2026-09-12',
+    '2026-09-13',
+  ];
   assert.equal(badges(fromTuesday, week), 'РРРРСВВ');
   assert.equal(badges(fromSaturday, week), 'РРРРСВВ');
 });

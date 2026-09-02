@@ -22,12 +22,21 @@ export interface ChoiceGroupProps<T extends string> {
  * Группа взаимоисключающих вариантов. Выбранный вариант помечается галочкой и
  * жирным начертанием, а не только цветом рамки.
  */
-export function ChoiceGroup<T extends string>({ label, choices, value, onChange }: ChoiceGroupProps<T>) {
+export function ChoiceGroup<T extends string>({
+  label,
+  choices,
+  value,
+  onChange,
+}: ChoiceGroupProps<T>) {
   const theme = useTheme();
   const [focused, setFocused] = useState<T | null>(null);
 
   return (
-    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ gap: theme.spacing.sm }}>
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={label}
+      style={{ gap: theme.spacing.sm }}
+    >
       {choices.map((choice) => {
         const selected = choice.value === value;
         const hasFocus = focused === choice.value;

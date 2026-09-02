@@ -77,13 +77,16 @@ export function SchedulePickerScreen() {
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
       >
         <Card title="График">
-          <ChoiceGroup label="График работы" choices={choices} value={presetId} onChange={setPresetId} />
+          <ChoiceGroup
+            label="График работы"
+            choices={choices}
+            value={presetId}
+            onChange={setPresetId}
+          />
         </Card>
 
         <Card title="Дата первой смены">
-          <AppText variant="body">
-            {formatDayShort(anchorDate)}
-          </AppText>
+          <AppText variant="body">{formatDayShort(anchorDate)}</AppText>
           <AppText variant="caption" tone="muted">
             Нажми на день в календаре ниже. От него график разворачивается и вперёд, и назад.
           </AppText>
@@ -158,4 +161,3 @@ export function SchedulePickerScreen() {
     </Sheet>
   );
 }
-

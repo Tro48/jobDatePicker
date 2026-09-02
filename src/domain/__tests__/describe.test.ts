@@ -10,7 +10,11 @@ const shiftTypes = indexShiftTypes(DEFAULT_SHIFT_TYPES);
 
 function contextFor(presetId: string, anchorDate: string): ScheduleContext {
   const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId)!;
-  return { schedule: { presetId, pattern: preset.pattern, anchorDate }, shiftTypes, overrides: new Map() };
+  return {
+    schedule: { presetId, pattern: preset.pattern, anchorDate },
+    shiftTypes,
+    overrides: new Map(),
+  };
 }
 
 test('рабочий день озвучивается датой, сменой, временем и часами', () => {
@@ -40,8 +44,14 @@ test('правка озвучивается, а противоречивое в�
   });
   const spoken = describeDay(resolveDay(context, '2026-09-03'));
 
-  assert.equal(spoken, '3 сентября, четверг, подработка, 4 часа, сверх графика, изменено вручную, вышел за Сергея');
-  assert.ok(!spoken.includes('до 18:00'), 'штатное время смены при переопределённых часах читать нельзя');
+  assert.equal(
+    spoken,
+    '3 сентября, четверг, подработка, 4 часа, сверх графика, изменено вручную, вышел за Сергея',
+  );
+  assert.ok(
+    !spoken.includes('до 18:00'),
+    'штатное время смены при переопределённых часах читать нельзя',
+  );
 });
 
 test('ночная смена читается с переходом через полночь', () => {

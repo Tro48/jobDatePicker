@@ -46,9 +46,9 @@ export function AppErrorScreen({ error, retry }: ErrorBoundaryProps) {
       </Text>
 
       <Text style={{ fontSize: 16, lineHeight: 24, color: colors.text }}>
-        Данные никуда не делись — сломался только показ. Попробуй открыть заново. Если не
-        помогает, сбрось график: календарь соберётся заново, а правки дней, выплаты и
-        будильники останутся на месте.
+        Данные никуда не делись — сломался только показ. Попробуй открыть заново. Если не помогает,
+        сбрось график: календарь соберётся заново, а правки дней, выплаты и будильники останутся на
+        месте.
       </Text>
 
       <ErrorButton label="Открыть заново" onPress={() => void retry()} primary colors={colors} />
@@ -94,7 +94,11 @@ function ErrorButton({
     >
       <View>
         <Text
-          style={{ fontSize: 16, fontWeight: '600', color: primary ? colors.onAccent : colors.text }}
+          style={{
+            fontSize: 16,
+            fontWeight: '600',
+            color: primary ? colors.onAccent : colors.text,
+          }}
         >
           {label}
         </Text>

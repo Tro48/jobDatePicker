@@ -17,7 +17,13 @@ export interface AppTextProps extends TextProps {
  * Единственный способ вывести текст в приложении. Цвета берутся из темы, а не
  * задаются в компонентах; allowFontScaling не отключается нигде.
  */
-export function AppText({ variant = 'body', tone = 'default', color, style, ...rest }: AppTextProps) {
+export function AppText({
+  variant = 'body',
+  tone = 'default',
+  color,
+  style,
+  ...rest
+}: AppTextProps) {
   const theme = useTheme();
 
   const toneColor = {
