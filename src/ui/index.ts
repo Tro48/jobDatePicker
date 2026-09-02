@@ -8,6 +8,7 @@ export { IconButton } from './IconButton.tsx';
 export { Placeholder } from './Placeholder.tsx';
 export { Screen } from './Screen.tsx';
 export { Select } from './Select.tsx';
+export type { SelectOption } from './Select.tsx';
 export { Sheet, useSheetScroll } from './Sheet.tsx';
 export { Stat } from './Stat.tsx';
 export { TextField } from './TextField.tsx';

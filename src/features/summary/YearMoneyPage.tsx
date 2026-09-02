@@ -52,8 +52,7 @@ export function YearMoneyPage({ year, payments, currency, today, width }: YearMo
           </>
         ) : (
           <AppText variant="body" tone="muted">
-            За {year} год выплат не внесено. Суммы вносятся в карточке дня, в который пришли
-            деньги.
+            За {year} год выплат не внесено. Суммы вносятся в карточке дня, в который пришли деньги.
           </AppText>
         )}
       </Card>
@@ -77,10 +76,17 @@ export function YearMoneyPage({ year, payments, currency, today, width }: YearMo
               >
                 <View
                   importantForAccessibility="no-hide-descendants"
-                  style={{ flexDirection: 'row', justifyContent: 'space-between', gap: theme.spacing.sm }}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    gap: theme.spacing.sm,
+                  }}
                 >
                   {/* Текущий месяц помечен словом, а не только цветом полосы. */}
-                  <AppText variant="body" style={{ fontWeight: isCurrent ? '700' : '400', flexShrink: 1 }}>
+                  <AppText
+                    variant="body"
+                    style={{ fontWeight: isCurrent ? '700' : '400', flexShrink: 1 }}
+                  >
                     {formatMonthName(item.month)}
                     {isCurrent ? ' · сейчас' : ''}
                   </AppText>
@@ -124,8 +130,8 @@ export function YearMoneyPage({ year, payments, currency, today, width }: YearMo
 
       <Card title="Что здесь считается">
         <AppText variant="body" tone="muted">
-          Месяц выплаты — тот, ЗА который она пришла, а не дата поступления: аванс за
-          сентябрь остаётся сентябрьским, даже если пришёл 27 августа.
+          Месяц выплаты — тот, ЗА который она пришла, а не дата поступления: аванс за сентябрь
+          остаётся сентябрьским, даже если пришёл 27 августа.
         </AppText>
       </Card>
     </ScrollView>

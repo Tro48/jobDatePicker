@@ -1,10 +1,14 @@
 import { Linking, View } from 'react-native';
+import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { formatDayShort } from '@/domain/format.ts';
 import { toIsoDateLocal } from '@/domain/date.ts';
 import { AppText, Button, Card } from '@/ui';
 import { useTheme } from '@/theme';
+import type { ReleaseManifest } from '@/domain/release.ts';
 import { useAppUpdate } from './useAppUpdate.ts';
-import type { ReleaseManifest, UpdateStatus } from './useAppUpdate.ts';
+import { useBuildSignal } from './useBuildSignal.ts';
+import { UPDATE_FAILURE_TEXT } from './updateError.ts';
+import type { UpdateStatus } from './useAppUpdate.ts';
 
 /** Отпечаток длинный и целиком не нужен: он опознаётся по началу. */
 const FINGERPRINT_LENGTH = 8;
@@ -27,7 +31,7 @@ function statusText(status: UpdateStatus): string | null {
     case 'current':
       return 'Установлена последняя версия.';
     case 'failed':
-      return `Не получилось: ${status.message}`;
+      return UPDATE_FAILURE_TEXT[status.reason];
     default:
       return null;
   }
@@ -43,21 +47,27 @@ function releaseDate(builtAt: string | undefined): string | null {
 function newBuildText(build: ReleaseManifest): string {
   const title = build.version ? `Вышла версия ${build.version}` : 'Вышла новая сборка';
   const date = releaseDate(build.builtAt);
-  return `${date ? `${title} от ${date}` : title}. Ставится поверх текущей, данные сохранятся.`;
+  const notes = build.notes ? ` ${build.notes}.` : '';
+  return `${date ? `${title} от ${date}` : title}.${notes} Ставится поверх текущей, данные сохранятся.`;
 }
 
 /**
  * Версия приложения и обновления.
  *
- * Одна карточка на оба канала доставки: пока обновлять нечего — кнопка
- * проверки, как только вышла сборка с другой нативной частью — та же кнопка
- * ведёт за APK. Человеку важно, есть ли что ставить, а не то, каким путём это
- * приезжает.
+ * Одна карточка на оба канала доставки: обновление по воздуху и сборка APK,
+ * которую надо ставить руками. Человеку важно, есть ли что ставить, а не то,
+ * каким путём это приезжает.
+ *
+ * Все кнопки, что-то делающие с обновлениями, живут здесь: полоска на
+ * календаре только сообщает и приводит сюда.
  */
 export function UpdateCard() {
   const theme = useTheme();
-  const { status, runtimeVersion, channel, bundleCreatedAt, newBuild, check, apply } =
-    useAppUpdate();
+  const push = useGuardedPush();
+  const { status, runtimeVersion, channel, bundleCreatedAt, check, apply } = useAppUpdate();
+  // Кнопка скачивания живёт только здесь: полоска на календаре про сборку
+  // рассказывает, но ставить APK человек приходит в настройки.
+  const { build: newBuild, refresh } = useBuildSignal();
 
   const message = newBuild ? newBuildText(newBuild) : statusText(status);
 
@@ -99,17 +109,35 @@ export function UpdateCard() {
           variant="primary"
           onPress={() => void Linking.openURL(newBuild.url)}
         />
-      ) : status.kind === 'ready' ? (
+      ) : null}
+
+      {status.kind === 'ready' ? (
         <Button title="Перезапустить и применить" variant="primary" onPress={apply} />
-      ) : (
-        <Button
-          title="Проверить обновление"
-          onPress={check}
-          disabled={
-            status.kind === 'disabled' || status.kind === 'checking' || status.kind === 'downloading'
-          }
-        />
-      )}
+      ) : null}
+
+      {/* Полоску на календаре можно закрыть не глядя — тогда список изменений
+          ищут здесь. */}
+      <Button
+        title="Что нового"
+        onPress={() => push('/whats-new')}
+        accessibilityHint="Открывает список изменений в последних выпусках"
+      />
+
+      {/* Ручная проверка остаётся всегда, даже когда есть что скачивать: это
+          единственный способ спросить об обновлениях самому, не дожидаясь
+          расписания. */}
+      <Button
+        title="Проверить обновление"
+        // Проверяются оба канала разом: по воздуху приезжает JS, а список
+        // выпусков знает про сборку, которую надо ставить руками.
+        onPress={() => {
+          check();
+          void refresh({ force: true });
+        }}
+        disabled={
+          status.kind === 'disabled' || status.kind === 'checking' || status.kind === 'downloading'
+        }
+      />
     </Card>
   );
 }

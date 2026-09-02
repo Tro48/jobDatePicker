@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
-import { darkPalette, lightPalette } from './palette.ts';
+import { darkPalette, fadedShiftPair, lightPalette } from './palette.ts';
 import type { ColorPair, Palette } from './palette.ts';
 import { FOCUS_RING_WIDTH, MIN_TOUCH_TARGET, radius, spacing, typography } from './typography.ts';
 import { useAppStore } from '@/data/store.ts';
@@ -57,13 +57,15 @@ export function useTheme(): Theme {
  * Цвета конкретной смены в текущей теме. Неизвестный токен не роняет экран, а
  * отдаёт нейтральную пару: новый тип смены мог появиться раньше, чем цвет для
  * него.
+ *
+ * faded — смена уже отработана: заливка уходит в серый, подпись остаётся.
  */
-export function useShiftColors(colorToken: string): ColorPair {
+export function useShiftColors(colorToken: string, options: { faded?: boolean } = {}): ColorPair {
   const theme = useTheme();
-  return (
-    theme.colors.shifts[colorToken] ?? {
-      surface: theme.colors.surface,
-      on: theme.colors.text,
-    }
-  );
+  const pair = theme.colors.shifts[colorToken] ?? {
+    surface: theme.colors.surface,
+    on: theme.colors.text,
+  };
+
+  return options.faded ? fadedShiftPair(pair, theme.colors.surface) : pair;
 }

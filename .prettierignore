@@ -1,0 +1,10 @@
+node_modules
+.expo
+android
+ios
+assets
+package-lock.json
+
+# app.json переписывает машина: подъём версии в CI пишет его через
+# JSON.stringify, и после этого prettier --check падал бы на чужом отступе.
+app.json

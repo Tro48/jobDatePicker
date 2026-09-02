@@ -1,0 +1,39 @@
+# Перед пушем прогоняется всё, что потом прогонит CI. Смысл простой: узнать о
+# красных тестах на своей машине за полминуты, а не через пять минут в Actions.
+#
+# Порядок от дешёвого к дорогому; любой шаг останавливает пуш. Вывод шага
+# показывается только когда он упал: успешный прогон не должен заваливать
+# терминал тремя сотнями строк TAP.
+set -e
+
+step() {
+  name=$1
+  shift
+  echo "→ $name"
+  if ! output=$("$@" 2>&1); then
+    echo "$output"
+    echo ""
+    echo "✗ $name — пуш остановлен."
+    exit 1
+  fi
+}
+
+echo "→ Форматирование"
+if ! npm run --silent format:check >/dev/null 2>&1; then
+  echo "  Разъехалось — правлю."
+  npm run --silent format >/dev/null
+  npm run --silent format:check >/dev/null
+
+  echo ""
+  echo "  Файлы отформатированы, но правки лежат в рабочем каталоге: коммит,"
+  echo "  который уходит в пуш, их не содержит. Посмотри git diff, добавь их"
+  echo "  к коммиту и повтори пуш."
+  exit 1
+fi
+
+step "Линтер" npm run --silent lint
+step "Типы" npm run --silent typecheck
+step "Тесты доменного слоя" npm run --silent test:domain
+step "Тесты экранов и хранилища" npm run --silent test:ui
+
+echo "✓ Всё зелёное."

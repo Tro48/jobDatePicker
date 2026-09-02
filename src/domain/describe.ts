@@ -1,5 +1,10 @@
-import { shiftDurationMinutes } from './engine.ts';
-import { formatDayShort, formatDurationSpoken, formatWeekdayName } from './format.ts';
+import { overtimeMinutes, shiftDurationMinutes } from './engine.ts';
+import {
+  formatDayShort,
+  formatDurationSpoken,
+  formatOvertimeSpoken,
+  formatWeekdayName,
+} from './format.ts';
 import type { ResolvedDay } from './types.ts';
 
 /**
@@ -9,7 +14,10 @@ import type { ResolvedDay } from './types.ts';
  * элемент, и разрозненные «17», «П» превращаются в бессмыслицу. Заливка и
  * буква-маркер при этом скрываются от озвучки.
  */
-export function describeDay(day: ResolvedDay, options: { isToday?: boolean } = {}): string {
+export function describeDay(
+  day: ResolvedDay,
+  options: { isToday?: boolean; isWorked?: boolean } = {},
+): string {
   const parts: string[] = [formatDayShort(day.date), formatWeekdayName(day.date)];
 
   if (options.isToday) parts.push('сегодня');
@@ -26,6 +34,17 @@ export function describeDay(day: ResolvedDay, options: { isToday?: boolean } = {
     }
     const spoken = formatDurationSpoken(day.workedMinutes);
     if (spoken) parts.push(spoken);
+
+    // Приглушённая клетка и цифра отклонения в углу — визуальные подсказки;
+    // словами их говорит только эта строка. Часы сверх пустого графика второй
+    // раз числом не называются: они уже прозвучали как длительность дня.
+    if (options.isWorked) parts.push('отработано');
+    if (day.plannedMinutes === 0) {
+      parts.push('сверх графика');
+    } else {
+      const deviation = formatOvertimeSpoken(overtimeMinutes(day));
+      if (deviation) parts.push(deviation);
+    }
   }
 
   if (day.source === 'override') parts.push('изменено вручную');

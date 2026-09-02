@@ -34,7 +34,15 @@ export function Legend({
   );
 }
 
-function LegendItem({ badge, name, colorToken }: { badge: string; name: string; colorToken: string }) {
+function LegendItem({
+  badge,
+  name,
+  colorToken,
+}: {
+  badge: string;
+  name: string;
+  colorToken: string;
+}) {
   const theme = useTheme();
   const colors = useShiftColors(colorToken);
 

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { monthDays } from '../date.ts';
 import {
+  overtimeMinutes,
   resolveDay,
   resolvePlannedShiftId,
   scheduleUsesKnownShifts,
@@ -33,7 +34,12 @@ test('все пресеты ссылаются только на существ�
 
 test('validatePreset ловит ссылку на несуществующую смену', () => {
   const errors = validatePreset(
-    { id: 'broken', name: '', description: '', pattern: { kind: 'cycle', slots: ['day12', 'ghost'] } },
+    {
+      id: 'broken',
+      name: '',
+      description: '',
+      pattern: { kind: 'cycle', slots: ['day12', 'ghost'] },
+    },
     shiftTypes,
   );
   assert.equal(errors.length, 1);
@@ -66,7 +72,15 @@ test('3/3 день-ночь — цикл из двенадцати дней', ()
 test('5/2 привязана к дням недели, а не к дате отсчёта', () => {
   const fromTuesday = contextFor('5-2-short-friday', '2026-09-01');
   const fromSaturday = contextFor('5-2-short-friday', '2026-09-05');
-  const week = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13'];
+  const week = [
+    '2026-09-07',
+    '2026-09-08',
+    '2026-09-09',
+    '2026-09-10',
+    '2026-09-11',
+    '2026-09-12',
+    '2026-09-13',
+  ];
   assert.equal(badges(fromTuesday, week), 'РРРРСВВ');
   assert.equal(badges(fromSaturday, week), 'РРРРСВВ');
 });
@@ -159,4 +173,36 @@ test('scheduleUsesKnownShifts ловит график на исчезнувшу�
     anchorDate: '2026-09-01',
   };
   assert.equal(scheduleUsesKnownShifts(broken, shiftTypes), false);
+});
+
+test('норма дня берётся из графика и переживает правку смены', () => {
+  const context = contextFor('2-2-day', '2026-09-01');
+  context.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'off' });
+
+  const overridden = resolveDay(context, '2026-09-01');
+  assert.equal(overridden.workedMinutes, 0);
+  assert.equal(overridden.plannedMinutes, 12 * 60);
+
+  // 3 сентября график даёт выходной — нормы у дня нет.
+  assert.equal(resolveDay(context, '2026-09-03').plannedMinutes, 0);
+});
+
+test('отклонение считается от графика, а у нерабочих дней его нет', () => {
+  const context = contextFor('2-2-day', '2026-09-01');
+  context.overrides.set('2026-09-01', { date: '2026-09-01', workedMinutesOverride: 14 * 60 });
+  context.overrides.set('2026-09-02', { date: '2026-09-02', workedMinutesOverride: 10 * 60 });
+  context.overrides.set('2026-09-03', {
+    date: '2026-09-03',
+    shiftTypeId: 'extra',
+    workedMinutesOverride: 4 * 60,
+  });
+  context.overrides.set('2026-09-05', { date: '2026-09-05', shiftTypeId: 'vacation' });
+
+  assert.equal(overtimeMinutes(resolveDay(context, '2026-09-01')), 2 * 60);
+  assert.equal(overtimeMinutes(resolveDay(context, '2026-09-02')), -2 * 60);
+  // Подработка в выходной — плюс все часы, а не минус до штатной подработки.
+  assert.equal(overtimeMinutes(resolveDay(context, '2026-09-03')), 4 * 60);
+  // Отпуск поверх смены недоработкой не считается.
+  assert.equal(overtimeMinutes(resolveDay(context, '2026-09-05')), 0);
+  assert.equal(overtimeMinutes(resolveDay(context, '2026-09-06')), 0);
 });

@@ -54,6 +54,10 @@ export function MonthGrid({
             size={cellSize}
             inMonth={cell.inMonth}
             isToday={cell.date === today}
+            // Сегодняшняя смена уже считается отработанной: приложение не
+            // знает, закончилась она или нет, а «через час потускнеет» —
+            // поведение, которое ничего не объясняет.
+            isWorked={cell.date <= today && cell.resolved.shiftType.kind === 'work'}
             isSelected={cell.date === selectedDate}
             onPress={onSelectDay}
           />

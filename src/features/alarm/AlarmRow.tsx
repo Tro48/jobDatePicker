@@ -98,9 +98,7 @@ export function AlarmRow({
       <IconButton
         name={alarm.enabled ? 'pause' : 'play'}
         label={
-          alarm.enabled
-            ? `Поставить на паузу будильник ${time}`
-            : `Включить будильник ${time}`
+          alarm.enabled ? `Поставить на паузу будильник ${time}` : `Включить будильник ${time}`
         }
         onPress={() => onToggle(!alarm.enabled)}
       />

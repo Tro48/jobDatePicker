@@ -60,7 +60,11 @@ export function HorizontalPager<T>({
       style={height === undefined ? { flex: 1, width } : { width, height }}
       // Без getItemLayout initialScrollIndex промахивается: FlatList не знает
       // ширину ещё не отрисованных страниц.
-      getItemLayout={(_, itemIndex) => ({ length: width, offset: width * itemIndex, index: itemIndex })}
+      getItemLayout={(_, itemIndex) => ({
+        length: width,
+        offset: width * itemIndex,
+        index: itemIndex,
+      })}
       onMomentumScrollEnd={handleMomentumEnd}
       // Окно рендера узкое намеренно: страница тяжёлая, а держать в памяти
       // десятки месяцев незачем.

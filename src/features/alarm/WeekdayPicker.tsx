@@ -36,7 +36,9 @@ export function WeekdayPicker({
   const [focused, setFocused] = useState<Weekday | null>(null);
 
   const toggle = (day: Weekday): void => {
-    onChange(sortWeekdays(days.includes(day) ? days.filter((item) => item !== day) : [...days, day]));
+    onChange(
+      sortWeekdays(days.includes(day) ? days.filter((item) => item !== day) : [...days, day]),
+    );
   };
 
   return (

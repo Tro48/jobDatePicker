@@ -6,9 +6,10 @@
     /* Доменный слой импортирует соседей с расширением .ts — этого требует
        запуск тестов в голом Node через --experimental-strip-types. */
     "allowImportingTsExtensions": true,
-    /* Тесты доменного слоя бегут в Node и импортируют node:test и node:assert.
-       Без явного types их не видит moduleResolution: bundler из базы Expo. */
-    "types": ["node"],
+    /* Тесты доменного слоя бегут в Node и импортируют node:test и node:assert,
+       тесты экранов — в jest с его глобальными describe/test/expect. Без явного
+       types их не видит moduleResolution: bundler из базы Expo. */
+    "types": ["node", "jest"],
     "paths": {
       "@/*": ["./src/*"],
       "@modules/*": ["./modules/*"]

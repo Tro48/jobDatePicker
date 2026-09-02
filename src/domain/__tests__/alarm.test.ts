@@ -144,8 +144,17 @@ test('ручная правка дня меняет расписание буд�
 });
 
 test('все будильники сливаются в один список по времени и режутся по потолку', () => {
-  const morning: Alarm = { ...base, id: 'morning', repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] } };
-  const evening: Alarm = { ...base, id: 'evening', time: '20:00', repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] } };
+  const morning: Alarm = {
+    ...base,
+    id: 'morning',
+    repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] },
+  };
+  const evening: Alarm = {
+    ...base,
+    id: 'evening',
+    time: '20:00',
+    repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] },
+  };
 
   const found = planAlarms([morning, evening], null, localNoon('2026-09-01'), 3);
 
@@ -158,7 +167,12 @@ test('все будильники сливаются в один список п
 test('отзвонивший разовый будильник помечается на выключение', () => {
   const fired: Alarm = { ...base, id: 'fired', repeat: { kind: 'once', date: '2026-09-01' } };
   const future: Alarm = { ...base, id: 'future', repeat: { kind: 'once', date: '2026-09-03' } };
-  const off: Alarm = { ...base, id: 'off', enabled: false, repeat: { kind: 'once', date: '2026-09-01' } };
+  const off: Alarm = {
+    ...base,
+    id: 'off',
+    enabled: false,
+    repeat: { kind: 'once', date: '2026-09-01' },
+  };
 
   assert.deepEqual(expiredOnceAlarmIds([fired, future, off], localNoon('2026-09-01')), ['fired']);
 });
@@ -206,21 +220,36 @@ test('повтор описывается человеческим тексто�
   const describe = (alarm: Alarm): string => describeRepeat(alarm, shiftTypes);
 
   assert.equal(describe(base), 'Один раз, 2 сентября');
-  assert.equal(describe({ ...base, repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] } }), 'Каждый день');
-  assert.equal(describe({ ...base, repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5] } }), 'По будням');
+  assert.equal(
+    describe({ ...base, repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] } }),
+    'Каждый день',
+  );
+  assert.equal(
+    describe({ ...base, repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5] } }),
+    'По будням',
+  );
   assert.equal(describe({ ...base, repeat: { kind: 'weekly', days: [6, 7] } }), 'По выходным');
   assert.equal(describe({ ...base, repeat: { kind: 'weekly', days: [5, 1] } }), 'Пн, Пт');
   assert.equal(
-    describe({ ...base, repeat: { kind: 'schedule', times: { day12: '06:30', night12: '18:30' } } }),
+    describe({
+      ...base,
+      repeat: { kind: 'schedule', times: { day12: '06:30', night12: '18:30' } },
+    }),
     'Рабочие дни: дневная смена, ночная смена',
   );
-  assert.equal(describe({ ...base, repeat: { kind: 'schedule', times: {} } }), 'Рабочие дни по графику');
+  assert.equal(
+    describe({ ...base, repeat: { kind: 'schedule', times: {} } }),
+    'Рабочие дни по графику',
+  );
 });
 
 test('в списке у графика показываются все его времена', () => {
   assert.equal(describeTime(base), '07:00');
   assert.equal(
-    describeTime({ ...base, repeat: { kind: 'schedule', times: { night12: '18:30', day12: '06:30' } } }),
+    describeTime({
+      ...base,
+      repeat: { kind: 'schedule', times: { night12: '18:30', day12: '06:30' } },
+    }),
     '06:30 · 18:30',
   );
   // Без своих времён список показывает общее время будильника.

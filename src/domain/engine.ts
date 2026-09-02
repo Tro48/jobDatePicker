@@ -1,4 +1,11 @@
-import { addDays, daysBetween, floorMod, parseTimeToMinutes, startOfWeek, weekday } from './date.ts';
+import {
+  addDays,
+  daysBetween,
+  floorMod,
+  parseTimeToMinutes,
+  startOfWeek,
+  weekday,
+} from './date.ts';
 import type { IsoDate, Weekday } from './date.ts';
 import type {
   ActiveSchedule,
@@ -51,7 +58,9 @@ export function resolvePlannedShiftId(schedule: ActiveSchedule, date: IsoDate): 
     throw new RangeError('Недельный график должен содержать хотя бы одну неделю');
   }
   // Недели чередуются от недели, в которую попала дата отсчёта.
-  const weeksApart = Math.floor(daysBetween(startOfWeek(schedule.anchorDate), startOfWeek(date)) / 7);
+  const weeksApart = Math.floor(
+    daysBetween(startOfWeek(schedule.anchorDate), startOfWeek(date)) / 7,
+  );
   const week = pattern.weeks[floorMod(weeksApart, pattern.weeks.length)];
   return week[weekday(date)];
 }
@@ -90,13 +99,38 @@ export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay
     override !== undefined &&
     (override.shiftTypeId !== undefined || override.workedMinutesOverride !== undefined);
 
+  // Норма берётся у смены из графика, даже когда день переопределён. Тип
+  // смены из графика может отсутствовать в справочнике только у сломанного
+  // сохранённого графика — это ловит scheduleUsesKnownShifts при подъёме
+  // состояния; ронять из-за этого клетку календаря незачем.
+  const plannedType = context.shiftTypes.get(plannedId);
+
   return {
     date,
     shiftType,
     source: changed ? 'override' : 'schedule',
     workedMinutes: override?.workedMinutesOverride ?? shiftDurationMinutes(shiftType),
+    plannedMinutes: plannedType ? shiftDurationMinutes(plannedType) : 0,
     note: override?.note,
   };
+}
+
+/**
+ * На сколько минут факт разошёлся с графиком: больше нуля — переработка,
+ * меньше — недоработка.
+ *
+ * Сравнивается с тем, что на этот день давал график, а не с нормой смены,
+ * которая в дне стоит: подработка в выходной — это плюс все её часы, а не
+ * минус до штатной длительности подработки.
+ *
+ * У выходных отклонения нет вовсе. Отпуск, больничный и внеплановый выходной
+ * поверх смены иначе показывали бы «−12» на каждом дне: формально часов
+ * действительно меньше, но недоработкой это не является, а календарь на две
+ * недели отпуска заливался бы красным.
+ */
+export function overtimeMinutes(day: ResolvedDay): number {
+  if (day.shiftType.kind === 'rest') return 0;
+  return day.workedMinutes - day.plannedMinutes;
 }
 
 export function resolveRange(context: ScheduleContext, dates: IsoDate[]): ResolvedDay[] {
@@ -112,14 +146,18 @@ export function resolveRange(context: ScheduleContext, dates: IsoDate[]): Resolv
  * графика, чья смена исчезла из справочника, защищает scheduleUsesKnownShifts
  * при подъёме состояния.
  */
-export function validatePreset(preset: SchedulePreset, shiftTypes: Map<string, ShiftType>): string[] {
+export function validatePreset(
+  preset: SchedulePreset,
+  shiftTypes: Map<string, ShiftType>,
+): string[] {
   const errors: string[] = [];
   const pattern = preset.pattern;
 
   if (pattern.kind === 'cycle') {
     if (pattern.slots.length === 0) errors.push(`${preset.id}: пустой цикл`);
     pattern.slots.forEach((id, index) => {
-      if (!shiftTypes.has(id)) errors.push(`${preset.id}: слот ${index} ссылается на несуществующую смену "${id}"`);
+      if (!shiftTypes.has(id))
+        errors.push(`${preset.id}: слот ${index} ссылается на несуществующую смену "${id}"`);
     });
     return errors;
   }
@@ -131,7 +169,9 @@ export function validatePreset(preset: SchedulePreset, shiftTypes: Map<string, S
       if (id === undefined) {
         errors.push(`${preset.id}: неделя ${weekIndex}, не задан день недели ${day}`);
       } else if (!shiftTypes.has(id)) {
-        errors.push(`${preset.id}: неделя ${weekIndex}, день ${day} ссылается на несуществующую смену "${id}"`);
+        errors.push(
+          `${preset.id}: неделя ${weekIndex}, день ${day} ссылается на несуществующую смену "${id}"`,
+        );
       }
     }
   });

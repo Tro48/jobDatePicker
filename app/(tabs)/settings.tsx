@@ -5,7 +5,7 @@ import { AppText, Button, Card, ChoiceGroup, Screen } from '@/ui';
 import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
 import { AboutSection } from '@/features/settings/AboutSection.tsx';
-import { UpdateCard } from '@/features/settings/UpdateCard.tsx';
+import { UpdateCard } from '@/features/updates/UpdateCard.tsx';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { useTheme } from '@/theme';
 
@@ -56,7 +56,9 @@ export default function SettingsScreen() {
       <Card title="Выплаты">
         <AppText variant="body">
           {payroll.rules
-            .map((rule) => `${rule.kind === 'advance' ? 'Аванс' : 'Зарплата'} ${rule.dayOfMonth}-го`)
+            .map(
+              (rule) => `${rule.kind === 'advance' ? 'Аванс' : 'Зарплата'} ${rule.dayOfMonth}-го`,
+            )
             .join(', ')}
         </AppText>
         <Button title="Настроить выплаты" onPress={() => push('/settings/payroll')} />

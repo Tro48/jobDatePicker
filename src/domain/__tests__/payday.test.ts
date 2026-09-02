@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_PAYMENT_RULES, expectedPaymentDate, shiftPeriod, upcomingPayments } from '../payday.ts';
+import {
+  DEFAULT_PAYMENT_RULES,
+  expectedPaymentDate,
+  shiftPeriod,
+  upcomingPayments,
+} from '../payday.ts';
 import type { PaymentRule } from '../types.ts';
 
 const [advance, salary] = DEFAULT_PAYMENT_RULES;
@@ -12,14 +17,24 @@ test('аванс за сентябрь приходит в августе, за�
 });
 
 test('сдвиг с выходного назад и вперёд', () => {
-  const base: PaymentRule = { kind: 'salary', dayOfMonth: 10, paidInMonthOffset: 0, weekendShift: 'before' };
+  const base: PaymentRule = {
+    kind: 'salary',
+    dayOfMonth: 10,
+    paidInMonthOffset: 0,
+    weekendShift: 'before',
+  };
   assert.equal(expectedPaymentDate(base, '2026-10'), '2026-10-09'); // суббота → пятница
   assert.equal(expectedPaymentDate({ ...base, weekendShift: 'after' }, '2026-10'), '2026-10-12'); // → понедельник
   assert.equal(expectedPaymentDate({ ...base, weekendShift: 'none' }, '2026-10'), '2026-10-10');
 });
 
 test('31-е число в коротком месяце не уезжает в следующий', () => {
-  const rule: PaymentRule = { kind: 'salary', dayOfMonth: 31, paidInMonthOffset: 0, weekendShift: 'none' };
+  const rule: PaymentRule = {
+    kind: 'salary',
+    dayOfMonth: 31,
+    paidInMonthOffset: 0,
+    weekendShift: 'none',
+  };
   assert.equal(expectedPaymentDate(rule, '2027-02'), '2027-02-28');
   assert.equal(expectedPaymentDate(rule, '2028-02'), '2028-02-29');
   assert.equal(expectedPaymentDate(rule, '2026-09'), '2026-09-30');
