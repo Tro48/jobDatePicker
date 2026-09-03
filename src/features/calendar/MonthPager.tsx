@@ -13,6 +13,8 @@ export interface MonthPagerProps {
   context: ScheduleContext;
   today: IsoDate;
   selectedDate?: IsoDate;
+  /** Выделенные дни. undefined — сетка обычная. */
+  highlighted?: Set<IsoDate>;
   onSelectDay: (date: IsoDate) => void;
   width: number;
 }
@@ -30,6 +32,7 @@ export function MonthPager({
   context,
   today,
   selectedDate,
+  highlighted,
   onSelectDay,
   width,
 }: MonthPagerProps) {
@@ -52,6 +55,7 @@ export function MonthPager({
           context={context}
           today={today}
           selectedDate={selectedDate}
+          highlighted={highlighted}
           width={width}
           onSelectDay={onSelectDay}
         />

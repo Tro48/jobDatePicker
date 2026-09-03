@@ -16,6 +16,11 @@ export interface MonthGridProps {
   context: ScheduleContext;
   today: IsoDate;
   selectedDate?: IsoDate;
+  /**
+   * Выделенные дни. undefined — никого не выделяют и сетка обычная; заданный
+   * набор гасит всё, что в него не попало.
+   */
+  highlighted?: Set<IsoDate>;
   width: number;
   onSelectDay: (date: IsoDate) => void;
 }
@@ -26,6 +31,7 @@ export function MonthGrid({
   context,
   today,
   selectedDate,
+  highlighted,
   width,
   onSelectDay,
 }: MonthGridProps) {
@@ -58,6 +64,8 @@ export function MonthGrid({
             // знает, закончилась она или нет, а «через час потускнеет» —
             // поведение, которое ничего не объясняет.
             isWorked={cell.date <= today && cell.resolved.shiftType.kind === 'work'}
+            highlighting={highlighted !== undefined}
+            dimmed={highlighted !== undefined && !highlighted.has(cell.date)}
             isSelected={cell.date === selectedDate}
             onPress={onSelectDay}
           />

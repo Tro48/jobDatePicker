@@ -20,10 +20,11 @@ import {
   parseHoursToMinutes,
 } from '@/domain/format.ts';
 import { useScheduleContext } from '@/data/selectors.ts';
-import { useAppStore } from '@/data/store.ts';
+import { activeTrack, useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, Select, Sheet, TextField, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 import { DayAlarmSection } from './DayAlarmSection.tsx';
+import { DayOtherTracks } from './DayOtherTracks.tsx';
 import { DayPaymentSection } from './DayPaymentSection.tsx';
 import { DayRangeSection } from './DayRangeSection.tsx';
 
@@ -40,7 +41,7 @@ export function DayScreen() {
 
   const context = useScheduleContext();
   const shiftTypes = useAppStore((state) => state.shiftTypes);
-  const override = useAppStore((state) => state.overrides[date]);
+  const override = useAppStore((state) => activeTrack(state)?.overrides[date]);
   const setOverride = useAppStore((state) => state.setOverride);
   const clearOverride = useAppStore((state) => state.clearOverride);
 
@@ -244,6 +245,8 @@ export function DayScreen() {
             ) : null}
           </Card>
         ) : null}
+
+        <DayOtherTracks date={date} />
 
         <DayAlarmSection date={date} />
 

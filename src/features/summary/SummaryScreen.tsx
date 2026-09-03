@@ -2,10 +2,13 @@ import { useMemo, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { todayIso } from '@/domain/date.ts';
-import { formatMonthTitle } from '@/domain/format.ts';
+import { formatMonthTitle, formatMoney, formatTotalHours } from '@/domain/format.ts';
+import { buildMonthSummary, combineTotals } from '@/domain/summary.ts';
+import type { ScheduleContext } from '@/domain/engine.ts';
+import { TrackTabs } from '@/features/calendar/TrackTabs.tsx';
 import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
 import { periodOf } from '@/domain/payday.ts';
-import { useScheduleContext } from '@/data/selectors.ts';
+import { useActiveTrack, useScheduleContext, useScheduleContexts } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, HorizontalPager, IconButton } from '@/ui';
@@ -19,14 +22,45 @@ export function SummaryScreen() {
   const { width } = useWindowDimensions();
 
   const context = useScheduleContext();
+  const track = useActiveTrack();
+  const tracks = useAppStore((state) => state.tracks);
+  const contexts = useScheduleContexts();
   const payroll = useAppStore((state) => state.payroll);
-  const payments = useAppStore((state) => state.payments);
+  const allPayments = useAppStore((state) => state.payments);
 
   const today = useMemo(() => todayIso(), []);
   const months = useMemo(() => buildMonthWindow(periodOf(today)), [today]);
   const [index, setIndex] = useState(MONTH_RANGE);
 
   const current = months[index];
+
+  // Сводка всегда про одну работу: смешивать часы двух работодателей в одной
+  // таблице нельзя — ставка за час у них разная.
+  const payments = useMemo(
+    () => allPayments.filter((payment) => payment.trackId === track?.id),
+    [allPayments, track],
+  );
+
+  /**
+   * Итог по всем своим работам за открытый месяц. Ради него вторая работа и
+   * заводится: по отдельности сводки есть, а «сколько всего вышло» иначе
+   * приходится складывать в уме.
+   */
+  const combined = useMemo(() => {
+    const own = tracks.filter((item) => item.own && contexts.has(item.id));
+    if (own.length < 2) return null;
+
+    return combineTotals(
+      own.map((item) =>
+        buildMonthSummary(
+          contexts.get(item.id) as ScheduleContext,
+          current.period,
+          allPayments.filter((payment) => payment.trackId === item.id),
+          today,
+        ),
+      ),
+    );
+  }, [tracks, contexts, allPayments, current.period, today]);
   const padding = {
     paddingTop: insets.top + theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
@@ -93,6 +127,25 @@ export function SummaryScreen() {
         />
       </View>
 
+      {tracks.length > 1 ? (
+        <View style={{ paddingHorizontal: theme.spacing.lg }}>
+          <TrackTabs tracks={tracks} activeTrackId={track?.id ?? null} />
+        </View>
+      ) : null}
+
+      {combined ? (
+        <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.sm }}>
+          <AppText
+            variant="body"
+            tone="muted"
+            accessibilityLabel={`Всего по ${combined.tracks} работам: ${formatTotalHours(combined.workedMinutes)}, ${formatMoney(combined.totalPaid, payroll.currency)}`}
+          >
+            Всего по {combined.tracks} работам: {formatTotalHours(combined.workedMinutes)} ·{' '}
+            {formatMoney(combined.totalPaid, payroll.currency)}
+          </AppText>
+        </View>
+      ) : null}
+
       <HorizontalPager
         items={months}
         keyOf={(item) => item.period}
@@ -105,6 +158,7 @@ export function SummaryScreen() {
             context={context}
             payments={payments}
             payroll={payroll}
+            payrollRules={track?.payrollRules ?? []}
             today={today}
             width={width}
             onOpenYear={() =>

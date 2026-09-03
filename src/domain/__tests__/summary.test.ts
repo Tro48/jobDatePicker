@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMonthSummary, forecastMonth, yearlyPaymentTotals } from '../summary.ts';
+import {
+  buildMonthSummary,
+  combineTotals,
+  forecastMonth,
+  yearlyPaymentTotals,
+} from '../summary.ts';
 import type { ScheduleContext } from '../engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '../shifts.ts';
 import { SCHEDULE_PRESETS } from '../presets.ts';
@@ -21,10 +26,31 @@ function contextFor(presetId: string, anchorDate: string): ScheduleContext {
 }
 
 const septemberPayments: PaymentRecord[] = [
-  { id: 'a', kind: 'advance', period: '2026-09', receivedOn: '2026-08-27', amount: 30_000 },
-  { id: 's', kind: 'salary', period: '2026-09', receivedOn: '2026-10-09', amount: 45_000 },
+  {
+    id: 'a',
+    trackId: 'main',
+    kind: 'advance',
+    period: '2026-09',
+    receivedOn: '2026-08-27',
+    amount: 30_000,
+  },
+  {
+    id: 's',
+    trackId: 'main',
+    kind: 'salary',
+    period: '2026-09',
+    receivedOn: '2026-10-09',
+    amount: 45_000,
+  },
   // Выплата за август не должна попасть в сентябрьскую сводку.
-  { id: 'x', kind: 'salary', period: '2026-08', receivedOn: '2026-09-10', amount: 41_000 },
+  {
+    id: 'x',
+    trackId: 'main',
+    kind: 'salary',
+    period: '2026-08',
+    receivedOn: '2026-09-10',
+    amount: 41_000,
+  },
 ];
 
 test('5/2 с короткой пятницей: 22 рабочих дня и 172 часа в сентябре 2026', () => {
@@ -101,7 +127,16 @@ test('прогноз незакрытого месяца берёт ставку
   const august = buildMonthSummary(
     context,
     '2026-08',
-    [{ id: 'a8', kind: 'salary', period: '2026-08', receivedOn: '2026-09-10', amount: 96_000 }],
+    [
+      {
+        id: 'a8',
+        trackId: 'main',
+        kind: 'salary',
+        period: '2026-08',
+        receivedOn: '2026-09-10',
+        amount: 96_000,
+      },
+    ],
     AFTER_ALL,
   );
   const september = buildMonthSummary(context, '2026-09', [], '2026-09-15');
@@ -123,8 +158,22 @@ test('прогноза нет, если нет ни одного закрыто�
 test('отпускные входят в сумму месяца, но не в ставку за час и за смену', () => {
   const payments: PaymentRecord[] = [
     ...septemberPayments,
-    { id: 'v', kind: 'vacationPay', period: '2026-09', receivedOn: '2026-09-05', amount: 20_000 },
-    { id: 'b', kind: 'sickPay', period: '2026-09', receivedOn: '2026-09-20', amount: 5_000 },
+    {
+      id: 'v',
+      trackId: 'main',
+      kind: 'vacationPay',
+      period: '2026-09',
+      receivedOn: '2026-09-05',
+      amount: 20_000,
+    },
+    {
+      id: 'b',
+      trackId: 'main',
+      kind: 'sickPay',
+      period: '2026-09',
+      receivedOn: '2026-09-20',
+      amount: 5_000,
+    },
   ];
   const summary = buildMonthSummary(
     contextFor('5-2-short-friday', '2026-09-01'),
@@ -143,9 +192,30 @@ test('отпускные входят в сумму месяца, но не в �
 
 test('разбивка по видам выплат идёт в порядке справочника и без пустых строк', () => {
   const payments: PaymentRecord[] = [
-    { id: 'v', kind: 'vacationPay', period: '2026-09', receivedOn: '2026-09-05', amount: 20_000 },
-    { id: 'a1', kind: 'advance', period: '2026-09', receivedOn: '2026-08-27', amount: 30_000 },
-    { id: 'a2', kind: 'advance', period: '2026-09', receivedOn: '2026-08-28', amount: 1_000 },
+    {
+      id: 'v',
+      trackId: 'main',
+      kind: 'vacationPay',
+      period: '2026-09',
+      receivedOn: '2026-09-05',
+      amount: 20_000,
+    },
+    {
+      id: 'a1',
+      trackId: 'main',
+      kind: 'advance',
+      period: '2026-09',
+      receivedOn: '2026-08-27',
+      amount: 30_000,
+    },
+    {
+      id: 'a2',
+      trackId: 'main',
+      kind: 'advance',
+      period: '2026-09',
+      receivedOn: '2026-08-28',
+      amount: 1_000,
+    },
   ];
   const summary = buildMonthSummary(
     contextFor('2-2-day', '2026-09-01'),
@@ -165,7 +235,14 @@ test('разбивка по видам выплат идёт в порядке �
 
 test('месяц без аванса и зарплаты, но с больничным: ставка не считается', () => {
   const payments: PaymentRecord[] = [
-    { id: 'b', kind: 'sickPay', period: '2026-09', receivedOn: '2026-09-20', amount: 5_000 },
+    {
+      id: 'b',
+      trackId: 'main',
+      kind: 'sickPay',
+      period: '2026-09',
+      receivedOn: '2026-09-20',
+      amount: 5_000,
+    },
   ];
   const summary = buildMonthSummary(
     contextFor('2-2-day', '2026-09-01'),
@@ -183,9 +260,23 @@ test('месяц без аванса и зарплаты, но с больнич
 test('годовые итоги: месяц выплаты — тот, ЗА который платят', () => {
   const payments: PaymentRecord[] = [
     ...septemberPayments,
-    { id: 'v', kind: 'vacationPay', period: '2026-07', receivedOn: '2026-06-25', amount: 52_000 },
+    {
+      id: 'v',
+      trackId: 'main',
+      kind: 'vacationPay',
+      period: '2026-07',
+      receivedOn: '2026-06-25',
+      amount: 52_000,
+    },
     // Декабрь прошлого года в 2026-й не попадает.
-    { id: 'old', kind: 'salary', period: '2025-12', receivedOn: '2026-01-09', amount: 44_000 },
+    {
+      id: 'old',
+      trackId: 'main',
+      kind: 'salary',
+      period: '2025-12',
+      receivedOn: '2026-01-09',
+      amount: 44_000,
+    },
   ];
 
   const months = yearlyPaymentTotals(payments, 2026);
@@ -294,4 +385,54 @@ test('обмен сменами внутри месяца переработко
   assert.equal(swapped.workedDays, plain.workedDays);
   // Оба дня разошлись с графиком — это видно в счётчике, но не в часах.
   assert.equal(swapped.overtimeDays, 2);
+});
+
+test('итог по двум работам складывает часы и деньги, а не пересчитывает их заново', () => {
+  const context = contextFor('2-2-day', '2026-09-01');
+
+  const first = buildMonthSummary(
+    context,
+    '2026-09',
+    [
+      {
+        id: 'p1',
+        trackId: 'a',
+        kind: 'salary',
+        period: '2026-09',
+        receivedOn: '2026-10-05',
+        amount: 60000,
+      },
+    ],
+    '2026-09-30',
+  );
+  const second = buildMonthSummary(
+    contextFor('5-2', '2026-09-01'),
+    '2026-09',
+    [
+      {
+        id: 'p2',
+        trackId: 'b',
+        kind: 'salary',
+        period: '2026-09',
+        receivedOn: '2026-10-05',
+        amount: 20000,
+      },
+    ],
+    '2026-09-30',
+  );
+
+  const total = combineTotals([first, second]);
+
+  assert.equal(total.tracks, 2);
+  assert.equal(total.workedMinutes, first.workedMinutes + second.workedMinutes);
+  assert.equal(total.workedDays, first.workedDays + second.workedDays);
+  assert.equal(total.totalPaid, 80000);
+});
+
+test('итог без единой работы — нули, а не падение', () => {
+  const empty = combineTotals([]);
+
+  assert.equal(empty.tracks, 0);
+  assert.equal(empty.workedMinutes, 0);
+  assert.equal(empty.totalPaid, 0);
 });

@@ -3,7 +3,6 @@ import { Alert, Pressable, View } from 'react-native';
 import { describeRepeat, describeTime } from '@/domain/alarm.ts';
 import type { Alarm, AlarmOccurrence } from '@/domain/alarm.ts';
 import { formatDayShort, formatTimeUntil } from '@/domain/format.ts';
-import type { ShiftType } from '@/domain/types.ts';
 import { AppText, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 
@@ -24,7 +23,7 @@ export function describeNext(occurrence: AlarmOccurrence, now: number): string {
 export function AlarmRow({
   alarm,
   next,
-  shiftTypes,
+  trackNames,
   now,
   onEdit,
   onToggle,
@@ -32,7 +31,8 @@ export function AlarmRow({
 }: {
   alarm: Alarm;
   next: AlarmOccurrence | null;
-  shiftTypes: Map<string, ShiftType>;
+  /** Все графики приложения, id к имени: карточка называет, по какому звонит. */
+  trackNames: Map<string, string>;
   now: number;
   onEdit: () => void;
   onToggle: (enabled: boolean) => void;
@@ -42,7 +42,7 @@ export function AlarmRow({
   const [focused, setFocused] = useState(false);
 
   const time = describeTime(alarm);
-  const repeat = describeRepeat(alarm, shiftTypes);
+  const repeat = describeRepeat(alarm, trackNames);
   const name = alarm.label.trim();
   const status = alarm.enabled
     ? next

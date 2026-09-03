@@ -19,7 +19,7 @@ import { buildMonthSummary, forecastMonth } from '@/domain/summary.ts';
 import type { MonthSummary } from '@/domain/summary.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import type { IsoDate } from '@/domain/date.ts';
-import type { PaymentRecord, PayrollSettings } from '@/domain/types.ts';
+import type { PaymentRecord, PaymentRule, PayrollSettings } from '@/domain/types.ts';
 import { AppText, Button, Card, Stat } from '@/ui';
 import { useTheme } from '@/theme';
 
@@ -35,6 +35,8 @@ export interface MonthSummaryPageProps {
   context: ScheduleContext;
   payments: PaymentRecord[];
   payroll: PayrollSettings;
+  /** Числа аванса и зарплаты этой работы: у каждой свои. */
+  payrollRules: PaymentRule[];
   today: IsoDate;
   /** Ширина страницы пейджера: месяцы листаются вбок. */
   width: number;
@@ -52,6 +54,7 @@ export function MonthSummaryPage({
   context,
   payments,
   payroll,
+  payrollRules,
   today,
   width,
   onOpenYear,
@@ -91,8 +94,8 @@ export function MonthSummaryPage({
   );
 
   const upcoming = useMemo(
-    () => upcomingPayments(payroll.rules, today, 1)[0],
-    [payroll.rules, today],
+    () => upcomingPayments(payrollRules, today, 1)[0],
+    [payrollRules, today],
   );
 
   const year = Number(period.slice(0, 4));

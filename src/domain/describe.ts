@@ -16,7 +16,7 @@ import type { ResolvedDay } from './types.ts';
  */
 export function describeDay(
   day: ResolvedDay,
-  options: { isToday?: boolean; isWorked?: boolean } = {},
+  options: { isToday?: boolean; isWorked?: boolean; isShared?: boolean } = {},
 ): string {
   const parts: string[] = [formatDayShort(day.date), formatWeekdayName(day.date)];
 
@@ -52,6 +52,10 @@ export function describeDay(
     const deviation = formatOvertimeSpoken(overtimeMinutes(day));
     if (deviation) parts.push(deviation);
   }
+
+  // Отметка общего выходного в клетке — кольцо, то есть чистая форма. Словами
+  // её говорит только эта строка.
+  if (options.isShared) parts.push('общий выходной');
 
   if (day.source === 'override') parts.push('изменено вручную');
   if (day.note) parts.push(day.note);

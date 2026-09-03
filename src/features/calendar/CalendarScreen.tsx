@@ -14,7 +14,8 @@ import {
 } from '@/domain/format.ts';
 import { periodOf } from '@/domain/payday.ts';
 import { buildMonthSummary } from '@/domain/summary.ts';
-import { useScheduleContext } from '@/data/selectors.ts';
+import { useActiveTrack, useScheduleContext } from '@/data/selectors.ts';
+import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
@@ -24,7 +25,10 @@ import { Legend } from './Legend.tsx';
 import { WeekdayHeader } from './MonthGrid.tsx';
 import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
 import { MonthPager } from './MonthPager.tsx';
+import { SharedDaysOffCard } from './SharedDaysOffCard.tsx';
 import { TodayCard } from './TodayCard.tsx';
+import { useSharedRows } from './useSharedDays.ts';
+import { TrackTabs } from './TrackTabs.tsx';
 
 export function CalendarScreen() {
   const theme = useTheme();
@@ -32,6 +36,9 @@ export function CalendarScreen() {
   const push = useGuardedPush();
   const { width } = useWindowDimensions();
   const context = useScheduleContext();
+  const track = useActiveTrack();
+  const tracks = useAppStore((state) => state.tracks);
+  const shared = useAppStore((state) => state.sharedDaysOff);
 
   const today = useMemo(() => todayIso(), []);
   const months = useMemo(() => buildMonthWindow(periodOf(today)), [today]);
@@ -43,12 +50,42 @@ export function CalendarScreen() {
     [context, visible.period, today],
   );
 
+  const sharedRows = useSharedRows(visible.year, visible.month);
+
+  /**
+   * Чьи совпадения сейчас выделены. Живёт в экране, а не в хранилище: это
+   * состояние взгляда, а любая запись в persist сериализует всё состояние и
+   * синхронно кладёт его в MMKV.
+   */
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const focused = sharedRows.find((row) => row.id === focusedId) ?? null;
+
+  // Выделять нечего, если блок выключен или выбранная строка исчезла.
+  const highlighted = useMemo(
+    () => (shared.enabled && focused ? new Set(focused.dates) : undefined),
+    [shared.enabled, focused],
+  );
+
   const colorTokens = useMemo(() => {
     if (!context) return {};
     return Object.fromEntries(
       [...context.shiftTypes.values()].map((type) => [type.id, type.colorToken]),
     );
   }, [context]);
+
+  /**
+   * Ряд графиков. С одним графиком в нём только кнопка «+», со вторым
+   * появляются сами вкладки. Без единого графика не рисуется: там уже стоит
+   * большая кнопка «Выбрать график».
+   */
+  const trackRow =
+    tracks.length > 0 ? (
+      <TrackTabs
+        tracks={tracks}
+        activeTrackId={track?.id ?? null}
+        onAdd={() => push({ pathname: '/settings/schedule', params: { track: 'new' } })}
+      />
+    ) : null;
 
   const openDay = useCallback(
     (date: IsoDate) => push({ pathname: '/day/[date]', params: { date } }),
@@ -74,6 +111,7 @@ export function CalendarScreen() {
         >
           Календарь
         </AppText>
+        {trackRow}
         <Card title="График не выбран">
           <AppText variant="body" tone="muted">
             Выбери график и дату первой смены — календарь заполнится сам.
@@ -97,6 +135,8 @@ export function CalendarScreen() {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       contentContainerStyle={padding}
     >
+      {trackRow}
+
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.spacing.sm }}>
         <IconButton
           name="chevron-back"
@@ -143,6 +183,7 @@ export function CalendarScreen() {
           context={context}
           today={today}
           onSelectDay={openDay}
+          highlighted={highlighted}
           width={width}
         />
       </View>
@@ -173,6 +214,26 @@ export function CalendarScreen() {
             </AppText>
             <OvertimeLine minutes={summary.overtimeMinutes} />
           </View>
+        </View>
+      ) : null}
+
+      {shared.enabled ? (
+        <View style={{ marginTop: theme.spacing.md }}>
+          <SharedDaysOffCard rows={sharedRows} focusedId={focusedId} onFocus={setFocusedId} />
+        </View>
+      ) : null}
+
+      {/* Правка графика — внизу страницы, а не в ряду переключателей: она про
+          весь открытый календарь, а не про выбор между ними. Название стоит в
+          кнопке, только когда графиков несколько, — иначе непонятно, какой из
+          них откроется. */}
+      {track ? (
+        <View style={{ marginTop: theme.spacing.lg }}>
+          <Button
+            title={tracks.length > 1 ? `Изменить: ${track.name}` : 'Изменить график'}
+            accessibilityHint="График, дата первой смены, название"
+            onPress={() => push({ pathname: '/settings/schedule', params: { track: track.id } })}
+          />
         </View>
       ) : null}
     </ScrollView>

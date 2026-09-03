@@ -65,6 +65,7 @@ function RootStack() {
         <Stack.Screen name="whats-new" options={sheet} />
         <Stack.Screen name="settings/schedule" options={sheet} />
         <Stack.Screen name="settings/payroll" options={sheet} />
+        <Stack.Screen name="settings/group" options={sheet} />
       </Stack>
     </>
   );

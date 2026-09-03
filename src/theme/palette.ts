@@ -30,6 +30,16 @@ export interface Palette {
   /** Кольцо фокуса для навигации с клавиатуры и переключателей. */
   focus: string;
   danger: string;
+  /**
+   * Заливка выделенного дня: так помечаются совпавшие выходные, когда в списке
+   * под календарём выбран человек или группа. Отдельная пара, а не оттенок
+   * акцента: акцент уже значит «выбрано» на рамке клетки, и залитая им клетка
+   * читалась бы как выбранная мышью.
+   *
+   * Цвет заменяет заливку смены, а не ложится поверх: смысл дня при этом
+   * остаётся на букве-маркере, а совпавшие выходные — всегда нерабочие дни.
+   */
+  highlight: ColorPair;
   shifts: Record<string, ColorPair>;
 }
 
@@ -45,6 +55,7 @@ export const lightPalette: Palette = {
   positive: '#14532D',
   focus: '#1D4ED8',
   danger: '#B42318',
+  highlight: { surface: '#FBCFE8', on: '#831843' },
   shifts: {
     'shift.day': { surface: '#DBEAFE', on: '#1E3A8A' },
     'shift.night': { surface: '#EDE4FB', on: '#4C1D95' },
@@ -71,6 +82,7 @@ export const darkPalette: Palette = {
   positive: '#86EFAC',
   focus: '#93B4FF',
   danger: '#FF9A92',
+  highlight: { surface: '#6D1E45', on: '#FBCFE8' },
   shifts: {
     'shift.day': { surface: '#1E3A5F', on: '#BFDBFE' },
     'shift.night': { surface: '#3B2A5C', on: '#DDD6FE' },

@@ -15,7 +15,7 @@ import {
 } from '@/domain/alarm.ts';
 import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
-import { useScheduleContext } from '@/data/selectors.ts';
+import { useAlarmTrack, useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import {
   AppText,
@@ -74,11 +74,17 @@ export function AlarmEditScreen() {
   // Пришли из карточки дня: такой будильник всегда разовый, на этот день, и
   // выбор повтора здесь только мешает.
   const fromCalendar = isNew && params.date !== undefined;
+  // А вот заготовка «за час до смены» берётся из календаря, который был перед
+  // глазами: это разовый будильник на конкретный день, и он ни за каким
+  // графиком дальше не следует.
   const context = useScheduleContext();
 
   const existing = useAppStore((state) => state.alarms.find((alarm) => alarm.id === params.id));
   const shiftTypes = useAppStore((state) => state.shiftTypes);
-  const schedule = useAppStore((state) => state.schedule);
+  const tracks = useAppStore((state) => state.tracks);
+  // Куда падает галочка у нового будильника: своя работа, а не та вкладка, на
+  // которой человек стоял. Подъёмы не должны зависеть от взгляда.
+  const defaultTrack = useAlarmTrack();
   const addAlarm = useAppStore((state) => state.addAlarm);
   const updateAlarm = useAppStore((state) => state.updateAlarm);
   const removeAlarm = useAppStore((state) => state.removeAlarm);
@@ -111,25 +117,40 @@ export function AlarmEditScreen() {
   const [snoozeText, setSnoozeText] = useState(() => String(draft.snoozeMinutes));
 
   /**
-   * Рабочие смены самого графика. Спрашивать их у пользователя незачем —
-   * график уже выбран в настройках; здесь они нужны только затем, чтобы у
-   * чередующихся дневных и ночных было по своему времени подъёма.
+   * Рабочие смены каждого графика. Спрашивать их у пользователя незачем — они
+   * заданы самим графиком; нужны только затем, чтобы у чередующихся дневных и
+   * ночных было по своему времени подъёма.
    */
-  const scheduleShifts = useMemo(() => {
-    if (!schedule) return [];
+  const shiftsByTrack = useMemo(() => {
     const index = new Map(shiftTypes.map((type) => [type.id, type]));
-    return patternShiftTypeIds(schedule.pattern)
-      .map((id) => index.get(id))
-      .filter((type): type is ShiftType => Boolean(type?.time) && type?.kind === 'work');
-  }, [schedule, shiftTypes]);
+    return new Map(
+      tracks.map((track) => [
+        track.id,
+        track.schedule
+          ? patternShiftTypeIds(track.schedule.pattern)
+              .map((id) => index.get(id))
+              .filter((type): type is ShiftType => Boolean(type?.time) && type?.kind === 'work')
+          : [],
+      ]),
+    );
+  }, [tracks, shiftTypes]);
 
-  const perShiftTimes = draft.repeat.kind === 'schedule' && scheduleShifts.length > 1;
+  /** Графики, отмеченные в этом будильнике. */
+  const picked = draft.repeat.kind === 'schedule' ? draft.repeat.tracks : [];
+
+  /** По чему вообще можно звонить: дорожка без графика не раскладывается. */
+  const usable = tracks.filter((track) => track.schedule !== null);
+
+  /**
+   * Спрашивать время по сменам стоит там, где смен больше одной. Считается по
+   * каждому графику отдельно: на складе может быть одна смена, а на основной
+   * работе — дневная с ночной.
+   */
+  const perShiftTimes = (trackId: string): boolean => (shiftsByTrack.get(trackId)?.length ?? 0) > 1;
 
   /** Время смены: заданное пользователем или час до её начала. */
-  const timeFor = (type: ShiftType): string =>
-    draft.repeat.kind === 'schedule'
-      ? (draft.repeat.times[type.id] ?? defaultTimeFor(type))
-      : draft.time;
+  const timeFor = (trackId: string, type: ShiftType): string =>
+    picked.find((item) => item.trackId === trackId)?.times[type.id] ?? defaultTimeFor(type);
 
   const padding = { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl };
 
@@ -156,15 +177,58 @@ export function AlarmEditScreen() {
         return { ...current, repeat: { kind: 'once', date: nextDateForTime(current.time, now) } };
       }
       if (kind === 'weekly') return { ...current, repeat: { kind: 'weekly', days: EVERY_DAY } };
-      return { ...current, repeat: { kind: 'schedule', times: {} } };
+      // Переключились на график — сразу отмечаем свою работу: будильник без
+      // единого графика не звонит, и пустой список выглядел бы поломкой.
+      return {
+        ...current,
+        repeat: {
+          kind: 'schedule',
+          tracks: defaultTrack ? [{ trackId: defaultTrack.id, times: {} }] : [],
+        },
+      };
     });
 
-  const setShiftTime = (shiftTypeId: string, time: string): void =>
+  /** Отметить или снять график. */
+  const toggleTrack = (trackId: string, on: boolean): void =>
+    setDraft((current) => {
+      if (current.repeat.kind !== 'schedule') return current;
+      const rest = current.repeat.tracks.filter((item) => item.trackId !== trackId);
+      return {
+        ...current,
+        repeat: {
+          kind: 'schedule',
+          // Порядок отметок держится порядком графиков, а не порядком нажатий:
+          // иначе список полей времени прыгал бы под руками.
+          tracks: on
+            ? tracks
+                .filter(
+                  (track) => track.id === trackId || rest.some((item) => item.trackId === track.id),
+                )
+                .map(
+                  (track) =>
+                    rest.find((item) => item.trackId === track.id) ?? {
+                      trackId: track.id,
+                      times: {},
+                    },
+                )
+            : rest,
+        },
+      };
+    });
+
+  const setShiftTime = (trackId: string, shiftTypeId: string, time: string): void =>
     setDraft((current) => {
       if (current.repeat.kind !== 'schedule') return current;
       return {
         ...current,
-        repeat: { kind: 'schedule', times: { ...current.repeat.times, [shiftTypeId]: time } },
+        repeat: {
+          kind: 'schedule',
+          tracks: current.repeat.tracks.map((item) =>
+            item.trackId === trackId
+              ? { ...item, times: { ...item.times, [shiftTypeId]: time } }
+              : item,
+          ),
+        },
       };
     });
 
@@ -172,15 +236,26 @@ export function AlarmEditScreen() {
     // Времена смен дозаполняются перед сохранением: то, что показано на
     // экране, и то, что уходит в хранилище, должно совпадать до значения.
     const base: AlarmDraft = { ...draft, snoozeMinutes: parseSnoozeMinutes(snoozeText) };
-    const saved: AlarmDraft = perShiftTimes
-      ? {
-          ...base,
-          repeat: {
-            kind: 'schedule',
-            times: Object.fromEntries(scheduleShifts.map((type) => [type.id, timeFor(type)])),
-          },
-        }
-      : base;
+    const saved: AlarmDraft =
+      base.repeat.kind === 'schedule'
+        ? {
+            ...base,
+            repeat: {
+              kind: 'schedule',
+              tracks: base.repeat.tracks.map((item) => ({
+                trackId: item.trackId,
+                times: perShiftTimes(item.trackId)
+                  ? Object.fromEntries(
+                      (shiftsByTrack.get(item.trackId) ?? []).map((type) => [
+                        type.id,
+                        timeFor(item.trackId, type),
+                      ]),
+                    )
+                  : {},
+              })),
+            },
+          }
+        : base;
 
     if (isNew) addAlarm(saved);
     else updateAlarm(params.id, saved);
@@ -198,30 +273,35 @@ export function AlarmEditScreen() {
     <Sheet title={isNew ? 'Новый будильник' : 'Будильник'} onClose={() => router.back()}>
       <ScrollView {...scroll} style={{ flex: 1 }} contentContainerStyle={padding}>
         <Card title="Когда звонить">
-          {perShiftTimes ? (
-            <>
-              {/* В графике чередуются дневные и ночные — вставать надо в разное
-                  время, поэтому полей столько, сколько смен в графике. */}
-              <AppText variant="body" tone="muted">
-                В графике несколько смен, и время подъёма у них разное.
-              </AppText>
-              {scheduleShifts.map((type) => (
-                <TimeSelect
-                  key={type.id}
-                  label={type.name}
-                  value={timeFor(type)}
-                  onChange={(time) => setShiftTime(type.id, time)}
-                  hint={
-                    type.time && timeFor(type) >= type.time.start
-                      ? `Начало смены в ${type.time.start} — звонок придётся уже на смену`
-                      : `Начало смены в ${type.time?.start ?? ''}`
-                  }
-                />
-              ))}
-            </>
-          ) : (
-            <TimeSelect label="Время" value={draft.time} onChange={setTime} />
-          )}
+          {/* Общее время нужно всегда: по нему звонят разовый, недельный и те
+              графики, где рабочая смена одна. */}
+          <TimeSelect label="Время" value={draft.time} onChange={setTime} />
+
+          {picked.filter((item) => perShiftTimes(item.trackId)).length > 0 ? (
+            <AppText variant="body" tone="muted">
+              Там, где в графике чередуются дневные и ночные, вставать надо в разное время — для
+              таких смен время задаётся отдельно.
+            </AppText>
+          ) : null}
+
+          {picked.map((item) => {
+            if (!perShiftTimes(item.trackId)) return null;
+            const track = tracks.find((candidate) => candidate.id === item.trackId);
+
+            return (shiftsByTrack.get(item.trackId) ?? []).map((type) => (
+              <TimeSelect
+                key={`${item.trackId}:${type.id}`}
+                label={tracks.length > 1 && track ? `${track.name} · ${type.name}` : type.name}
+                value={timeFor(item.trackId, type)}
+                onChange={(time) => setShiftTime(item.trackId, type.id, time)}
+                hint={
+                  type.time && timeFor(item.trackId, type) >= type.time.start
+                    ? `Начало смены в ${type.time.start} — звонок придётся уже на смену`
+                    : `Начало смены в ${type.time?.start ?? ''}`
+                }
+              />
+            ));
+          })}
           <TextField
             label="Название"
             value={draft.label}
@@ -281,18 +361,32 @@ export function AlarmEditScreen() {
             />
           ) : null}
 
-          {draft.repeat.kind === 'schedule' && !schedule ? (
-            <AppText variant="body" tone="muted">
-              График не выбран, поэтому смен приложение пока не знает. Выбери график в настройках —
-              они появятся здесь сами.
-            </AppText>
-          ) : null}
-
-          {draft.repeat.kind === 'schedule' && schedule ? (
-            <AppText variant="body" tone="muted">
-              Звонит в каждый рабочий день графика. Выходные, отсыпные, отпуск и больничный
-              пропускаются, ручные правки дней учитываются.
-            </AppText>
+          {draft.repeat.kind === 'schedule' ? (
+            usable.length === 0 ? (
+              <AppText variant="body" tone="muted">
+                График не выбран, поэтому будить не по чему. Выбери график в настройках — он
+                появится здесь сам.
+              </AppText>
+            ) : (
+              <>
+                {/* Отмечается несколько: одним будильником удобно закрыть и
+                    основную работу, и вторую. Совпавшие по времени звонки
+                    приложение схлопнет в один. */}
+                {usable.map((track) => (
+                  <Toggle
+                    key={track.id}
+                    label={track.name}
+                    hint={track.own ? undefined : 'Чужой график'}
+                    value={picked.some((item) => item.trackId === track.id)}
+                    onValueChange={(on) => toggleTrack(track.id, on)}
+                  />
+                ))}
+                <AppText variant="body" tone="muted">
+                  Звонит в каждый рабочий день отмеченных графиков. Выходные, отсыпные, отпуск и
+                  больничный пропускаются, ручные правки дней учитываются.
+                </AppText>
+              </>
+            )
           ) : null}
 
           {silent ? (

@@ -3,6 +3,7 @@ import { View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { todayIso } from '@/domain/date.ts';
 import { YEAR_RANGE, buildYearWindow } from '@/domain/months.ts';
+import { useActiveTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, HorizontalPager, IconButton, Sheet } from '@/ui';
 import { useTheme } from '@/theme';
@@ -21,8 +22,16 @@ export function YearMoneyScreen() {
   const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{ year?: string }>();
 
-  const payments = useAppStore((state) => state.payments);
+  // Экран открывается из сводки конкретной работы и про неё же и говорит:
+  // складывать деньги двух работодателей в одну годовую таблицу нельзя.
+  const track = useActiveTrack();
+  const allPayments = useAppStore((state) => state.payments);
   const payroll = useAppStore((state) => state.payroll);
+
+  const payments = useMemo(
+    () => allPayments.filter((payment) => payment.trackId === track?.id),
+    [allPayments, track],
+  );
 
   const today = useMemo(() => todayIso(), []);
   // Окно строится один раз вокруг года, с которым экран открыли.

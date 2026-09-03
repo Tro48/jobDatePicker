@@ -233,3 +233,44 @@ export function yearlyPaymentTotals(payments: PaymentRecord[], year: number): Mo
     };
   });
 }
+
+/** Часы и деньги нескольких дорожек, сложенные в один итог. */
+export interface CombinedTotals {
+  /** По скольким графикам сложено: строка нужна только когда их больше одного. */
+  tracks: number;
+  workedDays: number;
+  workedMinutes: number;
+  elapsedWorkedDays: number;
+  elapsedWorkedMinutes: number;
+  totalPaid: number;
+}
+
+/**
+ * Итог по нескольким работам за месяц.
+ *
+ * Ради этой строки вторая работа в приложении и заводится: по отдельности
+ * сводки уже есть, а «сколько всего вышло» иначе приходится складывать в уме.
+ *
+ * Складываются только свои дорожки — отбирает их вызывающий: чужие часы не
+ * мои, и попасть в общий итог не могут ни при каких условиях.
+ */
+export function combineTotals(summaries: MonthSummary[]): CombinedTotals {
+  return summaries.reduce<CombinedTotals>(
+    (total, summary) => ({
+      tracks: total.tracks + 1,
+      workedDays: total.workedDays + summary.workedDays,
+      workedMinutes: total.workedMinutes + summary.workedMinutes,
+      elapsedWorkedDays: total.elapsedWorkedDays + summary.elapsedWorkedDays,
+      elapsedWorkedMinutes: total.elapsedWorkedMinutes + summary.elapsedWorkedMinutes,
+      totalPaid: total.totalPaid + summary.totalPaid,
+    }),
+    {
+      tracks: 0,
+      workedDays: 0,
+      workedMinutes: 0,
+      elapsedWorkedDays: 0,
+      elapsedWorkedMinutes: 0,
+      totalPaid: 0,
+    },
+  );
+}

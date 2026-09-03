@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { todayIso } from '@/domain/date.ts';
 import { formatDayShort, formatMonthTitle } from '@/domain/format.ts';
 import { expectedPaymentDate, periodOf } from '@/domain/payday.ts';
 import { PAYMENT_KIND_LABELS as KIND_TITLES } from '@/domain/payments.ts';
 import type { PaymentRule, ScheduledPaymentKind } from '@/domain/types.ts';
+import { useActiveTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Card, ChoiceGroup, Sheet, TextField, Toggle, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
@@ -26,27 +27,39 @@ export function PayrollSettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const scroll = useSheetScroll();
+  // Чьи выплаты правим: числа аванса у каждого работодателя свои. Без
+  // параметра — активная дорожка, как и на остальных экранах.
+  const params = useLocalSearchParams<{ track?: string }>();
+  const tracks = useAppStore((state) => state.tracks);
+  const active = useActiveTrack();
   const payroll = useAppStore((state) => state.payroll);
   const setPayroll = useAppStore((state) => state.setPayroll);
+  const setTrackPayrollRules = useAppStore((state) => state.setTrackPayrollRules);
+
+  const track = tracks.find((item) => item.id === params.track) ?? active;
 
   const today = useMemo(() => todayIso(), []);
   const period = periodOf(today);
 
   const updateRule = (kind: ScheduledPaymentKind, patch: Partial<PaymentRule>) => {
-    setPayroll({
-      ...payroll,
-      rules: payroll.rules.map((rule) => (rule.kind === kind ? { ...rule, ...patch } : rule)),
-    });
+    if (!track) return;
+    setTrackPayrollRules(
+      track.id,
+      track.payrollRules.map((rule) => (rule.kind === kind ? { ...rule, ...patch } : rule)),
+    );
   };
 
   return (
-    <Sheet title="Выплаты" onClose={() => router.back()}>
+    <Sheet
+      title={track && tracks.length > 1 ? `Выплаты: ${track.name}` : 'Выплаты'}
+      onClose={() => router.back()}
+    >
       <ScrollView
         {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
       >
-        {payroll.rules.map((rule) => (
+        {(track?.payrollRules ?? []).map((rule) => (
           <Card key={rule.kind} title={KIND_TITLES[rule.kind]}>
             <TextField
               label="День месяца"

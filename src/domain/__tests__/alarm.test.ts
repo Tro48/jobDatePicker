@@ -15,7 +15,7 @@ import {
   planAlarms,
   restartOnce,
 } from '../alarm.ts';
-import type { Alarm } from '../alarm.ts';
+import type { Alarm, AlarmTrackContext } from '../alarm.ts';
 import type { ScheduleContext } from '../engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '../shifts.ts';
 import { SCHEDULE_PRESETS } from '../presets.ts';
@@ -31,6 +31,14 @@ function contextFor(presetId: string, anchorDate: string): ScheduleContext {
     overrides: new Map(),
   };
 }
+
+/** Один график под именем «Основная»: имя в подпись не попадает. */
+function alone(context: ScheduleContext): Map<string, AlarmTrackContext> {
+  return new Map([['main', { context, name: 'Основная', named: false }]]);
+}
+
+/** Ни одного графика: будить не по чему. */
+const noTracks = new Map<string, AlarmTrackContext>();
 
 /** Полдень местного времени: тесты не должны зависеть от часового пояса машины. */
 function localNoon(date: string): Date {
@@ -49,28 +57,31 @@ const base: Alarm = {
 };
 
 test('разовый будильник даёт ровно одно срабатывание', () => {
-  const found = nextOccurrences(base, null, localNoon('2026-09-01'));
+  const found = nextOccurrences(base, noTracks, localNoon('2026-09-01'));
 
   assert.equal(found.length, 1);
   assert.equal(found[0].triggerAtMillis, localDateTimeToMillis('2026-09-02', '07:00'));
-  assert.equal(found[0].id, 'a1:2026-09-02');
+  assert.equal(found[0].id, 'a1:2026-09-02:07:00');
   assert.equal(found[0].title, 'На смену');
 });
 
 test('прошедшее время не ставится: AlarmManager отработал бы его мгновенно', () => {
   const past: Alarm = { ...base, repeat: { kind: 'once', date: '2026-09-01' } };
 
-  assert.deepEqual(nextOccurrences(past, null, localNoon('2026-09-01')), []);
+  assert.deepEqual(nextOccurrences(past, noTracks, localNoon('2026-09-01')), []);
 });
 
 test('выключенный будильник не звонит', () => {
-  assert.deepEqual(nextOccurrences({ ...base, enabled: false }, null, localNoon('2026-09-01')), []);
+  assert.deepEqual(
+    nextOccurrences({ ...base, enabled: false }, noTracks, localNoon('2026-09-01')),
+    [],
+  );
 });
 
 test('по дням недели попадает только в выбранные дни', () => {
   // 1 сентября 2026 — вторник, значит ближайшие среда, пятница, понедельник.
   const weekly: Alarm = { ...base, repeat: { kind: 'weekly', days: [1, 3, 5] } };
-  const found = nextOccurrences(weekly, null, localNoon('2026-09-01'), 3);
+  const found = nextOccurrences(weekly, noTracks, localNoon('2026-09-01'), 3);
 
   assert.deepEqual(
     found.map((item) => item.date),
@@ -82,13 +93,13 @@ test('по дням недели попадает только в выбранн
 test('без выбранных дней недели будильник не звонит никогда', () => {
   const weekly: Alarm = { ...base, repeat: { kind: 'weekly', days: [] } };
 
-  assert.deepEqual(nextOccurrences(weekly, null, localNoon('2026-09-01')), []);
+  assert.deepEqual(nextOccurrences(weekly, noTracks, localNoon('2026-09-01')), []);
   assert.equal(hasAnyTrigger(weekly), false);
 });
 
 test('сегодняшний день недели берётся, если время ещё впереди', () => {
   const weekly: Alarm = { ...base, time: '23:00', repeat: { kind: 'weekly', days: [2] } };
-  const found = nextOccurrences(weekly, null, localNoon('2026-09-01'), 1);
+  const found = nextOccurrences(weekly, noTracks, localNoon('2026-09-01'), 1);
 
   assert.equal(found[0].date, '2026-09-01');
 });
@@ -98,10 +109,13 @@ test('по графику: у дневной и ночной смены своё
   const context = contextFor('2-2-mixed', '2026-09-01');
   const alarm: Alarm = {
     ...base,
-    repeat: { kind: 'schedule', times: { day12: '06:30', night12: '18:30' } },
+    repeat: {
+      kind: 'schedule',
+      tracks: [{ trackId: 'main', times: { day12: '06:30', night12: '18:30' } }],
+    },
   };
 
-  const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 4);
+  const found = nextOccurrences(alarm, alone(context), localNoon('2026-09-01'), 4);
 
   // Выходные пропущены: будить в них незачем.
   assert.deepEqual(
@@ -113,9 +127,12 @@ test('по графику: у дневной и ночной смены своё
 
 test('по графику: смена без своего времени звонит общим', () => {
   const context = contextFor('2-2-mixed', '2026-09-01');
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: { night12: '18:30' } } };
+  const alarm: Alarm = {
+    ...base,
+    repeat: { kind: 'schedule', tracks: [{ trackId: 'main', times: { night12: '18:30' } }] },
+  };
 
-  const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 2);
+  const found = nextOccurrences(alarm, alone(context), localNoon('2026-09-01'), 2);
 
   assert.deepEqual(
     found.map((item) => `${item.date} ${item.time}`),
@@ -124,18 +141,24 @@ test('по графику: смена без своего времени зво�
 });
 
 test('по графику без выбранного графика звонить нечему', () => {
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: {} } };
+  const alarm: Alarm = {
+    ...base,
+    repeat: { kind: 'schedule', tracks: [{ trackId: 'main', times: {} }] },
+  };
 
-  assert.deepEqual(nextOccurrences(alarm, null, localNoon('2026-09-01')), []);
+  assert.deepEqual(nextOccurrences(alarm, noTracks, localNoon('2026-09-01')), []);
 });
 
 test('ручная правка дня меняет расписание будильника', () => {
   const context = contextFor('2-2-mixed', '2026-09-01');
   // 3 сентября по графику выходной; ставим подработку — будильник появляется.
   context.overrides.set('2026-09-03', { date: '2026-09-03', shiftTypeId: 'night12' });
-  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', times: {} } };
+  const alarm: Alarm = {
+    ...base,
+    repeat: { kind: 'schedule', tracks: [{ trackId: 'main', times: {} }] },
+  };
 
-  const found = nextOccurrences(alarm, context, localNoon('2026-09-01'), 2);
+  const found = nextOccurrences(alarm, alone(context), localNoon('2026-09-01'), 2);
 
   assert.deepEqual(
     found.map((item) => item.date),
@@ -156,7 +179,7 @@ test('все будильники сливаются в один список п
     repeat: { kind: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] },
   };
 
-  const found = planAlarms([morning, evening], null, localNoon('2026-09-01'), 3);
+  const found = planAlarms([morning, evening], noTracks, localNoon('2026-09-01'), 3);
 
   assert.deepEqual(
     found.map((item) => `${item.alarmId} ${item.date} ${item.time}`),
@@ -217,7 +240,8 @@ test('новый будильник встаёт на ближайшие сем�
 });
 
 test('повтор описывается человеческим текстом', () => {
-  const describe = (alarm: Alarm): string => describeRepeat(alarm, shiftTypes);
+  const trackNames = new Map([['main', 'Основная']]);
+  const describe = (alarm: Alarm): string => describeRepeat(alarm, trackNames);
 
   assert.equal(describe(base), 'Один раз, 2 сентября');
   assert.equal(
@@ -233,12 +257,15 @@ test('повтор описывается человеческим тексто�
   assert.equal(
     describe({
       ...base,
-      repeat: { kind: 'schedule', times: { day12: '06:30', night12: '18:30' } },
+      repeat: {
+        kind: 'schedule',
+        tracks: [{ trackId: 'main', times: { day12: '06:30', night12: '18:30' } }],
+      },
     }),
-    'Рабочие дни: дневная смена, ночная смена',
+    'Рабочие дни по графику',
   );
   assert.equal(
-    describe({ ...base, repeat: { kind: 'schedule', times: {} } }),
+    describe({ ...base, repeat: { kind: 'schedule', tracks: [{ trackId: 'main', times: {} }] } }),
     'Рабочие дни по графику',
   );
 });
@@ -248,12 +275,21 @@ test('в списке у графика показываются все его �
   assert.equal(
     describeTime({
       ...base,
-      repeat: { kind: 'schedule', times: { night12: '18:30', day12: '06:30' } },
+      repeat: {
+        kind: 'schedule',
+        tracks: [{ trackId: 'main', times: { night12: '18:30', day12: '06:30' } }],
+      },
     }),
     '06:30 · 18:30',
   );
   // Без своих времён список показывает общее время будильника.
-  assert.equal(describeTime({ ...base, repeat: { kind: 'schedule', times: {} } }), '07:00');
+  assert.equal(
+    describeTime({
+      ...base,
+      repeat: { kind: 'schedule', tracks: [{ trackId: 'main', times: {} }] },
+    }),
+    '07:00',
+  );
 });
 
 test('отсрочка держится в разумных пределах', () => {
@@ -279,4 +315,118 @@ test('кнопка «Отложить» появляется только при
 
 test('новый будильник заводится без отсрочки', () => {
   assert.equal(newAlarmDraft(new Date(2026, 7, 29, 12, 0)).snoozeMinutes, 0);
+});
+
+test('два графика в один день: разное время — два звонка, одно время — один', () => {
+  const mine = contextFor('2-2-day', '2026-09-01');
+  const store = contextFor('2-2-day', '2026-09-01');
+  const tracks = new Map<string, AlarmTrackContext>([
+    ['mine', { context: mine, name: 'Основная', named: true }],
+    ['store', { context: store, name: 'Склад', named: true }],
+  ]);
+
+  const different: Alarm = {
+    ...base,
+    repeat: {
+      kind: 'schedule',
+      tracks: [
+        { trackId: 'mine', times: { day12: '06:30' } },
+        { trackId: 'store', times: { day12: '18:30' } },
+      ],
+    },
+  };
+
+  const found = nextOccurrences(different, tracks, localNoon('2026-09-01'), 1);
+
+  // Разное время подъёма — это два разных звонка, и ключи у них разные.
+  // Порядок здесь по графикам, а не по времени: сортирует уже planAlarms.
+  assert.deepEqual(found.map((item) => `${item.date} ${item.time}`).sort(), [
+    '2026-09-01 18:30',
+    '2026-09-02 06:30',
+  ]);
+  assert.equal(new Set(found.map((item) => item.id)).size, 2);
+});
+
+test('совпавшее время двух графиков даёт один звонок, который называет оба', () => {
+  const mine = contextFor('2-2-day', '2026-09-01');
+  const store = contextFor('2-2-day', '2026-09-01');
+  const tracks = new Map<string, AlarmTrackContext>([
+    ['mine', { context: mine, name: 'Основная', named: true }],
+    ['store', { context: store, name: 'Склад', named: true }],
+  ]);
+
+  const same: Alarm = {
+    ...base,
+    repeat: {
+      kind: 'schedule',
+      tracks: [
+        { trackId: 'mine', times: { day12: '06:30' } },
+        { trackId: 'store', times: { day12: '06:30' } },
+      ],
+    },
+  };
+
+  const found = nextOccurrences(same, tracks, localNoon('2026-09-01'), 1);
+
+  // Будить дважды в одну минуту незачем — звонок один.
+  assert.equal(found.length, 1);
+  assert.match(found[0].subtitle, /Основная/);
+  assert.match(found[0].subtitle, /Склад/);
+});
+
+test('запас считается на каждый график, а не делится между ними', () => {
+  const mine = contextFor('2-2-day', '2026-09-01');
+  const store = contextFor('2-2-day', '2026-09-01');
+  const tracks = new Map<string, AlarmTrackContext>([
+    ['mine', { context: mine, name: 'Основная', named: true }],
+    ['store', { context: store, name: 'Склад', named: true }],
+  ]);
+
+  const alarm: Alarm = {
+    ...base,
+    repeat: {
+      kind: 'schedule',
+      tracks: [
+        { trackId: 'mine', times: { day12: '06:30' } },
+        { trackId: 'store', times: { day12: '18:30' } },
+      ],
+    },
+  };
+
+  // По два на график: вторая работа не должна вдвое укорачивать горизонт.
+  const found = nextOccurrences(alarm, tracks, localNoon('2026-09-01'), 2);
+
+  assert.equal(found.filter((item) => item.time === '06:30').length, 2);
+  assert.equal(found.filter((item) => item.time === '18:30').length, 2);
+});
+
+test('будильник без единого отмеченного графика не звонит', () => {
+  const alarm: Alarm = { ...base, repeat: { kind: 'schedule', tracks: [] } };
+
+  assert.equal(hasAnyTrigger(alarm), false);
+  assert.deepEqual(nextOccurrences(alarm, noTracks, localNoon('2026-09-01')), []);
+});
+
+test('карточка называет графики, только когда их больше одного', () => {
+  const alarm: Alarm = {
+    ...base,
+    repeat: {
+      kind: 'schedule',
+      tracks: [
+        { trackId: 'mine', times: {} },
+        { trackId: 'store', times: {} },
+      ],
+    },
+  };
+
+  const many = new Map([
+    ['mine', 'Основная'],
+    ['store', 'Склад'],
+  ]);
+
+  assert.equal(describeRepeat(alarm, many), 'Основная, Склад · рабочие дни');
+  assert.equal(
+    describeRepeat({ ...base, repeat: { kind: 'schedule', tracks: [] } }, many),
+    'Ни один график не выбран',
+  );
 });

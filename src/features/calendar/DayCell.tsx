@@ -15,6 +15,14 @@ export interface DayCellProps {
   isToday: boolean;
   /** Смена этого дня уже позади: заливка уходит в серый. */
   isWorked: boolean;
+  /** На календаре сейчас кого-то выделяют: значит, невыделенные дни гаснут. */
+  highlighting?: boolean;
+  /**
+   * День не попал в выделенный список совпадений: гаснет, чтобы попавшие были
+   * видны. Приглушается заливка, подпись остаётся — прозрачность уронила бы
+   * контраст ниже проверенного порога.
+   */
+  dimmed?: boolean;
   isSelected: boolean;
   onPress: (date: IsoDate) => void;
 }
@@ -32,21 +40,32 @@ export function DayCell({
   inMonth,
   isToday,
   isWorked,
+  highlighting = false,
+  dimmed = false,
   isSelected,
   onPress,
 }: DayCellProps) {
   const theme = useTheme();
-  const shiftColors = useShiftColors(day.shiftType.colorToken, { faded: isWorked });
+  const shiftColors = useShiftColors(day.shiftType.colorToken, { faded: isWorked || dimmed });
   const [focused, setFocused] = useState(false);
+
+  // Выделен — значит, выделение вообще включено и этот день в списке.
+  const highlighted = !dimmed && inMonth && highlighting;
 
   /**
    * Дни соседних месяцев не приглушаются прозрачностью: она уронила бы контраст
    * ниже проверенного порога. Вместо этого они теряют заливку и уходят в
    * приглушённый цвет текста, который проверен на фоне страницы.
+   *
+   * Выделенный день берёт свою заливку вместо сменной: одного лишь угасания
+   * остальных мало — глазу нужно, за что зацепиться, а не откуда уйти. Смысл
+   * дня при этом остаётся на букве-маркере.
    */
-  const colors = inMonth
-    ? shiftColors
-    : { surface: theme.colors.background, on: theme.colors.textMuted };
+  const colors = !inMonth
+    ? { surface: theme.colors.background, on: theme.colors.textMuted }
+    : highlighted
+      ? theme.colors.highlight
+      : shiftColors;
 
   const dayNumber = Number(day.date.slice(8, 10));
   const outlined = focused || isSelected || (isToday && inMonth);
@@ -64,7 +83,7 @@ export function DayCell({
       accessibilityRole="button"
       accessibilityLabel={
         inMonth
-          ? describeDay(day, { isToday, isWorked })
+          ? describeDay(day, { isToday, isWorked, isShared: highlighted })
           : `${describeDay(day, { isWorked })}, соседний месяц`
       }
       accessibilityState={{ selected: isSelected }}
