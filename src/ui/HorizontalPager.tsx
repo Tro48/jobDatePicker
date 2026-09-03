@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { FlatList } from 'react-native';
-import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import type { ListRenderItemInfo, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import type { ReactElement } from 'react';
 import { useReduceMotion } from './useReduceMotion.ts';
 
@@ -12,6 +12,10 @@ export interface HorizontalPagerProps<T> {
   width: number;
   /** Фиксированная высота страницы. Без неё пейджер занимает всё доступное место. */
   height?: number;
+  /**
+   * Отрисовка страницы. Обязана быть стабильной между рендерами — иначе
+   * пейджер перерисовывает все страницы разом, см. комментарий ниже.
+   */
   renderPage: (item: T) => ReactElement;
 }
 
@@ -21,6 +25,13 @@ export interface HorizontalPagerProps<T> {
  * Индексом владеет родитель: то же значение двигают и свайп, и стрелки в
  * шапке. Стрелки обязательны — свайп недоступен ни с клавиатуры, ни через
  * TalkBack, и подменять их жестом нельзя.
+ *
+ * Все колбэки, уходящие в FlatList, стабильны намеренно. Ячейку списка
+ * VirtualizedList рисует через PureComponent, и `renderItem` — её проп: новая
+ * функция на каждый рендер означает перерисовку всех страниц, которые сейчас
+ * в памяти. На календаре это три месяца по сорок с лишним клеток, и платить
+ * ими приходилось за каждое движение соседа по экрану — за листание месяца,
+ * за смену графика, за любой тик состояния выше по дереву.
  */
 export function HorizontalPager<T>({
   items,
@@ -41,12 +52,33 @@ export function HorizontalPager<T>({
     listRef.current?.scrollToIndex({ index, animated: !reduceMotion });
   }, [index, reduceMotion]);
 
-  const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const next = Math.round(event.nativeEvent.contentOffset.x / width);
-    if (next === currentIndex.current) return;
-    currentIndex.current = next;
-    onIndexChange(next);
-  };
+  const handleMomentumEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const next = Math.round(event.nativeEvent.contentOffset.x / width);
+      if (next === currentIndex.current) return;
+      currentIndex.current = next;
+      onIndexChange(next);
+    },
+    [width, onIndexChange],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<T>) => renderPage(item),
+    [renderPage],
+  );
+
+  // Без getItemLayout initialScrollIndex промахивается: FlatList не знает
+  // ширину ещё не отрисованных страниц.
+  const getItemLayout = useCallback(
+    (_: ArrayLike<T> | null | undefined, itemIndex: number) => ({
+      length: width,
+      offset: width * itemIndex,
+      index: itemIndex,
+    }),
+    [width],
+  );
+
+  const style = height === undefined ? { flex: 1, width } : { width, height };
 
   return (
     <FlatList
@@ -57,14 +89,8 @@ export function HorizontalPager<T>({
       showsHorizontalScrollIndicator={false}
       keyExtractor={keyOf}
       initialScrollIndex={index}
-      style={height === undefined ? { flex: 1, width } : { width, height }}
-      // Без getItemLayout initialScrollIndex промахивается: FlatList не знает
-      // ширину ещё не отрисованных страниц.
-      getItemLayout={(_, itemIndex) => ({
-        length: width,
-        offset: width * itemIndex,
-        index: itemIndex,
-      })}
+      style={style}
+      getItemLayout={getItemLayout}
       onMomentumScrollEnd={handleMomentumEnd}
       // Окно рендера узкое намеренно: страница тяжёлая, а держать в памяти
       // десятки месяцев незачем.
@@ -72,7 +98,7 @@ export function HorizontalPager<T>({
       initialNumToRender={1}
       maxToRenderPerBatch={2}
       removeClippedSubviews
-      renderItem={({ item }) => renderPage(item)}
+      renderItem={renderItem}
     />
   );
 }

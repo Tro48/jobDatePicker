@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { describeDay } from '@/domain/describe.ts';
 import { overtimeMinutes } from '@/domain/engine.ts';
@@ -34,7 +34,7 @@ export interface DayCellProps {
  * полной озвучкой. Одной заливки недостаточно — она не читается ни при
  * дальтонизме, ни скринридером.
  */
-export function DayCell({
+function DayCellView({
   day,
   size,
   inMonth,
@@ -146,3 +146,44 @@ export function DayCell({
     </Pressable>
   );
 }
+
+/**
+ * Разложенный день сравнивается по значению, а не по ссылке.
+ *
+ * `resolveDay` собирает новый объект на каждый пересчёт сетки, поэтому по
+ * ссылке он не совпадает никогда — а по значению совпадает часто. При смене
+ * графика половина месяца обычно остаётся при своём: выходной остался
+ * выходным, смена той же длины на том же месте. Такие клетки перерисовывать
+ * незачем, а их на трёх страницах пейджера больше сотни.
+ *
+ * Тип смены сверяется по ссылке намеренно: справочник задан кодом и живёт в
+ * одном экземпляре.
+ */
+function sameDay(a: ResolvedDay, b: ResolvedDay): boolean {
+  return (
+    a.date === b.date &&
+    a.shiftType === b.shiftType &&
+    a.source === b.source &&
+    a.workedMinutes === b.workedMinutes &&
+    a.plannedMinutes === b.plannedMinutes &&
+    a.note === b.note
+  );
+}
+
+/**
+ * Клетка мемоизирована: их на странице сорок с лишним, и каждая — Pressable со
+ * своим состоянием фокуса, то есть далеко не бесплатная.
+ */
+export const DayCell = memo(
+  DayCellView,
+  (before, after) =>
+    sameDay(before.day, after.day) &&
+    before.size === after.size &&
+    before.inMonth === after.inMonth &&
+    before.isToday === after.isToday &&
+    before.isWorked === after.isWorked &&
+    before.highlighting === after.highlighting &&
+    before.dimmed === after.dimmed &&
+    before.isSelected === after.isSelected &&
+    before.onPress === after.onPress,
+);

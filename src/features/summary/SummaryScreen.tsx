@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { todayIso } from '@/domain/date.ts';
 import { formatMonthTitle, formatMoney, formatTotalHours } from '@/domain/format.ts';
 import { buildMonthSummary, combineTotals } from '@/domain/summary.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
+import type { PaymentRule } from '@/domain/types.ts';
 import { TrackTabs } from '@/features/calendar/TrackTabs.tsx';
 import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
+import type { MonthRef } from '@/domain/months.ts';
 import { periodOf } from '@/domain/payday.ts';
 import { useActiveTrack, useScheduleContext, useScheduleContexts } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
@@ -15,13 +17,19 @@ import { AppText, Button, Card, HorizontalPager, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 import { MonthSummaryPage } from './MonthSummaryPage.tsx';
 
+/** Пустой список правил выплат: новый массив в пропсах ломал бы memo страницы. */
+const EMPTY_RULES: PaymentRule[] = [];
+
+/** Ключ страницы. Вне компонента — чтобы пейджер получал одну и ту же функцию. */
+const keyOfMonth = (item: MonthRef): string => item.period;
+
 export function SummaryScreen() {
   const theme = useTheme();
   const push = useGuardedPush();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
-  const context = useScheduleContext();
+  const activeContext = useScheduleContext();
   const track = useActiveTrack();
   const tracks = useAppStore((state) => state.tracks);
   const contexts = useScheduleContexts();
@@ -36,10 +44,52 @@ export function SummaryScreen() {
 
   // Сводка всегда про одну работу: смешивать часы двух работодателей в одной
   // таблице нельзя — ставка за час у них разная.
-  const payments = useMemo(
+  const activePayments = useMemo(
     () => allPayments.filter((payment) => payment.trackId === track?.id),
     [allPayments, track],
   );
+
+  /**
+   * Данные страницы одним значением: график, его выплаты и его числа аванса и
+   * зарплаты. Вместе, а не по отдельности, потому что показывать часы одной
+   * работы рядом с деньгами другой нельзя ни одного кадра.
+   */
+  const active = useMemo(
+    () => ({
+      context: activeContext,
+      payments: activePayments,
+      payrollRules: track?.payrollRules ?? EMPTY_RULES,
+    }),
+    [activeContext, activePayments, track],
+  );
+
+  // Заглушка «график не выбран» смотрит на актуальный график, а не на фоновый.
+  const { context } = active;
+
+  /**
+   * Данные, по которым нарисованы месяцы, которых сейчас не видно.
+   *
+   * Каждая страница разворачивает свой месяц по дням, а при включённом
+   * прогнозе — ещё двенадцать закрытых месяцев следом; страниц в памяти
+   * пейджера несколько, а на экране одна. Открытый месяц берёт данные сразу,
+   * соседние догоняют следующим кадром и уже переходом — React рисует их в
+   * фоне и уступает поток, пока рисует.
+   *
+   * null — соседей ещё не рисовали ни разу: так открывается экран, и вместо
+   * них стоят пустые страницы. Дальше значение не пустует, и при смене графика
+   * соседи показывают прежние числа, пока не догонят.
+   */
+  const [background, setBackground] = useState<typeof active | null>(null);
+
+  useEffect(() => {
+    if (background === active) return;
+    // Кадр отдаётся открытому месяцу: без него фоновая отрисовка успевает
+    // влезть в тот же кадр и съедает весь выигрыш.
+    const frame = requestAnimationFrame(() => {
+      startTransition(() => setBackground(active));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, background]);
 
   /**
    * Итог по всем своим работам за открытый месяц. Ради него вторая работа и
@@ -61,6 +111,39 @@ export function SummaryScreen() {
       ),
     );
   }, [tracks, contexts, allPayments, current.period, today]);
+  /**
+   * Намеренно не зависит от индекса: страница считает свой месяц по item, и
+   * листание не должно её пересобирать. Меняется она только вместе с данными —
+   * графиком, выплатами, шириной экрана.
+   */
+  const renderPage = useCallback(
+    (item: MonthRef) => {
+      const shown = item.period === current.period ? active : background;
+
+      // Соседний месяц до своей очереди — пустая страница: пейджер меряет
+      // страницы по ширине, а высоту сводки задаёт содержимое.
+      if (!shown) {
+        return <View importantForAccessibility="no-hide-descendants" style={{ width }} />;
+      }
+
+      return (
+        <MonthSummaryPage
+          period={item.period}
+          context={shown.context as ScheduleContext}
+          payments={shown.payments}
+          payroll={payroll}
+          payrollRules={shown.payrollRules}
+          today={today}
+          width={width}
+          onOpenYear={() =>
+            push({ pathname: '/summary/year', params: { year: String(item.year) } })
+          }
+        />
+      );
+    },
+    [active, background, current.period, payroll, today, width, push],
+  );
+
   const padding = {
     paddingTop: insets.top + theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
@@ -148,24 +231,11 @@ export function SummaryScreen() {
 
       <HorizontalPager
         items={months}
-        keyOf={(item) => item.period}
+        keyOf={keyOfMonth}
         index={index}
         onIndexChange={setIndex}
         width={width}
-        renderPage={(item) => (
-          <MonthSummaryPage
-            period={item.period}
-            context={context}
-            payments={payments}
-            payroll={payroll}
-            payrollRules={track?.payrollRules ?? []}
-            today={today}
-            width={width}
-            onOpenYear={() =>
-              push({ pathname: '/summary/year', params: { year: String(item.year) } })
-            }
-          />
-        )}
+        renderPage={renderPage}
       />
     </View>
   );

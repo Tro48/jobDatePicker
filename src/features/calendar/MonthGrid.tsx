@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { View } from 'react-native';
 import { monthGridDates } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
@@ -25,7 +25,7 @@ export interface MonthGridProps {
   onSelectDay: (date: IsoDate) => void;
 }
 
-export function MonthGrid({
+function MonthGridView({
   year,
   month,
   context,
@@ -74,6 +74,13 @@ export function MonthGrid({
     </View>
   );
 }
+
+/**
+ * Страница пейджера мемоизирована: при листании месяцев меняется только индекс,
+ * а сетки соседних месяцев остаются теми же. Без memo каждое движение стрелкой
+ * или свайпом перерисовывало все страницы, которые сейчас в памяти.
+ */
+export const MonthGrid = memo(MonthGridView);
 
 /**
  * Шапка с днями недели. Скрыта от скринридера: каждая клетка и так называет

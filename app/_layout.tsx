@@ -1,10 +1,25 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { enableFreeze } from 'react-native-screens';
 import { AlarmSyncProvider } from '@/features/alarm/AlarmSyncProvider.tsx';
 import { AppErrorScreen } from '@/features/errors/AppErrorScreen.tsx';
 import { useReduceMotion } from '@/ui';
 import { ThemeProvider, useTheme } from '@/theme';
+
+/**
+ * Вкладки, на которые сейчас не смотрят, перестают рисоваться.
+ *
+ * react-native-screens по умолчанию этого не делает: посещённая вкладка
+ * остаётся смонтированной и живой, и любое изменение хранилища перерисовывает
+ * её вместе с открытой. Нажатие на вкладку графика пересчитывало сразу и
+ * календарь с тремя месячными сетками, и сводку с её страницами, и список
+ * будильников — при том, что видно из них одно.
+ *
+ * Вызывается на уровне модуля: флаг читается при первом рендере экрана, и
+ * поставить его из эффекта уже поздно.
+ */
+enableFreeze();
 
 /**
  * Запасной экран вместо белого поля.

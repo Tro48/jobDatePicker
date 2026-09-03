@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { ScrollView, View } from 'react-native';
 import {
   DAY_FORMS,
@@ -49,7 +49,7 @@ export interface MonthSummaryPageProps {
  * Отдельный компонент именно ради листания: пейджер держит в памяти три
  * страницы, и каждая считает свой месяц сама.
  */
-export function MonthSummaryPage({
+function MonthSummaryPageView({
   period,
   context,
   payments,
@@ -315,6 +315,14 @@ export function MonthSummaryPage({
     </ScrollView>
   );
 }
+
+/**
+ * Страница мемоизирована: каждая разворачивает свой месяц по дням, а при
+ * сильном прогнозе — ещё двенадцать закрытых месяцев следом. Листание месяцев
+ * меняет только индекс пейджера, и пересчитывать из-за него соседние страницы
+ * незачем.
+ */
+export const MonthSummaryPage = memo(MonthSummaryPageView);
 
 function ComparisonRow({
   label,
