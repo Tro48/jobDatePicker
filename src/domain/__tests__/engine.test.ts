@@ -187,7 +187,7 @@ test('норма дня берётся из графика и переживае
   assert.equal(resolveDay(context, '2026-09-03').plannedMinutes, 0);
 });
 
-test('отклонение считается от графика, а у нерабочих дней его нет', () => {
+test('отклонение считается от графика, а у отпуска и больничного его нет', () => {
   const context = contextFor('2-2-day', '2026-09-01');
   context.overrides.set('2026-09-01', { date: '2026-09-01', workedMinutesOverride: 14 * 60 });
   context.overrides.set('2026-09-02', { date: '2026-09-02', workedMinutesOverride: 10 * 60 });
@@ -205,4 +205,19 @@ test('отклонение считается от графика, а у нер�
   // Отпуск поверх смены недоработкой не считается.
   assert.equal(overtimeMinutes(resolveDay(context, '2026-09-05')), 0);
   assert.equal(overtimeMinutes(resolveDay(context, '2026-09-06')), 0);
+});
+
+test('снятая смена даёт минус, а обмен днями в сумме сходится в ноль', () => {
+  // График: 2 и 3 сентября — смены, 1-е выходной. Обмен с коллегой: вышел
+  // 1-го, 3-е стало выходным. Часов за месяц столько же.
+  const context = contextFor('2-2-day', '2026-09-02');
+  context.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'day12' });
+  context.overrides.set('2026-09-03', { date: '2026-09-03', shiftTypeId: 'off' });
+
+  const extra = overtimeMinutes(resolveDay(context, '2026-09-01'));
+  const dropped = overtimeMinutes(resolveDay(context, '2026-09-03'));
+
+  assert.equal(extra, 12 * 60);
+  assert.equal(dropped, -12 * 60);
+  assert.equal(extra + dropped, 0);
 });

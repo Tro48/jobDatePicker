@@ -116,6 +116,26 @@ test('переработка — зелёная точка, недоработк
   expect(undertime.getByRole('button').props.accessibilityLabel).toContain('недоработка 2 часа');
 });
 
+test('снятая смена — красная точка и недоработка в озвучке', async () => {
+  // 1 сентября по графику дневная смена; выходной поверх неё снимает 12 часов.
+  const swapped = contextFor();
+  swapped.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'off' });
+  const cell = await renderCell({ context: swapped });
+
+  expect(backgroundColors(cell.toJSON())).toContain(lightPalette.danger);
+  expect(cell.getByRole('button').props.accessibilityLabel).toContain('недоработка 12 часов');
+});
+
+test('отпуск поверх смены точку не получает', async () => {
+  const vacation = contextFor();
+  vacation.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'vacation' });
+  const cell = await renderCell({ context: vacation });
+  const colors = backgroundColors(cell.toJSON());
+
+  expect(colors).not.toContain(lightPalette.positive);
+  expect(colors).not.toContain(lightPalette.danger);
+});
+
 test('день по графику точку не получает', async () => {
   const plain = await renderCell();
   const colors = backgroundColors(plain.toJSON());

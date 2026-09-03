@@ -263,9 +263,9 @@ test('отпуск не считается недоработкой: у выхо
   assert.equal(summary.overtimeMinutes, 0);
 });
 
-test('подработка в выходной — плюс все её часы, внеплановый выходной отклонения не даёт', () => {
+test('подработка в выходной — плюс все её часы, снятая смена — минус свою норму', () => {
   const context = contextFor('2-2-day', '2026-09-01');
-  // 3 сентября по графику выходной, 1 сентября — дневная смена.
+  // 3 сентября по графику выходной, 1 сентября — дневная смена на 12 часов.
   context.overrides.set('2026-09-03', {
     date: '2026-09-03',
     shiftTypeId: 'extra',
@@ -275,6 +275,23 @@ test('подработка в выходной — плюс все её часы
 
   const summary = buildMonthSummary(context, '2026-09', [], AFTER_ALL);
 
-  assert.equal(summary.overtimeDays, 1);
-  assert.equal(summary.overtimeMinutes, 4 * 60);
+  assert.equal(summary.overtimeDays, 2);
+  assert.equal(summary.overtimeMinutes, 4 * 60 - 12 * 60);
+});
+
+test('обмен сменами внутри месяца переработкой не считается', () => {
+  // По графику смены 2 и 3 сентября. Поменялся с коллегой: вышел 1-го,
+  // 3-е стало выходным. Часов за месяц ровно столько же — значит ноль.
+  const context = contextFor('2-2-day', '2026-09-02');
+  context.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'day12' });
+  context.overrides.set('2026-09-03', { date: '2026-09-03', shiftTypeId: 'off' });
+
+  const plain = buildMonthSummary(contextFor('2-2-day', '2026-09-02'), '2026-09', [], AFTER_ALL);
+  const swapped = buildMonthSummary(context, '2026-09', [], AFTER_ALL);
+
+  assert.equal(swapped.overtimeMinutes, 0);
+  assert.equal(swapped.workedMinutes, plain.workedMinutes);
+  assert.equal(swapped.workedDays, plain.workedDays);
+  // Оба дня разошлись с графиком — это видно в счётчике, но не в часах.
+  assert.equal(swapped.overtimeDays, 2);
 });

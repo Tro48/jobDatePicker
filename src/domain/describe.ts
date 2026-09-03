@@ -45,6 +45,12 @@ export function describeDay(
       const deviation = formatOvertimeSpoken(overtimeMinutes(day));
       if (deviation) parts.push(deviation);
     }
+  } else {
+    // Выходной вместо смены из графика — та же недоработка, что и укороченная
+    // смена, и в клетке он получает такую же точку. Молчать про неё нельзя:
+    // цвет точки скринридеру недоступен.
+    const deviation = formatOvertimeSpoken(overtimeMinutes(day));
+    if (deviation) parts.push(deviation);
   }
 
   if (day.source === 'override') parts.push('изменено вручную');

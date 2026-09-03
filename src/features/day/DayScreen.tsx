@@ -204,6 +204,17 @@ export function DayScreen() {
             value={override?.shiftTypeId ?? planned.id}
             onChange={(value) => applyShiftType(value === planned.id ? FOLLOW_SCHEDULE : value)}
           />
+          {/* Выходной поверх смены из графика: блока «Часы» у него нет, а точку
+              в клетке календаря он получает — объяснить её больше негде. */}
+          {!isWork && overtime !== 0 ? (
+            <AppText
+              variant="caption"
+              color={theme.colors.danger}
+              accessibilityLabel={formatOvertimeSpoken(overtime)}
+            >
+              Недоработка: {formatDuration(Math.abs(overtime))} — смена по графику снята
+            </AppText>
+          ) : null}
         </Card>
 
         {resolved.shiftType.multiDay && run ? (
