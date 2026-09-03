@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { expiredOnceAlarmIds, planAlarms } from '@/domain/alarm.ts';
 import type { AlarmOccurrence } from '@/domain/alarm.ts';
-import { useScheduleContext } from '@/data/selectors.ts';
+import { useAlarmTracks } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import {
   EXACT_ALARM_PERMISSION_ERROR,
@@ -34,15 +34,31 @@ const NO_PERMISSIONS: AlarmPermissions = {
 };
 
 /**
+ * Одинаковы ли разрешения по значению.
+ *
+ * Нативный модуль отдаёт каждый раз новый объект, а состояние с новым объектом
+ * — это перерисовка. Провайдер синхронизации стоит в корне навигации, и такая
+ * перерисовка проходит по всему приложению: календарь, сводка, шторки. Сверка
+ * по значению оставляет её только там, где разрешения правда изменились.
+ */
+function samePermissions(a: AlarmPermissions, b: AlarmPermissions): boolean {
+  return (
+    a.exactAlarms === b.exactAlarms &&
+    a.fullScreenIntent === b.fullScreenIntent &&
+    a.notifications === b.notifications
+  );
+}
+
+/**
  * Держит будильники в системе в согласии со списком и графиком.
  *
- * Пересчёт идёт при любом изменении будильников, графика и правок дней, а
+ * Пересчёт идёт при любом изменении будильников, графиков и правок дней, а
  * также при каждом возвращении в приложение: срабатывания живут в абсолютном
  * времени, и после перевода часов или недели без запуска их надо переставить.
  * Набор всегда заменяется целиком — рассинхронизироваться нечему.
  */
 export function useAlarmSync(): AlarmSyncState {
-  const context = useScheduleContext();
+  const tracks = useAlarmTracks();
   const alarms = useAppStore((state) => state.alarms);
   const disableAlarms = useAppStore((state) => state.disableAlarms);
 
@@ -62,8 +78,8 @@ export function useAlarmSync(): AlarmSyncState {
   }, [alarms, plannedAt, disableAlarms]);
 
   const occurrences = useMemo(
-    () => planAlarms(alarms, context, new Date(plannedAt)),
-    [alarms, context, plannedAt],
+    () => planAlarms(alarms, tracks, new Date(plannedAt)),
+    [alarms, tracks, plannedAt],
   );
 
   /** Ровно то, что уйдёт в систему. Считается отдельно — по нему же сверяемся. */
@@ -92,11 +108,16 @@ export function useAlarmSync(): AlarmSyncState {
    */
   const applied = useRef<string | null>(null);
 
+  /** Кладёт разрешения в состояние, только если они правда другие. */
+  const applyPermissions = useCallback((next: AlarmPermissions) => {
+    setPermissions((previous) => (samePermissions(previous, next) ? previous : next));
+  }, []);
+
   const sync = useCallback(async () => {
     if (!isAlarmModuleAvailable) return;
 
     const current = getPermissions();
-    setPermissions(current);
+    applyPermissions(current);
 
     const key = `${current.exactAlarms}:${JSON.stringify(request)}`;
     if (applied.current === key) return;
@@ -123,7 +144,7 @@ export function useAlarmSync(): AlarmSyncState {
       setScheduled(0);
       setNeedsExactAlarmPermission(true);
     }
-  }, [request]);
+  }, [request, applyPermissions]);
 
   useEffect(() => {
     void sync();
@@ -137,15 +158,20 @@ export function useAlarmSync(): AlarmSyncState {
   }, []);
 
   const refreshPermissions = useCallback(() => {
-    if (isAlarmModuleAvailable) setPermissions(getPermissions());
-  }, []);
+    if (isAlarmModuleAvailable) applyPermissions(getPermissions());
+  }, [applyPermissions]);
 
-  return {
-    occurrences,
-    scheduled,
-    permissions,
-    available: isAlarmModuleAvailable,
-    needsExactAlarmPermission,
-    refreshPermissions,
-  };
+  // Значение уходит в контекст: новый объект на каждый рендер перерисовывал бы
+  // всех, кто его читает, — полоску разрешений на календаре в том числе.
+  return useMemo(
+    () => ({
+      occurrences,
+      scheduled,
+      permissions,
+      available: isAlarmModuleAvailable,
+      needsExactAlarmPermission,
+      refreshPermissions,
+    }),
+    [occurrences, scheduled, permissions, needsExactAlarmPermission, refreshPermissions],
+  );
 }

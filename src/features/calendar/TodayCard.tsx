@@ -9,6 +9,10 @@ import { useTheme, useShiftColors } from '@/theme';
 /**
  * Строка «что у меня сегодня» над календарём. Главный вопрос к приложению,
  * ответ на который не должен требовать поиска сегодняшнего числа в сетке.
+ *
+ * Ровно две строки, и вторая только при необходимости: карточка стоит между
+ * вкладками и сеткой, и каждая её лишняя строка выталкивает календарь за
+ * нижний край экрана. Подробности дня есть в самой карточке дня.
  */
 export function TodayCard({ day }: { day: ResolvedDay }) {
   const theme = useTheme();
@@ -16,15 +20,17 @@ export function TodayCard({ day }: { day: ResolvedDay }) {
   const time = day.shiftType.time;
   const planned = shiftDurationMinutes(day.shiftType);
 
+  // Часы и заметка сведены в одну строку: по отдельности они занимали две.
   const details =
-    day.shiftType.kind === 'work'
-      ? [
-          time && day.workedMinutes === planned ? formatTimeRange(time.start, time.end) : null,
-          formatDuration(day.workedMinutes),
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      : null;
+    [
+      day.shiftType.kind === 'work' && time && day.workedMinutes === planned
+        ? formatTimeRange(time.start, time.end)
+        : null,
+      day.shiftType.kind === 'work' ? formatDuration(day.workedMinutes) : null,
+      day.note,
+    ]
+      .filter(Boolean)
+      .join(' · ') || null;
 
   return (
     <View
@@ -33,26 +39,17 @@ export function TodayCard({ day }: { day: ResolvedDay }) {
       style={{
         backgroundColor: colors.surface,
         borderRadius: theme.radius.lg,
-        paddingHorizontal: theme.spacing.lg,
-        paddingVertical: theme.spacing.md,
-        gap: 2,
+        paddingHorizontal: theme.spacing.md,
+        paddingVertical: theme.spacing.sm,
       }}
     >
-      <View importantForAccessibility="no-hide-descendants" style={{ gap: 2 }}>
-        <AppText variant="caption" color={colors.on}>
-          Сегодня
-        </AppText>
+      <View importantForAccessibility="no-hide-descendants">
         <AppText variant="heading" color={colors.on}>
-          {day.shiftType.name}
+          Сегодня · {day.shiftType.name}
         </AppText>
         {details ? (
-          <AppText variant="body" color={colors.on}>
-            {details}
-          </AppText>
-        ) : null}
-        {day.note ? (
           <AppText variant="caption" color={colors.on}>
-            {day.note}
+            {details}
           </AppText>
         ) : null}
       </View>

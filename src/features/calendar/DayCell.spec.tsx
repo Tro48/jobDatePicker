@@ -34,6 +34,8 @@ interface CellOptions {
   date?: string;
   isToday?: boolean;
   isWorked?: boolean;
+  highlighting?: boolean;
+  dimmed?: boolean;
   context?: ScheduleContext;
 }
 
@@ -41,6 +43,8 @@ function renderCell({
   date = '2026-09-01',
   isToday = false,
   isWorked = false,
+  highlighting = false,
+  dimmed = false,
   context = contextFor(),
 }: CellOptions = {}) {
   return render(
@@ -51,6 +55,8 @@ function renderCell({
         inMonth
         isToday={isToday}
         isWorked={isWorked}
+        highlighting={highlighting}
+        dimmed={dimmed}
         isSelected={false}
         onPress={() => {}}
       />,
@@ -116,6 +122,26 @@ test('переработка — зелёная точка, недоработк
   expect(undertime.getByRole('button').props.accessibilityLabel).toContain('недоработка 2 часа');
 });
 
+test('снятая смена — красная точка и недоработка в озвучке', async () => {
+  // 1 сентября по графику дневная смена; выходной поверх неё снимает 12 часов.
+  const swapped = contextFor();
+  swapped.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'off' });
+  const cell = await renderCell({ context: swapped });
+
+  expect(backgroundColors(cell.toJSON())).toContain(lightPalette.danger);
+  expect(cell.getByRole('button').props.accessibilityLabel).toContain('недоработка 12 часов');
+});
+
+test('отпуск поверх смены точку не получает', async () => {
+  const vacation = contextFor();
+  vacation.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'vacation' });
+  const cell = await renderCell({ context: vacation });
+  const colors = backgroundColors(cell.toJSON());
+
+  expect(colors).not.toContain(lightPalette.positive);
+  expect(colors).not.toContain(lightPalette.danger);
+});
+
 test('день по графику точку не получает', async () => {
   const plain = await renderCell();
   const colors = backgroundColors(plain.toJSON());
@@ -137,4 +163,37 @@ test('отработанная смена приглушена, но подпи�
   expect(plainFill).toBe(lightPalette.shifts['shift.day'].surface);
   // Заливка ушла в серый, а цвет текста не тронут — контраст от этого растёт.
   expect(workedFill).not.toBe(plainFill);
+});
+
+test('выделенный день заливается своим цветом, а не сменным', async () => {
+  // 3 сентября по графику 2/2 от 1 сентября — выходной.
+  const plain = await renderCell({ date: '2026-09-03' });
+  const plainFill = backgroundColors(plain.toJSON())[0];
+  await plain.unmount();
+
+  const marked = await renderCell({ date: '2026-09-03', highlighting: true });
+  const markedFill = backgroundColors(marked.toJSON())[0];
+
+  expect(plainFill).toBe(lightPalette.shifts['shift.off'].surface);
+  expect(markedFill).toBe(lightPalette.highlight.surface);
+});
+
+test('невыделенный день гаснет, но своей заливки не теряет', async () => {
+  const plain = await renderCell({ date: '2026-09-03' });
+  const plainFill = backgroundColors(plain.toJSON())[0];
+  await plain.unmount();
+
+  const dim = await renderCell({ date: '2026-09-03', highlighting: true, dimmed: true });
+  const dimFill = backgroundColors(dim.toJSON())[0];
+
+  // Приглушение — это смешение с нейтральным, а не цвет выделения и не
+  // прозрачность: подпись остаётся читаемой.
+  expect(dimFill).not.toBe(plainFill);
+  expect(dimFill).not.toBe(lightPalette.highlight.surface);
+});
+
+test('выделение говорится словами, а не только цветом', async () => {
+  const marked = await renderCell({ date: '2026-09-03', highlighting: true });
+
+  expect(marked.getByRole('button').props.accessibilityLabel).toContain('общий выходной');
 });

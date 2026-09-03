@@ -3,7 +3,6 @@ import type { IsoDate, Weekday } from './date.ts';
 import { resolveDay } from './engine.ts';
 import type { ScheduleContext } from './engine.ts';
 import { WEEKDAYS_SHORT, formatDayLong, formatDayShort } from './format.ts';
-import type { ShiftType } from './types.ts';
 
 /**
  * Как повторяется будильник.
@@ -18,14 +17,25 @@ export type AlarmRepeat =
   /** По дням недели. Пустой список — не звонит никогда, экран об этом предупреждает. */
   | { kind: 'weekly'; days: Weekday[] }
   /**
-   * По графику: звонит в каждый рабочий день. Выбирать смены руками не нужно —
-   * график уже выбран в настройках.
+   * По графикам: звонит в каждый рабочий день отмеченных графиков.
    *
-   * times — время подъёма для конкретного типа смены. Пусто, если в графике
-   * смена одна: тогда звонит общее время будильника. Когда дневные чередуются
-   * с ночными, вставать надо в разное время, и здесь лежит по записи на смену.
+   * Список, а не один график: одним будильником удобно закрыть и основную
+   * работу, и склад. Пустой список — не звонит никогда, экран об этом
+   * предупреждает, ровно как при пустом наборе дней недели.
+   *
+   * times внутри графика — время подъёма для конкретного типа смены. Пусто,
+   * если рабочая смена в графике одна: тогда звонит общее время будильника.
+   * Ключи вложены в график намеренно: id смен у графиков общие, и плоская
+   * запись «day12 в 06:30» перезаписывала бы подъём на другой работе.
    */
-  | { kind: 'schedule'; times: Record<string, string> };
+  | { kind: 'schedule'; tracks: AlarmTrack[] };
+
+/** Один отмеченный график внутри будильника «по графику». */
+export interface AlarmTrack {
+  trackId: string;
+  /** Время подъёма по типам смен этого графика. */
+  times: Record<string, string>;
+}
 
 export interface Alarm {
   id: string;
@@ -70,7 +80,14 @@ const PLANNING_HORIZON_DAYS = 120;
 
 /** Один звонок будильника в конкретный день — то, что уходит в AlarmManager. */
 export interface AlarmOccurrence {
-  /** Стабильный ключ: id будильника плюс дата. Повторный расчёт даёт тот же. */
+  /**
+   * Стабильный ключ: будильник, день и время. Повторный расчёт даёт тот же.
+   *
+   * Время в ключе не для красоты. Два графика могут дать смены в один день с
+   * разным подъёмом — это два разных звонка, и без времени второй затирал бы
+   * первый в AlarmManager. Совпало время у двух графиков — ключ совпадает, и
+   * звонок остаётся один: будить дважды в одну минуту незачем.
+   */
   id: string;
   alarmId: string;
   date: IsoDate;
@@ -106,15 +123,28 @@ export function nextDateForTime(time: string, now: Date): IsoDate {
   return localDateTimeToMillis(today, time) > now.getTime() ? today : addDays(today, 1);
 }
 
+/** Что нужно знать про отмеченный график, чтобы поставить по нему звонок. */
+export interface AlarmTrackContext {
+  context: ScheduleContext;
+  /** Имя графика: попадает в подпись на экране звонка, когда графиков больше одного. */
+  name: string;
+  /** Показывать ли имя. С одной работой оно только мешает. */
+  named: boolean;
+}
+
 /**
  * Ближайшие срабатывания одного будильника.
  *
- * Чистая функция: получает график и текущий момент, отдаёт готовые метки
+ * Чистая функция: получает графики и текущий момент, отдаёт готовые метки
  * времени. Нативный модуль про смены и повторы не знает ничего.
+ *
+ * count — запас на график, а не на будильник. Это горизонт, на котором
+ * будильник живёт, пока приложение не открывали; при двух отмеченных графиках
+ * звонков в день вдвое больше, и общий счёт вдвое укоротил бы этот запас.
  */
 export function nextOccurrences(
   alarm: Alarm,
-  context: ScheduleContext | null,
+  tracks: Map<string, AlarmTrackContext>,
   now: Date,
   count = OCCURRENCES_PER_ALARM,
 ): AlarmOccurrence[] {
@@ -124,13 +154,32 @@ export function nextOccurrences(
   const today = toIsoDateLocal(now);
   const found: AlarmOccurrence[] = [];
 
-  const push = (date: IsoDate, time: string, subtitle: string): void => {
+  /** Уже занятые моменты: второй график с тем же временем звонка не добавляет. */
+  const taken = new Map<string, AlarmOccurrence>();
+
+  /**
+   * Отдаёт true, если на этот момент теперь стоит звонок, — неважно, новый или
+   * уже поставленный другим графиком. Совпадение тоже закрывает день: ставить
+   * второй звонок на ту же минуту незачем, а считать день непокрытым и тянуться
+   * дальше в будущее — тем более.
+   */
+  const push = (date: IsoDate, time: string, subtitle: string): boolean => {
     const triggerAtMillis = localDateTimeToMillis(date, time);
     // Прошедшее время не ставим никогда: AlarmManager отработал бы его
     // мгновенно и разбудил посреди дня.
-    if (triggerAtMillis <= nowMillis) return;
-    found.push({
-      id: `${alarm.id}:${date}`,
+    if (triggerAtMillis <= nowMillis) return false;
+
+    const id = `${alarm.id}:${date}:${time}`;
+    const already = taken.get(id);
+    if (already) {
+      // Два графика подняли в одну минуту — звонок один, но сказать он должен
+      // про оба: иначе непонятно, на какую работу встаёшь.
+      already.subtitle = `${already.subtitle} · ${subtitle}`;
+      return true;
+    }
+
+    const occurrence: AlarmOccurrence = {
+      id,
       alarmId: alarm.id,
       date,
       time,
@@ -140,7 +189,10 @@ export function nextOccurrences(
       soundUri: alarm.soundUri,
       vibrate: alarm.vibrate,
       snoozeMinutes: alarm.snoozeMinutes,
-    });
+    };
+    taken.set(id, occurrence);
+    found.push(occurrence);
+    return true;
   };
 
   if (alarm.repeat.kind === 'once') {
@@ -158,22 +210,33 @@ export function nextOccurrences(
     return found;
   }
 
-  // По графику: без выбранного графика будить не по чему.
-  if (!context) return [];
-  const { times } = alarm.repeat;
-  for (let offset = 0; offset < PLANNING_HORIZON_DAYS && found.length < count; offset += 1) {
-    const date = addDays(today, offset);
-    const { shiftType } = resolveDay(context, date);
+  // По графикам. Каждый отмеченный считается со своим запасом, а совпавшие по
+  // времени звонки схлопывает push.
+  for (const { trackId, times } of alarm.repeat.tracks) {
+    const track = tracks.get(trackId);
+    // График удалили или он ещё не выбран — будить по нему не по чему.
+    if (!track) continue;
 
-    // Выходной, отсыпной и отпуск — не рабочие дни, будить незачем.
-    if (shiftType.kind !== 'work' || !shiftType.time) continue;
+    let planned = 0;
+    for (let offset = 0; offset < PLANNING_HORIZON_DAYS && planned < count; offset += 1) {
+      const date = addDays(today, offset);
+      const { shiftType } = resolveDay(track.context, date);
 
-    push(
-      date,
-      times[shiftType.id] ?? alarm.time,
-      `${shiftType.name}, начало в ${shiftType.time.start}`,
-    );
+      // Выходной, отсыпной и отпуск — не рабочие дни, будить незачем.
+      if (shiftType.kind !== 'work' || !shiftType.time) continue;
+
+      const shift = `${shiftType.name}, начало в ${shiftType.time.start}`;
+      // Счётчик двигают только покрытые дни: сегодняшний подъём, время
+      // которого уже прошло, иначе съедал бы запас, ничего не поставив.
+      const covered = push(
+        date,
+        times[shiftType.id] ?? alarm.time,
+        track.named ? `${track.name} · ${shift}` : shift,
+      );
+      if (covered) planned += 1;
+    }
   }
+
   return found;
 }
 
@@ -186,12 +249,12 @@ export function nextOccurrences(
  */
 export function planAlarms(
   alarms: Alarm[],
-  context: ScheduleContext | null,
+  tracks: Map<string, AlarmTrackContext>,
   now: Date,
   limit = MAX_SCHEDULED_ALARMS,
 ): AlarmOccurrence[] {
   return alarms
-    .flatMap((alarm) => nextOccurrences(alarm, context, now))
+    .flatMap((alarm) => nextOccurrences(alarm, tracks, now))
     .sort((a, b) => a.triggerAtMillis - b.triggerAtMillis)
     .slice(0, limit);
 }
@@ -230,9 +293,10 @@ export function restartOnce(alarm: Alarm, now: Date): Alarm {
   return { ...alarm, repeat: { kind: 'once', date: nextDateForTime(alarm.time, now) } };
 }
 
-/** Может ли будильник вообще зазвонить: без единого дня недели — не может. */
+/** Может ли будильник вообще зазвонить: без единого дня недели или графика — не может. */
 export function hasAnyTrigger(alarm: Alarm): boolean {
   if (alarm.repeat.kind === 'weekly') return alarm.repeat.days.length > 0;
+  if (alarm.repeat.kind === 'schedule') return alarm.repeat.tracks.length > 0;
   return true;
 }
 
@@ -255,12 +319,20 @@ export function sortWeekdays(days: Weekday[]): Weekday[] {
  */
 export function describeTime(alarm: Alarm): string {
   if (alarm.repeat.kind !== 'schedule') return alarm.time;
-  const times = [...new Set(Object.values(alarm.repeat.times))].sort();
+  const times = [
+    ...new Set(alarm.repeat.tracks.flatMap((track) => Object.values(track.times))),
+  ].sort();
   return times.length > 0 ? times.join(' · ') : alarm.time;
 }
 
-/** Повтор человеческим текстом: «Каждый день», «Пн, Ср, Пт», «Рабочие дни». */
-export function describeRepeat(alarm: Alarm, shiftTypes: Map<string, ShiftType>): string {
+/**
+ * Повтор человеческим текстом: «Каждый день», «Пн, Ср, Пт», «Рабочие дни».
+ *
+ * trackNames — все графики приложения, id к имени. Имена подставляются, только
+ * когда графиков больше одного: тому, у кого работа одна, «Основная» в карточке
+ * будильника ничего не сообщает.
+ */
+export function describeRepeat(alarm: Alarm, trackNames: Map<string, string>): string {
   if (alarm.repeat.kind === 'once') {
     return `Один раз, ${formatDayShort(alarm.repeat.date)}`;
   }
@@ -274,10 +346,12 @@ export function describeRepeat(alarm: Alarm, shiftTypes: Map<string, ShiftType>)
     return days.map((day) => capitalize(WEEKDAYS_SHORT[day - 1])).join(', ');
   }
 
-  const names = Object.keys(alarm.repeat.times)
-    .map((id) => shiftTypes.get(id)?.name.toLowerCase())
+  const names = alarm.repeat.tracks
+    .map((track) => trackNames.get(track.trackId))
     .filter((name): name is string => Boolean(name));
-  return names.length > 0 ? `Рабочие дни: ${names.join(', ')}` : 'Рабочие дни по графику';
+
+  if (names.length === 0) return 'Ни один график не выбран';
+  return trackNames.size > 1 ? `${names.join(', ')} · рабочие дни` : 'Рабочие дни по графику';
 }
 
 /** Отсрочка в разумных пределах: ноль — её нет, больше часа — это уже не отсрочка. */

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { describeDay } from '@/domain/describe.ts';
 import { overtimeMinutes } from '@/domain/engine.ts';
@@ -15,6 +15,14 @@ export interface DayCellProps {
   isToday: boolean;
   /** Смена этого дня уже позади: заливка уходит в серый. */
   isWorked: boolean;
+  /** На календаре сейчас кого-то выделяют: значит, невыделенные дни гаснут. */
+  highlighting?: boolean;
+  /**
+   * День не попал в выделенный список совпадений: гаснет, чтобы попавшие были
+   * видны. Приглушается заливка, подпись остаётся — прозрачность уронила бы
+   * контраст ниже проверенного порога.
+   */
+  dimmed?: boolean;
   isSelected: boolean;
   onPress: (date: IsoDate) => void;
 }
@@ -26,27 +34,38 @@ export interface DayCellProps {
  * полной озвучкой. Одной заливки недостаточно — она не читается ни при
  * дальтонизме, ни скринридером.
  */
-export function DayCell({
+function DayCellView({
   day,
   size,
   inMonth,
   isToday,
   isWorked,
+  highlighting = false,
+  dimmed = false,
   isSelected,
   onPress,
 }: DayCellProps) {
   const theme = useTheme();
-  const shiftColors = useShiftColors(day.shiftType.colorToken, { faded: isWorked });
+  const shiftColors = useShiftColors(day.shiftType.colorToken, { faded: isWorked || dimmed });
   const [focused, setFocused] = useState(false);
+
+  // Выделен — значит, выделение вообще включено и этот день в списке.
+  const highlighted = !dimmed && inMonth && highlighting;
 
   /**
    * Дни соседних месяцев не приглушаются прозрачностью: она уронила бы контраст
    * ниже проверенного порога. Вместо этого они теряют заливку и уходят в
    * приглушённый цвет текста, который проверен на фоне страницы.
+   *
+   * Выделенный день берёт свою заливку вместо сменной: одного лишь угасания
+   * остальных мало — глазу нужно, за что зацепиться, а не откуда уйти. Смысл
+   * дня при этом остаётся на букве-маркере.
    */
-  const colors = inMonth
-    ? shiftColors
-    : { surface: theme.colors.background, on: theme.colors.textMuted };
+  const colors = !inMonth
+    ? { surface: theme.colors.background, on: theme.colors.textMuted }
+    : highlighted
+      ? theme.colors.highlight
+      : shiftColors;
 
   const dayNumber = Number(day.date.slice(8, 10));
   const outlined = focused || isSelected || (isToday && inMonth);
@@ -64,7 +83,7 @@ export function DayCell({
       accessibilityRole="button"
       accessibilityLabel={
         inMonth
-          ? describeDay(day, { isToday, isWorked })
+          ? describeDay(day, { isToday, isWorked, isShared: highlighted })
           : `${describeDay(day, { isWorked })}, соседний месяц`
       }
       accessibilityState={{ selected: isSelected }}
@@ -127,3 +146,44 @@ export function DayCell({
     </Pressable>
   );
 }
+
+/**
+ * Разложенный день сравнивается по значению, а не по ссылке.
+ *
+ * `resolveDay` собирает новый объект на каждый пересчёт сетки, поэтому по
+ * ссылке он не совпадает никогда — а по значению совпадает часто. При смене
+ * графика половина месяца обычно остаётся при своём: выходной остался
+ * выходным, смена той же длины на том же месте. Такие клетки перерисовывать
+ * незачем, а их на трёх страницах пейджера больше сотни.
+ *
+ * Тип смены сверяется по ссылке намеренно: справочник задан кодом и живёт в
+ * одном экземпляре.
+ */
+function sameDay(a: ResolvedDay, b: ResolvedDay): boolean {
+  return (
+    a.date === b.date &&
+    a.shiftType === b.shiftType &&
+    a.source === b.source &&
+    a.workedMinutes === b.workedMinutes &&
+    a.plannedMinutes === b.plannedMinutes &&
+    a.note === b.note
+  );
+}
+
+/**
+ * Клетка мемоизирована: их на странице сорок с лишним, и каждая — Pressable со
+ * своим состоянием фокуса, то есть далеко не бесплатная.
+ */
+export const DayCell = memo(
+  DayCellView,
+  (before, after) =>
+    sameDay(before.day, after.day) &&
+    before.size === after.size &&
+    before.inMonth === after.inMonth &&
+    before.isToday === after.isToday &&
+    before.isWorked === after.isWorked &&
+    before.highlighting === after.highlighting &&
+    before.dimmed === after.dimmed &&
+    before.isSelected === after.isSelected &&
+    before.onPress === after.onPress,
+);

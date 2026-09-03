@@ -136,6 +136,32 @@ function checksFor(palette: Palette): Check[] {
     },
   ];
 
+  // Выделенный день: та же обвязка, что и у любой заливки смены, — на нём
+  // стоит подпись, точка отклонения и может лежать кольцо фокуса.
+  checks.push({
+    label: 'выделенный день: подпись на заливке',
+    foreground: palette.highlight.on,
+    background: palette.highlight.surface,
+    minimum: 4.5,
+  });
+  checks.push({
+    label: 'выделенный день: кольцо фокуса на заливке',
+    foreground: palette.focus,
+    background: palette.highlight.surface,
+    minimum: 3,
+  });
+  for (const [state, color] of [
+    ['переработка', palette.positive],
+    ['недоработка', palette.danger],
+  ] as const) {
+    checks.push({
+      label: `выделенный день: ${state} на заливке`,
+      foreground: color,
+      background: palette.highlight.surface,
+      minimum: 4.5,
+    });
+  }
+
   for (const [token, pair] of Object.entries(palette.shifts)) {
     // Заливка отработанной смены — не «примерно та же»: цифра отклонения и
     // буква-маркер живут на ней, значит и порог она проходит отдельно.
@@ -184,6 +210,7 @@ function checksFor(palette: Palette): Check[] {
       });
     }
   }
+
   return checks;
 }
 

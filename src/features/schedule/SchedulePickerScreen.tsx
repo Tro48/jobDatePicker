@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDays, todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import { resolveRange } from '@/domain/engine.ts';
@@ -9,8 +9,19 @@ import { formatDayShort, formatMonthTitle } from '@/domain/format.ts';
 import { periodOf, shiftPeriod } from '@/domain/payday.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { indexShiftTypes } from '@/domain/shifts.ts';
+import { useActiveTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, Card, ChoiceGroup, IconButton, Sheet, useSheetScroll } from '@/ui';
+import {
+  AppText,
+  Button,
+  Card,
+  IconButton,
+  Select,
+  Sheet,
+  TextField,
+  Toggle,
+  useSheetScroll,
+} from '@/ui';
 import { useTheme } from '@/theme';
 import { MonthGrid, WeekdayHeader } from '@/features/calendar/MonthGrid.tsx';
 
@@ -22,12 +33,35 @@ export function SchedulePickerScreen() {
   const router = useRouter();
   const scroll = useSheetScroll();
   const { width } = useWindowDimensions();
+  // Какую дорожку правим: «new» — заводим новую, пусто — активную. Так один
+  // экран закрывает и первый выбор графика, и вторую работу, и правку.
+  const params = useLocalSearchParams<{ track?: string }>();
 
-  const saved = useAppStore((state) => state.schedule);
+  const tracks = useAppStore((state) => state.tracks);
+  const active = useActiveTrack();
   const shiftTypes = useAppStore((state) => state.shiftTypes);
-  const selectSchedule = useAppStore((state) => state.selectSchedule);
+  const addTrack = useAppStore((state) => state.addTrack);
+  const updateTrack = useAppStore((state) => state.updateTrack);
+  const setTrackSchedule = useAppStore((state) => state.setTrackSchedule);
+  const removeTrack = useAppStore((state) => state.removeTrack);
+
+  const isNew = params.track === 'new';
+  const edited = isNew ? null : (tracks.find((track) => track.id === params.track) ?? active);
+  const saved = edited?.schedule ?? null;
+
+  /**
+   * Имя и признак «мои часы» спрашиваются, только когда они что-то значат:
+   * у человека с одной работой нет ни второй, от которой её надо отличать, ни
+   * чужих часов, которые надо исключить из сводки.
+   */
+  const named = isNew ? tracks.length > 0 : tracks.length > 1;
 
   const today = useMemo(() => todayIso(), []);
+  const [name, setName] = useState(edited?.name ?? '');
+  // Первый график заводят себе — переключателя там нет вовсе. А вот второй
+  // чаще всего заводят под близкого человека, а не под вторую работу: считать
+  // его часы своими по умолчанию значило бы молча испортить сводку.
+  const [own, setOwn] = useState(edited?.own ?? tracks.length === 0);
   const [presetId, setPresetId] = useState(saved?.presetId ?? SCHEDULE_PRESETS[0].id);
   const [anchorDate, setAnchorDate] = useState<IsoDate>(saved?.anchorDate ?? today);
   const [previewPeriod, setPreviewPeriod] = useState(() => periodOf(saved?.anchorDate ?? today));
@@ -36,6 +70,26 @@ export function SchedulePickerScreen() {
     () => SCHEDULE_PRESETS.find((item) => item.id === presetId) ?? SCHEDULE_PRESETS[0],
     [presetId],
   );
+
+  // Имя обязательно ровно там, где его спрашивают: без него вкладки
+  // получаются безымянными, и переключаться между ними не по чему.
+  const incomplete = named && name.trim().length === 0;
+
+  const save = (): void => {
+    if (incomplete) return;
+    if (edited) {
+      updateTrack(edited.id, { name: name.trim() || edited.name, own });
+      setTrackSchedule(edited.id, preset.id, anchorDate);
+    } else {
+      addTrack({ name: name.trim(), own, presetId: preset.id, anchorDate });
+    }
+    router.back();
+  };
+
+  const remove = (): void => {
+    if (edited) removeTrack(edited.id);
+    router.back();
+  };
 
   /**
    * Черновой контекст: пользователь видит результат выбора до сохранения.
@@ -70,19 +124,37 @@ export function SchedulePickerScreen() {
   }));
 
   return (
-    <Sheet title="График" onClose={() => router.back()}>
+    <Sheet title={isNew ? 'Новый график' : 'График'} onClose={() => router.back()}>
       <ScrollView
         {...scroll}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
       >
+        {named ? (
+          <Card title="Чей это график">
+            <TextField
+              label="Название"
+              value={name}
+              onChangeText={setName}
+              placeholder="Вторая работа"
+              hint="Так график подписан на вкладке над календарём"
+            />
+            <Toggle
+              label="Считать часы и деньги моими"
+              hint="Выключи, если это график близкого человека: он будет виден в календаре, но в сводку не попадёт"
+              value={own}
+              onValueChange={setOwn}
+            />
+          </Card>
+        ) : null}
+
         <Card title="График">
-          <ChoiceGroup
-            label="График работы"
-            choices={choices}
-            value={presetId}
-            onChange={setPresetId}
-          />
+          {/* Выпадающим списком, а не столбиком радиокнопок: графиков десяток,
+              и развёрнутый список выталкивал бы дату первой смены за экран. */}
+          <Select label="График работы" value={presetId} options={choices} onChange={setPresetId} />
+          <AppText variant="caption" tone="muted">
+            {preset.description}
+          </AppText>
         </Card>
 
         <Card title="Дата первой смены">
@@ -148,15 +220,22 @@ export function SchedulePickerScreen() {
           </View>
         </Card>
 
-        <Button
-          title="Сохранить график"
-          variant="primary"
-          accessibilityHint="Календарь заполнится по выбранному графику"
-          onPress={() => {
-            selectSchedule(preset.id, anchorDate);
-            router.back();
-          }}
-        />
+        <View style={{ gap: theme.spacing.md }}>
+          <Button
+            title="Сохранить график"
+            variant="primary"
+            disabled={incomplete}
+            accessibilityHint={
+              incomplete ? 'Сначала впиши название' : 'Календарь заполнится по выбранному графику'
+            }
+            onPress={save}
+          />
+          {/* Последнюю дорожку удалять нечем: без графиков приложению нечего
+              показывать, и это состояние достигается сбросом с экрана ошибки. */}
+          {edited && tracks.length > 1 ? (
+            <Button title="Удалить график" variant="danger" onPress={remove} />
+          ) : null}
+        </View>
       </ScrollView>
     </Sheet>
   );

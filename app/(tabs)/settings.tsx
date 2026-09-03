@@ -1,7 +1,5 @@
 import { View } from 'react-native';
-import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
-import { formatDayShort } from '@/domain/format.ts';
-import { AppText, Button, Card, ChoiceGroup, Screen } from '@/ui';
+import { AppText, Button, Card, ChoiceGroup, Screen, Toggle } from '@/ui';
 import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
 import { AboutSection } from '@/features/settings/AboutSection.tsx';
@@ -20,11 +18,18 @@ export default function SettingsScreen() {
   const push = useGuardedPush();
   const appearance = useAppStore((state) => state.appearance);
   const setAppearance = useAppStore((state) => state.setAppearance);
-  const schedule = useAppStore((state) => state.schedule);
+  const tracks = useAppStore((state) => state.tracks);
   const shiftTypeCount = useAppStore((state) => state.shiftTypes.length);
-  const overrideCount = useAppStore((state) => Object.keys(state.overrides).length);
+  const overrideCount = tracks.reduce(
+    (total, track) => total + Object.keys(track.overrides).length,
+    0,
+  );
   const paymentCount = useAppStore((state) => state.payments.length);
-  const payroll = useAppStore((state) => state.payroll);
+  const own = tracks.filter((track) => track.own);
+  const others = tracks.filter((track) => !track.own);
+  const shared = useAppStore((state) => state.sharedDaysOff);
+  const setSharedDaysOff = useAppStore((state) => state.setSharedDaysOff);
+  const groups = useAppStore((state) => state.sharedGroups);
 
   return (
     <Screen title="Настройки">
@@ -40,29 +45,69 @@ export default function SettingsScreen() {
         </AppText>
       </Card>
 
-      <Card title="График">
-        <AppText variant="body">
-          {schedule
-            ? `${SCHEDULE_PRESETS.find((item) => item.id === schedule.presetId)?.name ?? schedule.presetId}, первая смена ${formatDayShort(schedule.anchorDate)}`
-            : 'График не выбран — календарь пуст.'}
-        </AppText>
-        <Button
-          title={schedule ? 'Изменить график' : 'Выбрать график'}
-          variant={schedule ? 'secondary' : 'primary'}
-          onPress={() => push('/settings/schedule')}
-        />
-      </Card>
+      {/* Совпадающие выходные показываются, только когда есть с кем совпадать:
+          настройка без единого чужого графика ничего бы не включала. */}
+      {others.length > 0 ? (
+        <Card title="Общие выходные">
+          <Toggle
+            label="Показывать на календаре"
+            hint={`Блок со списком дней, когда свободны и ты, и ${others.map((track) => track.name).join(', ')}`}
+            value={shared.enabled}
+            onValueChange={(enabled) => setSharedDaysOff({ enabled })}
+          />
+          <AppText variant="caption" tone="muted">
+            Выделить чьи-то дни на календаре можно прямо в списке: остальные при этом гаснут.
+          </AppText>
 
-      <Card title="Выплаты">
-        <AppText variant="body">
-          {payroll.rules
-            .map(
-              (rule) => `${rule.kind === 'advance' ? 'Аванс' : 'Зарплата'} ${rule.dayOfMonth}-го`,
-            )
-            .join(', ')}
-        </AppText>
-        <Button title="Настроить выплаты" onPress={() => push('/settings/payroll')} />
-      </Card>
+          {/* Группы отвечают на вопрос, который по одному человеку не задать:
+              когда свободны все разом. */}
+          {shared.enabled && others.length > 1 ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              {groups.map((group) => (
+                <Button
+                  key={group.id}
+                  title={`${group.name} · ${group.trackIds.length}`}
+                  accessibilityHint="Изменить состав группы"
+                  onPress={() => push({ pathname: '/settings/group', params: { group: group.id } })}
+                />
+              ))}
+              <Button
+                title="Добавить группу"
+                accessibilityHint="Например «друзья»: общие выходные сразу у нескольких человек"
+                onPress={() => push('/settings/group')}
+              />
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {/* Выплаты — только у своих работ: деньги чужого графика приложение не
+          считает, и настраивать там нечего. */}
+      {own.length > 0 ? (
+        <Card title="Выплаты">
+          <View style={{ gap: theme.spacing.md }}>
+            {own.map((track) => (
+              <View key={track.id} style={{ gap: 4 }}>
+                {own.length > 1 ? <AppText variant="heading">{track.name}</AppText> : null}
+                <AppText variant="body" tone="muted">
+                  {track.payrollRules
+                    .map(
+                      (rule) =>
+                        `${rule.kind === 'advance' ? 'Аванс' : 'Зарплата'} ${rule.dayOfMonth}-го`,
+                    )
+                    .join(', ')}
+                </AppText>
+                <Button
+                  title={own.length > 1 ? `Настроить: ${track.name}` : 'Настроить выплаты'}
+                  onPress={() =>
+                    push({ pathname: '/settings/payroll', params: { track: track.id } })
+                  }
+                />
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
 
       <UpdateCard />
 

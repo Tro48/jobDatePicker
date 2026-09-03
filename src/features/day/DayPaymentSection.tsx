@@ -6,6 +6,7 @@ import { inferPaymentPeriod, periodOf, shiftPeriod } from '@/domain/payday.ts';
 import type { Period } from '@/domain/payday.ts';
 import { PAYMENT_KINDS, PAYMENT_KIND_LABELS, isCompensationPayment } from '@/domain/payments.ts';
 import type { PaymentKind } from '@/domain/types.ts';
+import { useActiveTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, IconButton, Select, TextField } from '@/ui';
 import { useTheme } from '@/theme';
@@ -23,6 +24,9 @@ const KIND_OPTIONS = PAYMENT_KINDS.map((kind) => ({
  */
 export function DayPaymentSection({ date }: { date: IsoDate }) {
   const theme = useTheme();
+  // Деньги вносятся той работе, чей календарь открыт: у второй свои суммы и
+  // свои числа выплат.
+  const track = useActiveTrack();
   const payroll = useAppStore((state) => state.payroll);
   const payments = useAppStore((state) => state.payments);
   const addPayment = useAppStore((state) => state.addPayment);
@@ -33,8 +37,9 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
   const [periodOverride, setPeriodOverride] = useState<Period | null>(null);
 
   const dayPayments = useMemo(
-    () => payments.filter((payment) => payment.receivedOn === date),
-    [payments, date],
+    () =>
+      payments.filter((payment) => payment.trackId === track?.id && payment.receivedOn === date),
+    [payments, track?.id, date],
   );
 
   /**
@@ -43,9 +48,9 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
    */
   const inferredPeriod = useMemo(() => {
     if (isCompensationPayment(kind)) return periodOf(date);
-    const rule = payroll.rules.find((item) => item.kind === kind);
+    const rule = track?.payrollRules.find((item) => item.kind === kind);
     return rule ? inferPaymentPeriod(rule, date) : periodOf(date);
-  }, [payroll.rules, kind, date]);
+  }, [track, kind, date]);
 
   const period = periodOverride ?? inferredPeriod;
   const amount = parseAmount(amountText);
@@ -148,8 +153,8 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
         disabled={!canSave}
         accessibilityHint={canSave ? undefined : 'Введи сумму'}
         onPress={() => {
-          if (amount === null) return;
-          addPayment({ kind, period, receivedOn: date, amount });
+          if (amount === null || !track) return;
+          addPayment({ trackId: track.id, kind, period, receivedOn: date, amount });
           setAmountText('');
           setPeriodOverride(null);
         }}

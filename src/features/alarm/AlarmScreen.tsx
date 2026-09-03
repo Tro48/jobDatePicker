@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
 import { formatTimeUntil } from '@/domain/format.ts';
-import { indexShiftTypes } from '@/domain/shifts.ts';
 import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import {
@@ -22,14 +21,18 @@ export function AlarmScreen() {
   const theme = useTheme();
   const push = useGuardedPush();
   const alarms = useAppStore((state) => state.alarms);
-  const shiftTypes = useAppStore((state) => state.shiftTypes);
+  const tracks = useAppStore((state) => state.tracks);
   const setAlarmEnabled = useAppStore((state) => state.setAlarmEnabled);
   const removeAlarm = useAppStore((state) => state.removeAlarm);
 
   const { occurrences, permissions, available, needsExactAlarmPermission, refreshPermissions } =
     useAlarmSyncState();
 
-  const index = useMemo(() => indexShiftTypes(shiftTypes), [shiftTypes]);
+  // Имена графиков для карточек: по какому именно звонит этот будильник.
+  const trackNames = useMemo(
+    () => new Map(tracks.map((track) => [track.id, track.name])),
+    [tracks],
+  );
   // Раз в минуту: строка «звонок через …» иначе замирает на значении, которое
   // посчиталось при первом рендере экрана.
   const now = useNow();
@@ -118,7 +121,7 @@ export function AlarmScreen() {
                 key={alarm.id}
                 alarm={alarm}
                 next={nextByAlarm.get(alarm.id) ?? null}
-                shiftTypes={index}
+                trackNames={trackNames}
                 now={now}
                 onEdit={() => push(`/alarm/${alarm.id}`)}
                 onToggle={(enabled) => setAlarmEnabled(alarm.id, enabled)}

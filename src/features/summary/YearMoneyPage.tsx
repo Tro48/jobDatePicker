@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { ScrollView, View } from 'react-native';
 import { formatMonthName, formatMoney, pluralize } from '@/domain/format.ts';
 import { yearlyPaymentTotals } from '@/domain/summary.ts';
@@ -24,7 +24,7 @@ export interface YearMoneyPageProps {
  * Считается по выплатам, а не по графику: месяц выплаты — тот, ЗА который она
  * пришла. Поэтому страница работает и без выбранного графика смен.
  */
-export function YearMoneyPage({ year, payments, currency, today, width }: YearMoneyPageProps) {
+function YearMoneyPageView({ year, payments, currency, today, width }: YearMoneyPageProps) {
   const theme = useTheme();
   const scroll = useSheetScroll();
 
@@ -137,3 +137,9 @@ export function YearMoneyPage({ year, payments, currency, today, width }: YearMo
     </ScrollView>
   );
 }
+
+/**
+ * Страница мемоизирована по той же причине, что и месячная сводка: листание
+ * меняет только индекс пейджера, а соседние годы остаются теми же.
+ */
+export const YearMoneyPage = memo(YearMoneyPageView);
