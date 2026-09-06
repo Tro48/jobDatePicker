@@ -1,0 +1,4 @@
+<resources>
+  <string name="shift_widget_label">Смены</string>
+  <string name="shift_widget_description">Календарь смен на главном экране</string>
+</resources>

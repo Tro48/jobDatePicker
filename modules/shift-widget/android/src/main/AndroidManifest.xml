@@ -1,0 +1,20 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <application>
+    <!-- Имя класса полное: в манифесте библиотеки короткая запись
+         разворачивается по пакету приложения, а не модуля. Отдельного
+         config plugin для этого не нужно — манифест библиотеки сливается с
+         манифестом приложения при сборке. -->
+    <receiver
+      android:name="com.andrey.jobdatepicker.widget.ShiftWidgetReceiver"
+      android:exported="true"
+      android:label="@string/shift_widget_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/shift_widget_info" />
+    </receiver>
+  </application>
+</manifest>
