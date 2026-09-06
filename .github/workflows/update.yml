@@ -87,6 +87,9 @@ jobs:
         # Версия меняется на каждом попадании в main: по ней видно, что
         # приехало на телефон, и по ней же называются APK. Живёт она только на
         # main — на dev её никто не трогает, поэтому мержи не конфликтуют.
+        #
+        # Вместе с ней растёт versionCode: RuStore не примет вторую загрузку с
+        # тем же кодом, а поднимать его руками — значит однажды забыть.
         # [skip ci] в сообщении: без него коммит запустил бы этот же workflow.
         run: |
           set -euo pipefail
@@ -95,11 +98,13 @@ jobs:
             const fs = require('fs');
             const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
             config.expo.version = process.argv[1];
+            config.expo.android.versionCode = (config.expo.android.versionCode ?? 0) + 1;
             fs.writeFileSync('app.json', JSON.stringify(config, null, 2) + '\n');
           " "$next"
+          code=$(node -e "console.log(require('./app.json').expo.android.versionCode)")
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Версия $next [skip ci]"
+          git commit -am "Версия $next ($code) [skip ci]"
           git push
 
   # Нативная часть изменилась — по воздуху её не доставить, собираем APK.

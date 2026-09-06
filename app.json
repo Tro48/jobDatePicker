@@ -15,6 +15,7 @@
     },
     "android": {
       "package": "com.andrey.jobdatepicker",
+      "versionCode": 1,
       "allowBackup": false,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
@@ -27,6 +28,14 @@
     "plugins": [
       "expo-router",
       "expo-font",
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Камера нужна только чтобы считать QR-код с графиком. Снимки никуда не отправляются и не сохраняются.",
+          "recordAudioAndroid": false
+        }
+      ],
       [
         "expo-splash-screen",
         {
