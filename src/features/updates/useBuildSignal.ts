@@ -98,6 +98,21 @@ export function useBuildSignal(): BuildSignal {
     void refresh();
   }, [refresh]);
 
+  /**
+   * Сборку поставили — про неё больше не говорим.
+   *
+   * Найденная сборка лежит в хранилище и переживает установку APK, а в сеть
+   * приложение ходит не чаще раза в шесть часов. Без этой проверки человек
+   * ставил обновление и продолжал видеть предложение его скачать — до тех пор,
+   * пока не подойдёт срок следующего запроса. Сеть здесь не нужна вовсе:
+   * совпадение отпечатков и есть доказательство, что сборка уже стоит.
+   */
+  useEffect(() => {
+    const installed = Updates.runtimeVersion;
+    if (!installed || !check.build) return;
+    if (check.build.runtimeVersion === installed) setKnownBuild(null);
+  }, [check.build, setKnownBuild]);
+
   const build = check.build;
 
   return {
