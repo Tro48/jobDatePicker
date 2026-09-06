@@ -45,9 +45,7 @@ test('отпуск, поставленный в календаре, попада
     useAppStore.getState().setOverrideRange('2026-09-10', 7, 'vacation');
   });
 
-  console.log('ЗАПИСЕЙ ДО ПРАВКИ:', beforeCalls, '| ПОСЛЕ:', mockWrite.mock.calls.length);
   const last = mockWrite.mock.calls.at(-1)?.[0] as string;
-  console.log('ОТПУСК В ПОСЛЕДНЕМ СНИМКЕ:', last?.includes('Отпуск'));
 
   expect(mockWrite.mock.calls.length).toBeGreaterThan(beforeCalls);
   expect(last).toContain('Отпуск');
