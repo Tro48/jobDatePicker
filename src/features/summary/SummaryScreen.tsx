@@ -59,6 +59,7 @@ export function SummaryScreen() {
       context: activeContext,
       payments: activePayments,
       payrollRules: track?.payrollRules ?? EMPTY_RULES,
+      name: track?.name ?? '',
     }),
     [activeContext, activePayments, track],
   );
@@ -138,10 +139,11 @@ export function SummaryScreen() {
           onOpenYear={() =>
             push({ pathname: '/summary/year', params: { year: String(item.year) } })
           }
+          trackName={tracks.length > 1 ? shown.name : undefined}
         />
       );
     },
-    [active, background, current.period, payroll, today, width, push],
+    [active, background, current.period, payroll, today, width, push, tracks.length],
   );
 
   const padding = {

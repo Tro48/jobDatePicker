@@ -1,16 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDays, todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
-import { resolveRange } from '@/domain/engine.ts';
+import { resolveDay, resolveRange, scheduleOn } from '@/domain/engine.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
-import { formatDayShort, formatMonthTitle } from '@/domain/format.ts';
+import { formatDayShort, formatDuration, formatMonthTitle } from '@/domain/format.ts';
 import { periodOf, shiftPeriod } from '@/domain/payday.ts';
+import { describePattern } from '@/domain/customSchedules.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { indexShiftTypes } from '@/domain/shifts.ts';
 import { useActiveTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
+import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import {
   AppText,
   Button,
@@ -28,26 +30,68 @@ import { MonthGrid, WeekdayHeader } from '@/features/calendar/MonthGrid.tsx';
 /** Сколько дней показывает строка предпросмотра под выбором даты. */
 const PREVIEW_DAYS = 14;
 
+/**
+ * Насколько далеко назад искать рабочие дни, оставшиеся прежнему графику.
+ * Упор нужен графику без выходных: иначе поиск ушёл бы в прошлое навсегда.
+ */
+const LEFTOVER_LIMIT_DAYS = 31;
+
 export function SchedulePickerScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const push = useGuardedPush();
   const scroll = useSheetScroll();
   const { width } = useWindowDimensions();
   // Какую дорожку правим: «new» — заводим новую, пусто — активную. Так один
   // экран закрывает и первый выбор графика, и вторую работу, и правку.
-  const params = useLocalSearchParams<{ track?: string }>();
+  //
+  // period — какой период истории: «new» — смена графика с какого-то дня,
+  // число — правка уже прожитого, пусто — тот график, по которому работают
+  // сейчас.
+  const params = useLocalSearchParams<{ track?: string; period?: string }>();
 
   const tracks = useAppStore((state) => state.tracks);
   const active = useActiveTrack();
   const shiftTypes = useAppStore((state) => state.shiftTypes);
+  const customSchedules = useAppStore((state) => state.customSchedules);
   const addTrack = useAppStore((state) => state.addTrack);
   const updateTrack = useAppStore((state) => state.updateTrack);
   const setTrackSchedule = useAppStore((state) => state.setTrackSchedule);
+  const addTrackSchedule = useAppStore((state) => state.addTrackSchedule);
+  const removeTrackSchedule = useAppStore((state) => state.removeTrackSchedule);
   const removeTrack = useAppStore((state) => state.removeTrack);
 
   const isNew = params.track === 'new';
   const edited = isNew ? null : (tracks.find((track) => track.id === params.track) ?? active);
-  const saved = edited?.schedule ?? null;
+  // Пустой список — тоже значение, и новый на каждый рендер сбивал бы расчёты,
+  // которые от истории зависят.
+  const history = useMemo(() => edited?.schedules ?? [], [edited]);
+
+  /**
+   * Номер правимого периода. -1 — новый: его добавляют, когда переводят на
+   * другой график, а прожитое должно остаться как было.
+   *
+   * Считается один раз за жизнь экрана. Иначе после добавления периода с
+   * соседнего экрана номер «последнего» съезжает на свежий период, а поля на
+   * этом экране остаются от прежнего — и «Сохранить» переписывает новый график
+   * старым.
+   */
+  const [periodIndex] = useState(() =>
+    params.period === 'new'
+      ? -1
+      : params.period
+        ? Number(params.period)
+        : Math.max(0, history.length - 1),
+  );
+  const saved = history[periodIndex] ?? null;
+
+  /** Заводим период поверх уже существующей истории — значит, спрашиваем и дату начала. */
+  const addsPeriod = periodIndex === -1;
+  /**
+   * Дату начала видно, только когда она отдельная сущность: у самого первого
+   * графика начало и есть первая смена, и второе поле там нечего заполнять.
+   */
+  const showsStart = addsPeriod || periodIndex > 0;
 
   /**
    * Имя и признак «мои часы» спрашиваются, только когда они что-то значат:
@@ -64,12 +108,46 @@ export function SchedulePickerScreen() {
   const [own, setOwn] = useState(edited?.own ?? tracks.length === 0);
   const [presetId, setPresetId] = useState(saved?.presetId ?? SCHEDULE_PRESETS[0].id);
   const [anchorDate, setAnchorDate] = useState<IsoDate>(saved?.anchorDate ?? today);
-  const [previewPeriod, setPreviewPeriod] = useState(() => periodOf(saved?.anchorDate ?? today));
+  const [startsOn, setStartsOn] = useState<IsoDate>(saved?.startsOn ?? today);
+  const [previewPeriod, setPreviewPeriod] = useState(() => periodOf(saved?.startsOn ?? today));
+  /**
+   * Какую из двух дат ставит нажатие по календарю. Один календарь на обе: две
+   * сетки подряд на телефоне не помещаются, а разница между ними — одна
+   * подсвеченная кнопка.
+   */
+  const [picking, setPicking] = useState<'startsOn' | 'anchorDate'>('startsOn');
 
-  const preset = useMemo(
-    () => SCHEDULE_PRESETS.find((item) => item.id === presetId) ?? SCHEDULE_PRESETS[0],
-    [presetId],
-  );
+  /**
+   * Выбранный график: встроенный пресет или собранный руками. Для дорожки они
+   * неразличимы — в неё копируется одна и та же раскладка.
+   */
+  const preset = useMemo(() => {
+    const builtin = SCHEDULE_PRESETS.find((item) => item.id === presetId);
+    if (builtin) return builtin;
+
+    const custom = customSchedules.find((item) => item.id === presetId);
+    if (custom) {
+      return { ...custom, description: describePattern(custom.pattern, shiftTypes) };
+    }
+    return SCHEDULE_PRESETS[0];
+  }, [presetId, customSchedules, shiftTypes]);
+
+  /**
+   * Только что собранный график выбирается сам.
+   *
+   * Человек уходил в конструктор ровно за этим, и заставлять его после
+   * возврата второй раз искать своё название в списке — значит терять
+   * сделанное. Сравнивается последний собранный график: конструктор
+   * дописывает новый в конец.
+   */
+  const latestCustomId = customSchedules.at(-1)?.id;
+  const seenCustomId = useRef(latestCustomId);
+  useEffect(() => {
+    if (latestCustomId !== undefined && latestCustomId !== seenCustomId.current) {
+      seenCustomId.current = latestCustomId;
+      setPresetId(latestCustomId);
+    }
+  }, [latestCustomId]);
 
   // Имя обязательно ровно там, где его спрашивают: без него вкладки
   // получаются безымянными, и переключаться между ними не по чему.
@@ -77,12 +155,24 @@ export function SchedulePickerScreen() {
 
   const save = (): void => {
     if (incomplete) return;
-    if (edited) {
-      updateTrack(edited.id, { name: name.trim() || edited.name, own });
-      setTrackSchedule(edited.id, preset.id, anchorDate);
-    } else {
+    if (!edited) {
       addTrack({ name: name.trim(), own, presetId: preset.id, anchorDate });
+      router.back();
+      return;
     }
+
+    updateTrack(edited.id, { name: name.trim() || edited.name, own });
+    // У первого графика начало и первая смена — одно и то же: отдельного поля
+    // там нет, и брать оттуда нечего.
+    const entry = { presetId: preset.id, anchorDate, startsOn: showsStart ? startsOn : anchorDate };
+    if (addsPeriod) addTrackSchedule(edited.id, entry);
+    else setTrackSchedule(edited.id, periodIndex, entry);
+    router.back();
+  };
+
+  /** Убрать один период истории — не всю работу. */
+  const removePeriod = (): void => {
+    if (edited) removeTrackSchedule(edited.id, periodIndex);
     router.back();
   };
 
@@ -98,33 +188,111 @@ export function SchedulePickerScreen() {
    */
   const draftContext: ScheduleContext = useMemo(
     () => ({
-      schedule: { presetId: preset.id, pattern: preset.pattern, anchorDate },
+      schedules: [
+        {
+          presetId: preset.id,
+          pattern: preset.pattern,
+          anchorDate,
+          startsOn: showsStart ? startsOn : anchorDate,
+        },
+      ],
       shiftTypes: indexShiftTypes(shiftTypes),
       overrides: new Map(),
     }),
-    [preset, anchorDate, shiftTypes],
+    [preset, anchorDate, startsOn, showsStart, shiftTypes],
   );
+
+  /** Как называется график периода в истории: пресет, свой или пришедший чужой. */
+  const nameOfSchedule = (id: string): string =>
+    SCHEDULE_PRESETS.find((item) => item.id === id)?.name ??
+    customSchedules.find((item) => item.id === id)?.name ??
+    'график с другого телефона';
+
+  /**
+   * Рабочие дни прежнего графика, примыкающие к началу нового.
+   *
+   * Ловушка, ради которой это считается: «перевели с сентября, первая смена
+   * второго» — и первое число остаётся прежней работе сменой, а ручной выходной
+   * поверх неё превращается в недоработку. Считается вся серия подряд, а не один
+   * день: у пятидневки их перед средой два, и сдвиг на сутки убрал бы только
+   * половину.
+   *
+   * null — предупреждать не о чем: прежнего графика здесь нет или он и так
+   * ставит выходной.
+   */
+  const leftover = useMemo(() => {
+    if (!showsStart) return null;
+
+    // Правимый период сам себе предшественником быть не может.
+    const prior = history.filter((_, at) => at !== periodIndex);
+    if (prior.length === 0) return null;
+
+    const context: ScheduleContext = {
+      schedules: prior,
+      shiftTypes: indexShiftTypes(shiftTypes),
+      overrides: new Map(),
+    };
+
+    let minutes = 0;
+    let first: IsoDate | null = null;
+    let last: IsoDate | null = null;
+
+    // Назад от начала, пока идут рабочие дни. Предел — на случай графика без
+    // выходных вовсе: уходить в прошлое бесконечно незачем.
+    for (let back = 1; back <= LEFTOVER_LIMIT_DAYS; back += 1) {
+      const date = addDays(startsOn, -back);
+      if (!scheduleOn(prior, date)) break;
+
+      const { shiftType, plannedMinutes } = resolveDay(context, date);
+      if (shiftType.kind !== 'work') break;
+
+      minutes += plannedMinutes;
+      first = date;
+      last ??= date;
+    }
+
+    if (!first || !last) return null;
+    // Отдаётся id, а не готовое имя: разрешать его здесь значило бы затащить в
+    // зависимости пересоздаваемую на каждый рендер функцию.
+    return { first, last, minutes, presetId: scheduleOn(prior, first)!.presetId };
+  }, [showsStart, history, periodIndex, startsOn, shiftTypes]);
+
+  /** Начало этого периода: от него и показывается, как график ляжет. */
+  const from = showsStart ? startsOn : anchorDate;
 
   const previewDays = useMemo(
     () =>
       resolveRange(
         draftContext,
-        Array.from({ length: PREVIEW_DAYS }, (_, index) => addDays(anchorDate, index)),
+        Array.from({ length: PREVIEW_DAYS }, (_, index) => addDays(from, index)),
       ),
-    [draftContext, anchorDate],
+    [draftContext, from],
   );
 
   const previewYear = Number(previewPeriod.slice(0, 4));
   const previewMonth = Number(previewPeriod.slice(5, 7));
 
-  const choices = SCHEDULE_PRESETS.map((item) => ({
-    value: item.id,
-    label: item.name,
-    hint: item.description,
-  }));
+  // Десять готовых графиков стоят первыми: большинству дальше листать незачем.
+  const choices = [
+    ...SCHEDULE_PRESETS.map((item) => ({
+      value: item.id,
+      label: item.name,
+      hint: item.description,
+    })),
+    ...customSchedules.map((item) => ({
+      value: item.id,
+      label: item.name,
+      hint: describePattern(item.pattern, shiftTypes),
+    })),
+  ];
+
+  const editedCustom = customSchedules.find((item) => item.id === presetId) ?? null;
 
   return (
-    <Sheet title={isNew ? 'Новый график' : 'График'} onClose={() => router.back()}>
+    <Sheet
+      title={isNew ? 'Новый график' : addsPeriod ? 'Смена графика' : 'График'}
+      onClose={() => router.back()}
+    >
       <ScrollView
         {...scroll}
         style={{ flex: 1 }}
@@ -155,13 +323,102 @@ export function SchedulePickerScreen() {
           <AppText variant="caption" tone="muted">
             {preset.description}
           </AppText>
+
+          {/* Нужного графика в списке нет — значит, его надо собрать, и
+              выясняется это ровно здесь. */}
+          <Button
+            title={editedCustom ? `Изменить «${editedCustom.name}»` : 'Собрать свой'}
+            accessibilityHint={
+              editedCustom
+                ? 'Раскладка по дням меняется в конструкторе'
+                : 'Разложить смены по дням цикла или по дням недели'
+            }
+            onPress={() =>
+              push(
+                editedCustom
+                  ? {
+                      pathname: '/settings/schedule-builder',
+                      params: { schedule: editedCustom.id },
+                    }
+                  : '/settings/schedule-builder',
+              )
+            }
+          />
         </Card>
 
-        <Card title="Дата первой смены">
-          <AppText variant="body">{formatDayShort(anchorDate)}</AppText>
-          <AppText variant="caption" tone="muted">
-            Нажми на день в календаре ниже. От него график разворачивается и вперёд, и назад.
-          </AppText>
+        <Card title={showsStart ? 'Когда действует' : 'Дата первой смены'}>
+          {showsStart ? (
+            <>
+              {/* Две даты, один календарь: нажатие ставит ту, что выбрана
+                  кнопкой. Даты разные по смыслу — с какого дня работаешь по
+                  этому графику и куда попадает его первая смена. У 2/2 вторая
+                  нужна всегда: переводят обычно не в день выхода. */}
+              <View style={{ flexDirection: 'row', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
+                <Button
+                  title={`Действует с: ${formatDayShort(startsOn)}`}
+                  variant={picking === 'startsOn' ? 'primary' : 'secondary'}
+                  compact
+                  accessibilityHint="Нажатие по календарю поставит день начала"
+                  onPress={() => setPicking('startsOn')}
+                />
+                <Button
+                  title={`Первая смена: ${formatDayShort(anchorDate)}`}
+                  variant={picking === 'anchorDate' ? 'primary' : 'secondary'}
+                  compact
+                  accessibilityHint="Нажатие по календарю поставит день первой смены"
+                  onPress={() => setPicking('anchorDate')}
+                />
+              </View>
+              <AppText variant="caption" tone="muted">
+                Дни до {formatDayShort(startsOn)} остаются на прежнем графике. Первая смена
+                показывает, куда попадает начало раскладки, — обычно это тот же день.
+              </AppText>
+
+              {/* Прежний график кончается не там, где его мысленно закончили:
+                  «перевели с сентября, первая смена второго» оставляет первое
+                  число старой работе рабочей сменой. Пока это видно только по
+                  часам в сводке, человек считает это поломкой — поэтому сказано
+                  прямо, числом и с кнопкой, которая это чинит. */}
+              {leftover ? (
+                <View
+                  style={{
+                    gap: theme.spacing.xs,
+                    padding: theme.spacing.md,
+                    borderRadius: theme.radius.md,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.surfaceElevated,
+                  }}
+                >
+                  <AppText variant="body">
+                    {leftover.first === leftover.last
+                      ? `${formatDayShort(leftover.first)} останется`
+                      : `Дни с ${formatDayShort(leftover.first)} по ${formatDayShort(leftover.last)} остаются`}{' '}
+                    на графике «{nameOfSchedule(leftover.presetId)}»: рабочие смены,{' '}
+                    {formatDuration(leftover.minutes)} в плане.
+                  </AppText>
+                  <AppText variant="caption" tone="muted">
+                    Если ты там уже не работаешь, начни новый график с этого дня — иначе выходной
+                    поверх такой смены посчитается недоработкой.
+                  </AppText>
+                  <Button
+                    title={`Начать с ${formatDayShort(leftover.first)}`}
+                    compact
+                    accessibilityHint="Перенести начало нового графика на первый из этих дней"
+                    onPress={() => setStartsOn(leftover.first)}
+                  />
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <AppText variant="body">{formatDayShort(anchorDate)}</AppText>
+              <AppText variant="caption" tone="muted">
+                Нажми на день в календаре ниже. Календарь разворачивает график от него и вперёд, и
+                назад, но часы и смены считаются только с этого дня.
+              </AppText>
+            </>
+          )}
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <IconButton
@@ -187,14 +444,23 @@ export function SchedulePickerScreen() {
               month={previewMonth}
               context={draftContext}
               today={today}
-              selectedDate={anchorDate}
+              selectedDate={picking === 'startsOn' && showsStart ? startsOn : anchorDate}
               width={width}
-              onSelectDay={setAnchorDate}
+              onSelectDay={(date) => {
+                if (showsStart && picking === 'startsOn') {
+                  // Первая смена тянется за началом, пока её не двигали руками:
+                  // в большинстве переводов это один и тот же день.
+                  if (anchorDate === startsOn) setAnchorDate(date);
+                  setStartsOn(date);
+                  return;
+                }
+                setAnchorDate(date);
+              }}
             />
           </View>
         </Card>
 
-        <Card title={`Как ляжет: ${PREVIEW_DAYS} дней от первой смены`}>
+        <Card title={`Как ляжет: ${PREVIEW_DAYS} дней с ${formatDayShort(from)}`}>
           <View
             accessibilityRole="text"
             accessibilityLabel={previewDays
@@ -220,6 +486,74 @@ export function SchedulePickerScreen() {
           </View>
         </Card>
 
+        {/* История графиков: перевели с пятидневки на 2/2 — прожитые месяцы
+            должны остаться на прежнем графике, а не пересчитаться задним
+            числом. Показывается только когда есть что показывать: у первого
+            графика история — он сам. */}
+        {edited && history.length > 0 && !addsPeriod ? (
+          <Card title="История графиков">
+            <View accessibilityRole="list" style={{ gap: theme.spacing.xs }}>
+              {history.map((item, index) => (
+                <View
+                  key={item.startsOn}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}
+                >
+                  <AppText
+                    variant="body"
+                    tone={index === periodIndex ? 'default' : 'muted'}
+                    style={{ flex: 1 }}
+                  >
+                    С {formatDayShort(item.startsOn)} — {nameOfSchedule(item.presetId)}
+                    {index === periodIndex ? ' · правится сейчас' : ''}
+                  </AppText>
+                  {index === periodIndex ? null : (
+                    <IconButton
+                      name="create-outline"
+                      label={`Править график с ${formatDayShort(item.startsOn)}`}
+                      onPress={() =>
+                        push({
+                          pathname: '/settings/schedule',
+                          params: { track: edited.id, period: String(index) },
+                        })
+                      }
+                    />
+                  )}
+                </View>
+              ))}
+            </View>
+            <AppText variant="caption" tone="muted">
+              Перевели на другой график или сменил работу — добавь период, и прошлые месяцы
+              останутся посчитанными по-старому.
+            </AppText>
+            <Button
+              title="Сменить график с даты"
+              accessibilityHint="Прежний график останется на прожитых месяцах"
+              onPress={() =>
+                push({
+                  pathname: '/settings/schedule',
+                  params: { track: edited.id, period: 'new' },
+                })
+              }
+            />
+          </Card>
+        ) : null}
+
+        {/* Поделиться можно только сохранённым графиком: черновик, который
+            ещё не нажали «Сохранить», отдавать нечем. */}
+        {edited && history.length > 0 ? (
+          <Card title="Отдать другому телефону">
+            <AppText variant="body" tone="muted">
+              QR-код с экрана или файл в мессенджер — так график переезжает без облака и без учётной
+              записи.
+            </AppText>
+            <Button
+              title="Поделиться графиком"
+              accessibilityHint="Код и файл на одном экране"
+              onPress={() => push({ pathname: '/settings/share', params: { track: edited.id } })}
+            />
+          </Card>
+        ) : null}
+
         <View style={{ gap: theme.spacing.md }}>
           <Button
             title="Сохранить график"
@@ -230,10 +564,21 @@ export function SchedulePickerScreen() {
             }
             onPress={save}
           />
+          {/* Период истории убирается отдельно от работы: ошиблись датой
+              перевода — незачем сносить весь календарь. Самый первый период
+              так не убрать: без него у графика не будет начала. */}
+          {edited && !addsPeriod && periodIndex > 0 ? (
+            <Button
+              title="Убрать этот период"
+              variant="danger"
+              accessibilityHint="Дни вернутся на прежний график"
+              onPress={removePeriod}
+            />
+          ) : null}
           {/* Последнюю дорожку удалять нечем: без графиков приложению нечего
               показывать, и это состояние достигается сбросом с экрана ошибки. */}
           {edited && tracks.length > 1 ? (
-            <Button title="Удалить график" variant="danger" onPress={remove} />
+            <Button title="Удалить эту работу" variant="danger" onPress={remove} />
           ) : null}
         </View>
       </ScrollView>

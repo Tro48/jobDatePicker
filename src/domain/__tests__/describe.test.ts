@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeDay } from '../describe.ts';
+import { describeDay, describeScheduleStart } from '../describe.ts';
 import { resolveDay } from '../engine.ts';
 import type { ScheduleContext } from '../engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '../shifts.ts';
@@ -11,7 +11,7 @@ const shiftTypes = indexShiftTypes(DEFAULT_SHIFT_TYPES);
 function contextFor(presetId: string, anchorDate: string): ScheduleContext {
   const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId)!;
   return {
-    schedule: { presetId, pattern: preset.pattern, anchorDate },
+    schedules: [{ presetId, pattern: preset.pattern, anchorDate, startsOn: anchorDate }],
     shiftTypes,
     overrides: new Map(),
   };
@@ -60,4 +60,21 @@ test('ночная смена читается с переходом через 
     describeDay(resolveDay(context, '2026-09-02')),
     '2 сентября, среда, ночная смена, с 20:00 до 08:00, 12 часов',
   );
+});
+
+test('месяц до первой смены и месяц с ней подписаны по-разному', () => {
+  // Полная сетка смен и ноль часов под ней — с виду поломка, поэтому месяц до
+  // первой смены объясняется словами.
+  assert.equal(
+    describeScheduleStart('2026-08', '2026-09-02'),
+    'Работа начинается 2 сентября: в этом месяце смен ещё не было.',
+  );
+  assert.equal(
+    describeScheduleStart('2026-09', '2026-09-02'),
+    'Считается с 2 сентября — дня первой смены.',
+  );
+  // Месяц целиком после первой смены объяснять нечем: числа обычные.
+  assert.equal(describeScheduleStart('2026-10', '2026-09-02'), null);
+  // Первое число — месяц и так считается целиком.
+  assert.equal(describeScheduleStart('2026-09', '2026-09-01'), null);
 });

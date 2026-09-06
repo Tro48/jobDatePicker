@@ -3,7 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { formatMinutesAsTime, parseTimeToMinutes } from '@/domain/date.ts';
 import type { IsoDate, Weekday } from '@/domain/date.ts';
-import { patternShiftTypeIds, resolveDay } from '@/domain/engine.ts';
+import { resolveDay, scheduleShiftTypeIds } from '@/domain/engine.ts';
 import { formatDayLong } from '@/domain/format.ts';
 import {
   MAX_SNOOZE_MINUTES,
@@ -126,11 +126,12 @@ export function AlarmEditScreen() {
     return new Map(
       tracks.map((track) => [
         track.id,
-        track.schedule
-          ? patternShiftTypeIds(track.schedule.pattern)
-              .map((id) => index.get(id))
-              .filter((type): type is ShiftType => Boolean(type?.time) && type?.kind === 'work')
-          : [],
+        // Смены всей истории графиков: после перевода с пятидневки на 2/2
+        // время подъёма нужно и для новых смен, иначе на них будильник
+        // замолчит.
+        scheduleShiftTypeIds(track.schedules)
+          .map((id) => index.get(id))
+          .filter((type): type is ShiftType => Boolean(type?.time) && type?.kind === 'work'),
       ]),
     );
   }, [tracks, shiftTypes]);
@@ -139,7 +140,7 @@ export function AlarmEditScreen() {
   const picked = draft.repeat.kind === 'schedule' ? draft.repeat.tracks : [];
 
   /** По чему вообще можно звонить: дорожка без графика не раскладывается. */
-  const usable = tracks.filter((track) => track.schedule !== null);
+  const usable = tracks.filter((track) => track.schedules.length > 0);
 
   /**
    * Спрашивать время по сменам стоит там, где смен больше одной. Считается по

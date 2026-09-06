@@ -21,6 +21,16 @@
         "buildType": "apk"
       },
       "channel": "production"
+    },
+    "rustore": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_DISTRIBUTION": "rustore"
+      },
+      "channel": "rustore"
     }
   }
 }

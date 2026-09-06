@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {
   MAIN_TRACK_NAME,
   migrateAlarm,
+  migrateCustomSchedules,
   migratePayments,
   migrateSchedule,
+  migrateShiftTypes,
   migrateTracks,
 } from '../migrations.ts';
 import { DEFAULT_SHIFT_TYPES } from '../../domain/shifts.ts';
@@ -40,7 +42,7 @@ const mainTrack: ScheduleTrack = {
   id: 'main',
   name: 'Основная',
   own: true,
-  schedule: usable,
+  schedules: [{ ...usable, startsOn: usable.anchorDate }],
   overrides: {},
   payrollRules: DEFAULT_PAYMENT_RULES,
 };
@@ -115,7 +117,8 @@ test('версия 8: плоский график и правки сворачи
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0].name, MAIN_TRACK_NAME);
   assert.equal(tracks[0].own, true);
-  assert.deepEqual(tracks[0].schedule, usable);
+  // График становится первым периодом истории и начинается с даты первой смены.
+  assert.deepEqual(tracks[0].schedules, [{ ...usable, startsOn: usable.anchorDate }]);
   assert.equal(tracks[0].overrides['2026-09-05'].note, 'за Сергея');
 });
 
@@ -136,7 +139,7 @@ test('сломанный график обнуляется, но правки д
   // Дорожка выживает вместе с отпуском: терять его из-за переименованной
   // смены нельзя, а календарь покажет привычное «График не выбран».
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].schedule, null);
+  assert.deepEqual(tracks[0].schedules, []);
   assert.equal(tracks[0].overrides['2026-09-05'].shiftTypeId, 'vacation');
 });
 
@@ -146,7 +149,7 @@ test('сломанный график чистится в каждой доро�
       id: 'a',
       name: 'Основная',
       own: true,
-      schedule: usable,
+      schedules: [{ ...usable, startsOn: usable.anchorDate }],
       overrides: {},
       payrollRules: DEFAULT_PAYMENT_RULES,
     },
@@ -154,7 +157,7 @@ test('сломанный график чистится в каждой доро�
       id: 'b',
       name: 'Аня',
       own: false,
-      schedule: broken,
+      schedules: [{ ...broken, startsOn: broken.anchorDate }],
       overrides: {},
       payrollRules: DEFAULT_PAYMENT_RULES,
     },
@@ -164,8 +167,8 @@ test('сломанный график чистится в каждой доро�
 
   // Битая дорожка не роняет соседнюю и не исчезает сама.
   assert.equal(tracks.length, 2);
-  assert.deepEqual(tracks[0].schedule, usable);
-  assert.equal(tracks[1].schedule, null);
+  assert.deepEqual(tracks[0].schedules, [{ ...usable, startsOn: usable.anchorDate }]);
+  assert.deepEqual(tracks[1].schedules, []);
   assert.equal(tracks[1].own, false);
 });
 
@@ -182,7 +185,7 @@ test('выплаты достаются первой дорожке, а не п�
       id: 'a',
       name: 'Основная',
       own: true,
-      schedule: usable,
+      schedules: [{ ...usable, startsOn: usable.anchorDate }],
       overrides: {},
       payrollRules: DEFAULT_PAYMENT_RULES,
     },
@@ -211,4 +214,137 @@ test('выплаты достаются первой дорожке, а не п�
   );
   assert.deepEqual(migratePayments(undefined, tracks), []);
   assert.deepEqual(migratePayments([], []), []);
+});
+
+/**
+ * Справочник смен: до версии 13 его в хранилище не было вовсе, поэтому
+ * миграция обязана вытянуть весь встроенный набор из пустоты.
+ */
+test('снимок без справочника даёт ровно встроенный набор', () => {
+  assert.deepEqual(migrateShiftTypes(undefined), DEFAULT_SHIFT_TYPES);
+  assert.deepEqual(migrateShiftTypes([]), DEFAULT_SHIFT_TYPES);
+});
+
+test('правки встроенной смены переживают миграцию, поля из кода — тоже', () => {
+  const saved = DEFAULT_SHIFT_TYPES.map((type) =>
+    type.id === 'vacation'
+      ? // Так выглядит снимок из старой сборки: признака многодневности в нём
+        // не было, и когда-то ровно из-за этого справочник и не хранили.
+        { ...type, name: 'Отпуск на складе', multiDay: undefined }
+      : type,
+  );
+
+  const migrated = migrateShiftTypes(saved);
+  const vacation = migrated.find((type) => type.id === 'vacation');
+
+  assert.equal(vacation?.name, 'Отпуск на складе');
+  assert.equal(vacation?.multiDay, true);
+});
+
+test('вид встроенной смены из снимка не берётся: он задан кодом', () => {
+  const saved = DEFAULT_SHIFT_TYPES.map((type) =>
+    type.id === 'off'
+      ? { ...type, kind: 'work', time: { start: '09:00', end: '18:00', unpaidBreakMinutes: 0 } }
+      : type,
+  );
+
+  // «Выходной», ставший рабочей сменой, ломает все встроенные графики разом.
+  assert.equal(migrateShiftTypes(saved).find((type) => type.id === 'off')?.kind, 'rest');
+});
+
+test('своя смена переживает миграцию как есть', () => {
+  const migrated = migrateShiftTypes([
+    ...DEFAULT_SHIFT_TYPES,
+    {
+      id: 'evening',
+      builtinId: null,
+      name: 'Вечерняя',
+      badge: 'Веч',
+      kind: 'work',
+      colorToken: 'shift.extra',
+      time: { start: '16:00', end: '00:00', unpaidBreakMinutes: 0 },
+      rateMultiplier: 1,
+    },
+  ]);
+
+  assert.equal(migrated.length, DEFAULT_SHIFT_TYPES.length + 1);
+  assert.equal(migrated.at(-1)?.name, 'Вечерняя');
+});
+
+test('встроенная смена возвращается в справочник, даже если её из снимка выкинули', () => {
+  const migrated = migrateShiftTypes(DEFAULT_SHIFT_TYPES.filter((type) => type.id !== 'off'));
+
+  // На «Выходной» ссылаются все встроенные графики: без него они перестают
+  // раскладываться и молча исчезают при следующем запуске.
+  assert.ok(migrated.some((type) => type.id === 'off'));
+  assert.equal(migrated.length, DEFAULT_SHIFT_TYPES.length);
+});
+
+test('битая запись в снимке не уносит с собой весь справочник', () => {
+  const migrated = migrateShiftTypes([
+    null,
+    { id: 'broken', builtinId: null, name: 'Кривая', kind: 'work', colorToken: 'shift.day' },
+    ...DEFAULT_SHIFT_TYPES,
+  ]);
+
+  assert.equal(migrated.length, DEFAULT_SHIFT_TYPES.length);
+});
+
+test('порядок смен в справочнике — пользовательский', () => {
+  const reordered = [...DEFAULT_SHIFT_TYPES].reverse();
+  const migrated = migrateShiftTypes(reordered);
+
+  assert.deepEqual(
+    migrated.map((type) => type.id),
+    reordered.map((type) => type.id),
+  );
+});
+
+test('снимок без собранных графиков даёт пустой список, а не падение', () => {
+  assert.deepEqual(migrateCustomSchedules(undefined, DEFAULT_SHIFT_TYPES), []);
+  assert.deepEqual(migrateCustomSchedules('мусор', DEFAULT_SHIFT_TYPES), []);
+});
+
+test('собранный график переживает миграцию, а собранный на исчезнувшей смене — нет', () => {
+  const migrated = migrateCustomSchedules(
+    [
+      { id: 'c1', name: 'Мой', pattern: { kind: 'cycle', slots: ['day12', 'off'] } },
+      { id: 'c2', name: 'Битый', pattern: { kind: 'cycle', slots: ['ghost', 'off'] } },
+    ],
+    DEFAULT_SHIFT_TYPES,
+  );
+
+  assert.deepEqual(
+    migrated.map((schedule) => schedule.id),
+    ['c1'],
+  );
+});
+
+test('версия 15: битый период выбрасывается поштучно, живая история остаётся', () => {
+  const tracks = migrateTracks(
+    {
+      tracks: [
+        {
+          id: 'a',
+          name: 'Основная',
+          own: true,
+          // Порядок в снимке перепутан намеренно: восстановить его — работа миграции.
+          schedules: [
+            { ...usable, startsOn: '2026-10-01' },
+            { ...broken, startsOn: '2026-05-01' },
+            { ...usable, startsOn: '2026-01-05' },
+          ],
+          overrides: {},
+          payrollRules: DEFAULT_PAYMENT_RULES,
+        },
+      ],
+    },
+    DEFAULT_SHIFT_TYPES,
+  );
+
+  // Прошлогодний график на исчезнувшей смене не тянет за собой текущий.
+  assert.deepEqual(
+    tracks[0].schedules.map((period) => period.startsOn),
+    ['2026-01-05', '2026-10-01'],
+  );
 });

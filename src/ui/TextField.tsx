@@ -14,6 +14,12 @@ export interface TextFieldProps {
   keyboardType?: KeyboardTypeOptions;
   multiline?: boolean;
   /**
+   * Предел длины. Обрезать набранное потом нельзя: человек увидит в поле одно,
+   * а сохранится другое — так буква-маркер смены и должна ограничиваться прямо
+   * при вводе.
+   */
+  maxLength?: number;
+  /**
    * Уход фокуса. Здесь экраны дописывают набранное в хранилище: писать на
    * каждую букву слишком дорого, а поле должно хранить ровно то, что набрали.
    */
@@ -28,6 +34,7 @@ export function TextField({
   hint,
   keyboardType = 'default',
   multiline = false,
+  maxLength,
   onBlur,
 }: TextFieldProps) {
   const theme = useTheme();
@@ -63,6 +70,7 @@ export function TextField({
         placeholderTextColor={theme.colors.textMuted}
         keyboardType={keyboardType}
         multiline={multiline}
+        maxLength={maxLength}
         style={{
           minHeight: theme.minTouchTarget,
           paddingHorizontal: theme.spacing.md,

@@ -1,10 +1,17 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { mmkvStateStorage } from './storage.ts';
-import { MAIN_TRACK_NAME, migrateAlarm, migratePayments, migrateTracks } from './migrations.ts';
+import {
+  MAIN_TRACK_NAME,
+  migrateAlarm,
+  migrateCustomSchedules,
+  migratePayments,
+  migrateShiftTypes,
+  migrateTracks,
+} from './migrations.ts';
 import type { LegacyFlatState } from './migrations.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
-import { DEFAULT_SHIFT_TYPES } from '@/domain/shifts.ts';
+import { DEFAULT_SHIFT_TYPES, sanitizeShiftType, shiftTypeUsage } from '@/domain/shifts.ts';
 import { DEFAULT_PAYMENT_RULES } from '@/domain/payday.ts';
 import { clampSnoozeMinutes, restartOnce } from '@/domain/alarm.ts';
 import type { Alarm } from '@/domain/alarm.ts';
@@ -13,13 +20,16 @@ import type { IsoDate } from '@/domain/date.ts';
 import { LATEST_RELEASE_ID } from '@/domain/releaseNotes.ts';
 import type { ReleaseManifest } from '@/domain/release.ts';
 import type {
-  ActiveSchedule,
+  CustomSchedule,
   DayOverride,
   PaymentRecord,
   PaymentRule,
   PayrollSettings,
+  SchedulePattern,
+  SchedulePeriod,
   ScheduleTrack,
   ShiftType,
+  ShiftTypeDraft,
 } from '@/domain/types.ts';
 
 /**
@@ -27,7 +37,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 16;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -58,6 +68,34 @@ export interface BuildCheck {
  * чужой график ради одного взгляда на смены, лишний блок на календаре только
  * отнимает место.
  */
+/**
+ * Производственный календарь.
+ *
+ * Включён по умолчанию: праздник в клетке нужен всем, а вот пятидневке он ещё
+ * и делает день нерабочим. Выключается теми, у кого работа праздников не
+ * замечает — в магазине или на посту 12 июня такой же рабочий день.
+ */
+export interface HolidaySettings {
+  enabled: boolean;
+}
+
+/**
+ * Слот поддержки на «Сводке».
+ *
+ * Одно место на всё приложение: и карточка «без рекламы и без подписки», и
+ * реклама, когда она появится, и покупка её отключения. Хранить приходится
+ * ровно три вещи — покупку, скрытую рекламу и скрытую карточку доната.
+ */
+export interface SupportState {
+  /** Реклама выключена покупкой. Держится отдельно от purchasedAt: покупку
+   * восстанавливают с сервера магазина, а этот флаг работает и офлайн. */
+  adsHidden: boolean;
+  /** Когда купили отключение рекламы. null — не покупали. */
+  purchasedAt: number | null;
+  /** «Не показывать» на карточке доната. Второе нажатие её не вернёт. */
+  donationDismissed: boolean;
+}
+
 export interface SharedDaysOffSettings {
   /** Блок со списком общих выходных на календаре. */
   enabled: boolean;
@@ -97,11 +135,26 @@ export interface AppState {
    */
   activeTrackId: string | null;
   /**
-   * Справочник смен. В хранилище не уходит: он задан кодом, и снимок из старой
-   * сборки перекрывал бы новые поля — так пропал признак многодневности у
-   * отпуска, и карточка дня переставала спрашивать количество дней.
+   * Справочник смен: десять встроенных плюс всё, что человек завёл сам.
+   *
+   * До версии 13 задавался кодом и в хранилище не уходил. Своей вечерней смены
+   * у людей от этого не появлялось, поэтому теперь справочник хранится — а от
+   * старой беды (снимок из прошлой сборки перекрывает новые поля) защищает
+   * migrateShiftTypes: встроенная смена собирается из кода, и из снимка в неё
+   * попадает только то, что правили руками.
    */
   shiftTypes: ShiftType[];
+  /**
+   * Графики, собранные в конструкторе. Лежат рядом с встроенными пресетами и
+   * попадают в тот же список выбора.
+   *
+   * Дорожка на них не ссылается: при выборе графика раскладка копируется в
+   * дорожку, как и у пресетов. Поэтому удаление собранного графика не ломает
+   * тех, кто по нему уже живёт, — presetId просто перестаёт на что-то указывать.
+   */
+  customSchedules: CustomSchedule[];
+  holidays: HolidaySettings;
+  support: SupportState;
   payroll: PayrollSettings;
   sharedDaysOff: SharedDaysOffSettings;
   sharedGroups: SharedGroup[];
@@ -117,7 +170,7 @@ export interface AppState {
 }
 
 /** Часть состояния, которая переживает перезапуск. */
-export type PersistedState = Omit<AppState, 'shiftTypes' | 'activeTrackId'>;
+export type PersistedState = Omit<AppState, 'activeTrackId'>;
 
 /**
  * Снимок хранилища любой прошлой версии. Шире нынешнего состояния: до версии 9
@@ -127,6 +180,27 @@ export type PersistedSnapshot = Partial<AppState> & LegacyFlatState;
 
 export interface AppActions {
   setAppearance: (value: ThemePreference) => void;
+  /** Заводит свой тип смены и возвращает его id — редактор открывается сразу по нему. */
+  addShiftType: (draft: ShiftTypeDraft) => string;
+  /**
+   * Правка типа смены. У встроенной вид и многодневность не меняются: они
+   * заданы кодом, и на них завязаны и встроенные графики, и сводка часов.
+   */
+  updateShiftType: (id: string, draft: Partial<ShiftTypeDraft>) => void;
+  /**
+   * Удаление своей смены. Встроенная не удаляется, и занятая графиком — тоже:
+   * без неё график перестанет раскладываться. Ручные правки на удалённую смену
+   * теряют смену, но сохраняют заметку и часы.
+   */
+  removeShiftType: (id: string) => void;
+  /** Заводит собранный график и возвращает его id — список выбора сразу встаёт на него. */
+  addCustomSchedule: (name: string, pattern: SchedulePattern) => string;
+  updateCustomSchedule: (id: string, patch: Partial<Omit<CustomSchedule, 'id'>>) => void;
+  /**
+   * Убирает собранный график из списка выбора. Дорожки, которые по нему живут,
+   * продолжают жить: раскладка у них своя.
+   */
+  removeCustomSchedule: (id: string) => void;
   /** Заводит дорожку и делает её активной. Возвращает id — экран открывается сразу по нему. */
   addTrack: (input: NewTrack) => string;
   /** Правка названия и признака «мои часы». */
@@ -134,11 +208,18 @@ export interface AppActions {
   /** Числа аванса и зарплаты у конкретной работы. */
   setTrackPayrollRules: (id: string, rules: PaymentRule[]) => void;
   /**
-   * Выбор графика для дорожки: паттерн копируется из пресета, а не хранится
-   * ссылкой — правка пресета в будущей версии не должна задним числом
-   * переписывать уже прожитые месяцы.
+   * Правка одного периода истории по его номеру: паттерн копируется из
+   * пресета, а не хранится ссылкой — правка пресета в будущей версии не должна
+   * задним числом переписывать уже прожитые месяцы.
    */
-  setTrackSchedule: (id: string, presetId: string, anchorDate: IsoDate) => void;
+  setTrackSchedule: (id: string, index: number, entry: ScheduleEntry) => void;
+  /**
+   * Смена графика с указанного дня: прежний остаётся на прожитых месяцах.
+   * Период с тем же startsOn заменяется — иначе на одну дату их станет два.
+   */
+  addTrackSchedule: (id: string, entry: ScheduleEntry) => void;
+  /** Убрать период истории. Последний убирать можно: дорожка остаётся без графика. */
+  removeTrackSchedule: (id: string, index: number) => void;
   removeTrack: (id: string) => void;
   setActiveTrack: (id: string) => void;
   /**
@@ -146,6 +227,18 @@ export interface AppActions {
    * может любая из них, а не только активная, поэтому сбрасываются все.
    */
   clearSchedule: () => void;
+  /**
+   * Заменяет всё состояние разом — восстановление из резервной копии.
+   *
+   * Именно замена, а не слияние: слить два набора графиков и правок так, чтобы
+   * человек понял результат, нельзя, и любая попытка кончилась бы дублями
+   * смен и выплат. Необратимость этого действия объясняет экран до вызова.
+   */
+  restoreState: (next: AppState) => void;
+  /** Добавляет полученный график отдельной дорожкой вместе с его сменами. */
+  addSharedTrack: (input: IncomingTrack) => string;
+  setHolidays: (patch: Partial<HolidaySettings>) => void;
+  setSupport: (patch: Partial<SupportState>) => void;
   setPayroll: (payroll: PayrollSettings) => void;
   setSharedDaysOff: (patch: Partial<SharedDaysOffSettings>) => void;
   /** Заводит группу и возвращает её id — экран правки открывается сразу по нему. */
@@ -181,6 +274,29 @@ export interface AppActions {
   dismissBuildNotice: () => void;
   /** Ручная проверка в настройках снимает молчание — иначе оно навсегда. */
   allowBuildNotice: () => void;
+}
+
+/**
+ * График, пришедший с другого телефона: он приносит с собой свои смены и
+ * раскладку, потому что ни того, ни другого у принимающего может не быть.
+ */
+export interface IncomingTrack {
+  name: string;
+  own: boolean;
+  shiftTypes: ShiftType[];
+  pattern: SchedulePattern;
+  anchorDate: IsoDate;
+  overrides: DayOverride[];
+  payments: Array<Omit<PaymentRecord, 'id' | 'trackId'>>;
+}
+
+/** Период истории в том виде, в каком его задаёт экран: раскладку возьмём из пресета. */
+export interface ScheduleEntry {
+  presetId: string;
+  /** С какого дня действует этот график. */
+  startsOn: IsoDate;
+  /** Точка выравнивания раскладки. По умолчанию совпадает с началом. */
+  anchorDate: IsoDate;
 }
 
 /** Что нужно, чтобы завести дорожку: остальное собирается из пресета. */
@@ -222,12 +338,34 @@ export function alarmTrack(state: AppState): ScheduleTrack | null {
   return state.tracks.find((track) => track.own) ?? state.tracks[0] ?? null;
 }
 
-/** Копия паттерна из пресета: правка пресета в будущей версии не должна
- * задним числом переписывать уже прожитые месяцы. */
-function scheduleFromPreset(presetId: string, anchorDate: IsoDate): ActiveSchedule {
-  const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId);
-  if (!preset) throw new ReferenceError(`Неизвестный график "${presetId}"`);
-  return { presetId, pattern: preset.pattern, anchorDate };
+/**
+ * Копия раскладки в дорожку: правка пресета в будущей версии не должна задним
+ * числом переписывать уже прожитые месяцы. По той же причине копируется и
+ * собранный руками график — иначе его правка молча меняла бы прошлое.
+ *
+ * Ищется и среди встроенных пресетов, и среди собранных: для дорожки они
+ * ничем не отличаются.
+ */
+function scheduleFromPreset(
+  { presetId, startsOn, anchorDate }: ScheduleEntry,
+  customSchedules: CustomSchedule[],
+): SchedulePeriod {
+  const pattern =
+    SCHEDULE_PRESETS.find((item) => item.id === presetId)?.pattern ??
+    customSchedules.find((item) => item.id === presetId)?.pattern;
+
+  if (!pattern) throw new ReferenceError(`Неизвестный график "${presetId}"`);
+  return { presetId, pattern, anchorDate, startsOn };
+}
+
+/**
+ * История графиков в порядке действия.
+ *
+ * Порядок держится здесь, а не в экране: по нему движок ищет график на дату, и
+ * один период, вставленный не туда, испортил бы весь календарь.
+ */
+function sortedSchedules(periods: SchedulePeriod[]): SchedulePeriod[] {
+  return [...periods].sort((a, b) => a.startsOn.localeCompare(b.startsOn));
 }
 
 /**
@@ -255,6 +393,9 @@ export const INITIAL_STATE: AppState = {
   tracks: [],
   activeTrackId: null,
   shiftTypes: DEFAULT_SHIFT_TYPES,
+  customSchedules: [],
+  holidays: { enabled: true },
+  support: { adsHidden: false, purchasedAt: null, donationDismissed: false },
   payroll: DEFAULT_PAYROLL,
   sharedDaysOff: { enabled: false },
   sharedGroups: [],
@@ -282,6 +423,73 @@ export const useAppStore = create<AppState & AppActions>()(
 
       setAppearance: (appearance) => set({ appearance }),
 
+      addShiftType: (draft) => {
+        const id = createId();
+        const type = sanitizeShiftType({ ...draft, id, builtinId: null });
+        // Полуготовую смену не заводим: редактор до этого не доводит, а
+        // рабочая смена без времени навсегда осталась бы нулём часов.
+        if (type) set((state) => ({ shiftTypes: [...state.shiftTypes, type] }));
+        return id;
+      },
+
+      updateShiftType: (id, draft) =>
+        set((state) => ({
+          shiftTypes: state.shiftTypes.map((type) => {
+            if (type.id !== id) return type;
+            const locked =
+              type.builtinId === null
+                ? draft
+                : { ...draft, kind: type.kind, multiDay: type.multiDay };
+            return sanitizeShiftType({ ...type, ...locked }) ?? type;
+          }),
+        })),
+
+      removeShiftType: (id) =>
+        set((state) => {
+          const type = state.shiftTypes.find((item) => item.id === id);
+          if (!type || type.builtinId !== null) return {};
+          if (shiftTypeUsage(state.tracks, id).schedules.length > 0) return {};
+
+          return {
+            shiftTypes: state.shiftTypes.filter((item) => item.id !== id),
+            // Правка остаётся жить без смены, если в ней были часы или
+            // заметка: день вернётся к графику, а написанное руками не пропадёт.
+            tracks: state.tracks.map((track) => ({
+              ...track,
+              overrides: Object.fromEntries(
+                Object.entries(track.overrides).flatMap(([date, override]) => {
+                  if (override.shiftTypeId !== id) return [[date, override]];
+                  const { shiftTypeId, ...rest } = override;
+                  const empty =
+                    rest.workedMinutesOverride === undefined &&
+                    (rest.note === undefined || rest.note.length === 0);
+                  return empty ? [] : [[date, rest]];
+                }),
+              ),
+            })),
+          };
+        }),
+
+      addCustomSchedule: (name, pattern) => {
+        const id = createId();
+        set((state) => ({
+          customSchedules: [...state.customSchedules, { id, name: name.trim(), pattern }],
+        }));
+        return id;
+      },
+
+      updateCustomSchedule: (id, patch) =>
+        set((state) => ({
+          customSchedules: state.customSchedules.map((schedule) =>
+            schedule.id === id ? { ...schedule, ...patch } : schedule,
+          ),
+        })),
+
+      removeCustomSchedule: (id) =>
+        set((state) => ({
+          customSchedules: state.customSchedules.filter((schedule) => schedule.id !== id),
+        })),
+
       addTrack: ({ name, own, presetId, anchorDate }) => {
         const id = createId();
         const track: ScheduleTrack = {
@@ -290,7 +498,13 @@ export const useAppStore = create<AppState & AppActions>()(
           // спрашивал, и подставить его должно приложение.
           name: name.trim() || MAIN_TRACK_NAME,
           own,
-          schedule: scheduleFromPreset(presetId, anchorDate),
+          // История начинается с первой смены: раньше неё человек здесь не работал.
+          schedules: [
+            scheduleFromPreset(
+              { presetId, startsOn: anchorDate, anchorDate },
+              get().customSchedules,
+            ),
+          ],
           overrides: {},
           payrollRules: DEFAULT_PAYMENT_RULES,
         };
@@ -322,16 +536,72 @@ export const useAppStore = create<AppState & AppActions>()(
           ),
         })),
 
-      setTrackSchedule: (id, presetId, anchorDate) =>
+      setTrackSchedule: (id, index, entry) =>
+        set((state) => ({
+          tracks: state.tracks.map((track) => {
+            if (track.id !== id) return track;
+            const next = scheduleFromPreset(entry, state.customSchedules);
+            const schedules = track.schedules.map((period, at) => (at === index ? next : period));
+            // Номера вне списка не создают период молча: правят то, что есть.
+            return { ...track, schedules: sortedSchedules(schedules) };
+          }),
+        })),
+
+      addTrackSchedule: (id, entry) =>
+        set((state) => ({
+          tracks: state.tracks.map((track) => {
+            if (track.id !== id) return track;
+            const next = scheduleFromPreset(entry, state.customSchedules);
+            const kept = track.schedules.filter((period) => period.startsOn !== next.startsOn);
+            return { ...track, schedules: sortedSchedules([...kept, next]) };
+          }),
+        })),
+
+      removeTrackSchedule: (id, index) =>
         set((state) => ({
           tracks: state.tracks.map((track) =>
             track.id === id
-              ? { ...track, schedule: scheduleFromPreset(presetId, anchorDate) }
+              ? { ...track, schedules: track.schedules.filter((_, at) => at !== index) }
               : track,
           ),
         })),
 
       clearSchedule: () => set({ tracks: [], activeTrackId: null }),
+
+      restoreState: (next) => set(next),
+
+      addSharedTrack: ({ name, own, shiftTypes, pattern, anchorDate, overrides, payments }) => {
+        const id = createId();
+        const track: ScheduleTrack = {
+          id,
+          name: name.trim() || MAIN_TRACK_NAME,
+          own,
+          // Раскладка копируется как есть: пресета, на который можно было бы
+          // сослаться, у пришедшего графика нет. Историей чужой график не
+          // делится — приезжает то, по чему человек работает сейчас.
+          schedules: [{ presetId: `shared-${id}`, pattern, anchorDate, startsOn: anchorDate }],
+          overrides: Object.fromEntries(overrides.map((override) => [override.date, override])),
+          payrollRules: DEFAULT_PAYMENT_RULES,
+        };
+
+        set((state) => ({
+          // Смены дописываются, а не заменяют свои: у принимающего свой
+          // справочник, и терять его из-за чужого графика нельзя.
+          shiftTypes: [...state.shiftTypes, ...shiftTypes],
+          tracks: [...state.tracks, track],
+          payments: [
+            ...state.payments,
+            ...payments.map((payment) => ({ ...payment, id: createId(), trackId: id })),
+          ],
+          activeTrackId: id,
+        }));
+
+        return id;
+      },
+
+      setHolidays: (patch) => set((state) => ({ holidays: { ...state.holidays, ...patch } })),
+
+      setSupport: (patch) => set((state) => ({ support: { ...state.support, ...patch } })),
 
       setPayroll: (payroll) => set({ payroll }),
 
@@ -471,9 +741,13 @@ export const useAppStore = create<AppState & AppActions>()(
       name: 'app-state',
       version: SCHEMA_VERSION,
       storage: createJSONStorage(() => mmkvStateStorage),
-      /** В хранилище уходят только данные пользователя, справочники — нет. */
+      /** В хранилище уходят данные пользователя, включая правленый справочник смен. */
       partialize: (state): PersistedState => ({
         appearance: state.appearance,
+        shiftTypes: state.shiftTypes,
+        customSchedules: state.customSchedules,
+        holidays: state.holidays,
+        support: state.support,
         tracks: state.tracks,
         payroll: state.payroll,
         sharedDaysOff: state.sharedDaysOff,
@@ -513,6 +787,17 @@ export const useAppStore = create<AppState & AppActions>()(
  *
  * В версии 12 появились группы людей, а отметка дней в сетке уехала из
  * настроек: теперь это выбор в самом списке, и хранить его незачем.
+ *
+ * В версии 13 справочник смен стал пользовательским и поехал в хранилище.
+ * Снимок любой прошлой версии даёт ровно встроенный набор — править его до сих
+ * пор было нечем.
+ *
+ * В версии 14 появились графики, собранные в конструкторе, и переключатель
+ * производственного календаря. В снимке прошлых версий их нет: список графиков
+ * пустой, а праздники включены — так же, как у новой установки.
+ *
+ * В версии 15 добавилось состояние слота поддержки: покупка и скрытая карточка
+ * доната. У всех, кто обновляется, ничего не куплено и ничего не скрыто.
  */
 export function migrateState(persisted: PersistedSnapshot, _version: number): AppState {
   // Плоские поля прошлых схем разбираются по дорожкам и дальше не едут: без
@@ -520,10 +805,19 @@ export function migrateState(persisted: PersistedSnapshot, _version: number): Ap
   const { schedule, overrides, payroll: legacyPayroll, ...rest } = persisted;
   const { rules, ...payroll } = legacyPayroll ?? {};
 
+  // Справочник смен поднимается первым: по нему проверяются сохранённые
+  // графики. Со встроенным набором вместо него график на своей смене
+  // сбрасывался бы при каждом запуске.
+  const shiftTypes = migrateShiftTypes(persisted.shiftTypes);
+
+  // Собранные руками графики проверяются по тому же справочнику: собранный на
+  // удалённой смене раскладывать нечем.
+  const customSchedules = migrateCustomSchedules(persisted.customSchedules, shiftTypes);
+
   // График сбрасывается, если смена, на которую он ссылается, исчезла из
   // справочника: разложить такой график нельзя, а падает он на каждой дате.
   // Сама дорожка при этом остаётся — в ней лежат правки дней.
-  const tracks = migrateTracks(persisted, DEFAULT_SHIFT_TYPES);
+  const tracks = migrateTracks(persisted, shiftTypes);
 
   // Будильники переносятся после дорожек: старому «по графику» нужно знать, к
   // какой работе его привязать. До версии 4 будильник был не списком, а одним
@@ -541,7 +835,8 @@ export function migrateState(persisted: PersistedSnapshot, _version: number): Ap
     // Числа выплат уехали в дорожки: в общих настройках денег их больше нет.
     payroll: { ...DEFAULT_PAYROLL, ...payroll },
     alarms,
-    shiftTypes: DEFAULT_SHIFT_TYPES,
+    shiftTypes,
+    customSchedules,
     // Обновление со старой схемы — это человек, который только что получил
     // новую версию: ему «что нового» показать надо, поэтому null, а не
     // значение по умолчанию для новой установки.
@@ -550,6 +845,8 @@ export function migrateState(persisted: PersistedSnapshot, _version: number): Ap
     // снимке их нет вовсе, а в снимке поновее может не быть половины полей.
     buildCheck: { ...INITIAL_STATE.buildCheck, ...persisted.buildCheck },
     sharedDaysOff: { ...INITIAL_STATE.sharedDaysOff, ...persisted.sharedDaysOff },
+    holidays: { ...INITIAL_STATE.holidays, ...persisted.holidays },
+    support: { ...INITIAL_STATE.support, ...persisted.support },
     // Участники, чьи дорожки удалили, из групп выбрасываются: иначе группа
     // навсегда осталась бы без совпадений и объяснить это было бы нечем.
     sharedGroups: (persisted.sharedGroups ?? []).map((group) => ({

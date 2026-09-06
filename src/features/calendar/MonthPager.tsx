@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { monthGridRows } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
@@ -17,6 +17,8 @@ export interface MonthPagerProps {
   selectedDate?: IsoDate;
   /** Выделенные дни. undefined — сетка обычная. */
   highlighted?: Set<IsoDate>;
+  /** Чьи это совпадения: имя человека или группы. */
+  highlightName?: string;
   onSelectDay: (date: IsoDate) => void;
   width: number;
 }
@@ -38,9 +40,14 @@ export function MonthPager({
   today,
   selectedDate,
   highlighted,
+  highlightName,
   onSelectDay,
   width,
 }: MonthPagerProps) {
+  // Высота страницы зависит от масштаба системного шрифта так же, как сама
+  // клетка: иначе при 200% сетка вылезет за отведённое ей место.
+  const { fontScale } = useWindowDimensions();
+
   // Индекс двигают и свайп, и стрелки в шапке — за границы он не уходит,
   // но высота страницы не то место, где стоит падать.
   const visible = months[index] ?? months[0];
@@ -89,7 +96,10 @@ export function MonthPager({
         return (
           <View
             importantForAccessibility="no-hide-descendants"
-            style={{ width, height: gridHeight(width, monthGridRows(item.year, item.month)) }}
+            style={{
+              width,
+              height: gridHeight(width, monthGridRows(item.year, item.month), fontScale),
+            }}
           />
         );
       }
@@ -102,12 +112,24 @@ export function MonthPager({
           today={today}
           selectedDate={selectedDate}
           highlighted={highlighted}
+          highlightName={highlightName}
           width={width}
           onSelectDay={onSelectDay}
         />
       );
     },
-    [context, background, visible.period, today, selectedDate, highlighted, width, onSelectDay],
+    [
+      context,
+      background,
+      visible.period,
+      today,
+      selectedDate,
+      highlighted,
+      highlightName,
+      width,
+      fontScale,
+      onSelectDay,
+    ],
   );
 
   return (
@@ -117,7 +139,7 @@ export function MonthPager({
       index={index}
       onIndexChange={onIndexChange}
       width={width}
-      height={gridHeight(width, monthGridRows(visible.year, visible.month))}
+      height={gridHeight(width, monthGridRows(visible.year, visible.month), fontScale)}
       renderPage={renderPage}
     />
   );

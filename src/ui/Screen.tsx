@@ -8,20 +8,27 @@ export interface ScreenProps {
   /** Заголовок экрана. Единственный элемент с ролью header на экране. */
   title: string;
   subtitle?: string;
+  /** Действие в шапке — справа от заголовка. Для второстепенного: справка, настройки. */
+  action?: ReactNode;
   children: ReactNode;
   /** Отключить прокрутку — для экранов с собственным скроллом, например календаря. */
   scrollable?: boolean;
 }
 
-export function Screen({ title, subtitle, children, scrollable = true }: ScreenProps) {
+export function Screen({ title, subtitle, action, children, scrollable = true }: ScreenProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
   const header = (
     <View style={{ gap: theme.spacing.xs, marginBottom: theme.spacing.lg }}>
-      <AppText variant="display" accessibilityRole="header">
-        {title}
-      </AppText>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+        {/* Заголовок забирает всю строку, кнопка прижата к правому краю и не
+            сжимается: при крупном системном шрифте переносится текст, а не она. */}
+        <AppText variant="display" accessibilityRole="header" style={{ flex: 1 }}>
+          {title}
+        </AppText>
+        {action}
+      </View>
       {subtitle ? (
         <AppText variant="body" tone="muted">
           {subtitle}

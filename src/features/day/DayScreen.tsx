@@ -7,8 +7,8 @@ import type { IsoDate } from '@/domain/date.ts';
 import {
   findOverrideRun,
   overtimeMinutes,
+  plannedShiftId,
   resolveDay,
-  resolvePlannedShiftId,
   shiftDurationMinutes,
 } from '@/domain/engine.ts';
 import {
@@ -22,6 +22,7 @@ import {
 import { useScheduleContext } from '@/data/selectors.ts';
 import { activeTrack, useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, Select, Sheet, TextField, useSheetScroll } from '@/ui';
+import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { useTheme } from '@/theme';
 import { DayAlarmSection } from './DayAlarmSection.tsx';
 import { DayOtherTracks } from './DayOtherTracks.tsx';
@@ -34,6 +35,7 @@ const FOLLOW_SCHEDULE = '__schedule__';
 export function DayScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const push = useGuardedPush();
   const insets = useSafeAreaInsets();
   const scroll = useSheetScroll();
   const params = useLocalSearchParams<{ date: string }>();
@@ -77,10 +79,14 @@ export function DayScreen() {
     paddingBottom: insets.bottom + theme.spacing.xxl,
   };
 
+  // Смена по графику — уже с поправкой на производственный календарь: у
+  // пятидневки 12 июня по графику именно выходной, и говорить обратное было бы
+  // враньём.
   const planned = useMemo(() => {
     if (!context) return null;
-    const id = resolvePlannedShiftId(context.schedule, date);
-    return context.shiftTypes.get(id) ?? null;
+    const id = plannedShiftId(context, date);
+    // null — день раньше первого графика: плановой смены у него нет.
+    return id === null ? null : (context.shiftTypes.get(id) ?? null);
   }, [context, date]);
 
   if (!context || !planned) {
@@ -181,6 +187,13 @@ export function DayScreen() {
       <ScrollView {...scroll} style={{ flex: 1 }} contentContainerStyle={padding}>
         <Card title="Сейчас">
           <AppText variant="heading">{resolved.shiftType.name}</AppText>
+          {/* Праздник объясняет и значок в углу клетки, и то, почему пятидневка
+              вдруг отдыхает в середине недели. */}
+          {resolved.holiday ? (
+            <AppText variant="body" tone="accent">
+              Праздник: {resolved.holiday.toLowerCase()}
+            </AppText>
+          ) : null}
           {isWork ? (
             <AppText variant="body" tone="muted">
               {resolved.shiftType.time && resolved.workedMinutes === shiftNormMinutes
@@ -204,6 +217,13 @@ export function DayScreen() {
             options={shiftOptions}
             value={override?.shiftTypeId ?? planned.id}
             onChange={(value) => applyShiftType(value === planned.id ? FOLLOW_SCHEDULE : value)}
+          />
+          {/* Нужной смены в списке нет — значит, её надо завести, и узнаётся
+              это ровно здесь, а не в настройках. */}
+          <Button
+            title="Изменить смены"
+            accessibilityHint="Список смен: можно поменять время или добавить свою"
+            onPress={() => push('/settings/shift-types')}
           />
           {/* Выходной поверх смены из графика: блока «Часы» у него нет, а точку
               в клетке календаря он получает — объяснить её больше негде. */}

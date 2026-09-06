@@ -1,5 +1,5 @@
 import { weekday } from './date.ts';
-import type { IsoDate } from './date.ts';
+import type { IsoDate, Weekday } from './date.ts';
 
 /**
  * Форматирование на русском.
@@ -77,6 +77,11 @@ export function formatDayLong(date: IsoDate): string {
 /** «четверг» — для озвучки клетки календаря. */
 export function formatWeekdayName(date: IsoDate): string {
   return WEEKDAYS_FULL[weekday(date) - 1];
+}
+
+/** Название дня недели по номеру ISO: 1 — понедельник, 7 — воскресенье. */
+export function formatWeekdayByNumber(day: Weekday): string {
+  return WEEKDAYS_FULL[day - 1];
 }
 
 /**

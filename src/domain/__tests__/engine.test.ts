@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { monthDays } from '../date.ts';
 import {
+  countedDay,
   overtimeMinutes,
   resolveDay,
   resolvePlannedShiftId,
+  scheduleShiftTypeIds,
   scheduleUsesKnownShifts,
   shiftDurationMinutes,
   validatePreset,
@@ -12,15 +14,20 @@ import {
 import type { ScheduleContext } from '../engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '../shifts.ts';
 import { SCHEDULE_PRESETS } from '../presets.ts';
-import type { ActiveSchedule } from '../types.ts';
+import type { ActiveSchedule, SchedulePeriod } from '../types.ts';
 
 const shiftTypes = indexShiftTypes(DEFAULT_SHIFT_TYPES);
 
 function contextFor(presetId: string, anchorDate: string): ScheduleContext {
   const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId);
   assert.ok(preset, `пресет ${presetId} не найден`);
-  const schedule: ActiveSchedule = { presetId, pattern: preset.pattern, anchorDate };
-  return { schedule, shiftTypes, overrides: new Map() };
+  const schedule: SchedulePeriod = {
+    presetId,
+    pattern: preset.pattern,
+    anchorDate,
+    startsOn: anchorDate,
+  };
+  return { schedules: [schedule], shiftTypes, overrides: new Map() };
 }
 
 function badges(context: ScheduleContext, dates: string[]): string {
@@ -52,10 +59,26 @@ test('2/2 дневные: две смены, два выходных от дат
   assert.equal(badges(context, first), 'ДДВВДДВВДД');
 });
 
-test('график разворачивается и назад во времени от даты первой смены', () => {
-  const context = contextFor('2-2-day', '2026-09-01');
-  // Перед первой сменой идёт предыдущий оборот цикла: смены 28-29, выходные 30-31.
+test('внутри периода график разворачивается и назад от даты первой смены', () => {
+  // Перевели с 28 августа, а первый выход по новому графику — 1 сентября:
+  // дни между ними раскладываются предыдущим оборотом цикла.
+  const preset = SCHEDULE_PRESETS.find((item) => item.id === '2-2-day')!;
+  const context: ScheduleContext = {
+    schedules: [
+      {
+        presetId: '2-2-day',
+        pattern: preset.pattern,
+        anchorDate: '2026-09-01',
+        startsOn: '2026-08-28',
+      },
+    ],
+    shiftTypes,
+    overrides: new Map(),
+  };
+
   assert.equal(badges(context, ['2026-08-28', '2026-08-29', '2026-08-30', '2026-08-31']), 'ДДВВ');
+  // Но не дальше начала периода: 27 августа человек по этому графику ещё не работал.
+  assert.equal(resolveDay(context, '2026-08-27').source, 'none');
 });
 
 test('день/ночь/отсыпной/выходной — цикл из четырёх дней', () => {
@@ -123,7 +146,7 @@ test('неизвестный тип смены падает с внятной о
 test('resolvePlannedShiftId игнорирует правки — это план, а не факт', () => {
   const context = contextFor('2-2-day', '2026-09-01');
   context.overrides.set('2026-09-01', { date: '2026-09-01', shiftTypeId: 'off' });
-  assert.equal(resolvePlannedShiftId(context.schedule, '2026-09-01'), 'day12');
+  assert.equal(resolvePlannedShiftId(context.schedules[0], '2026-09-01'), 'day12');
 });
 
 test('заметка к дню не делает его изменённым вручную', () => {
@@ -165,7 +188,7 @@ test('одни только часы — это изменение дня, а н
 
 test('scheduleUsesKnownShifts ловит график на исчезнувшую смену', () => {
   const ok = contextFor('2-2-day', '2026-09-01');
-  assert.equal(scheduleUsesKnownShifts(ok.schedule, shiftTypes), true);
+  assert.equal(scheduleUsesKnownShifts(ok.schedules[0], shiftTypes), true);
 
   const broken: ActiveSchedule = {
     presetId: '2-2-day',
@@ -220,4 +243,69 @@ test('снятая смена даёт минус, а обмен днями в �
   assert.equal(extra, 12 * 60);
   assert.equal(dropped, -12 * 60);
   assert.equal(extra + dropped, 0);
+});
+
+test('перевод на другой график: прошлое остаётся на прежнем', () => {
+  const weekly = SCHEDULE_PRESETS.find((item) => item.id === '5-2')!;
+  const cycle = SCHEDULE_PRESETS.find((item) => item.id === '2-2-day')!;
+  const context: ScheduleContext = {
+    schedules: [
+      {
+        presetId: '5-2',
+        pattern: weekly.pattern,
+        anchorDate: '2026-01-05',
+        startsOn: '2026-01-05',
+      },
+      {
+        presetId: '2-2-day',
+        pattern: cycle.pattern,
+        anchorDate: '2026-10-01',
+        startsOn: '2026-10-01',
+      },
+    ],
+    shiftTypes,
+    overrides: new Map(),
+  };
+
+  // 30 сентября — четверг: по пятидневке рабочий, по 2/2 от 1 октября — нет.
+  assert.equal(resolveDay(context, '2026-09-30').shiftType.id, 'work8');
+  // 3 октября — суббота: по пятидневке выходной, по 2/2 это третий день цикла.
+  assert.equal(resolveDay(context, '2026-10-01').shiftType.id, 'day12');
+  assert.equal(resolveDay(context, '2026-10-03').shiftType.id, 'off');
+  // До первого графика дня нет вовсе.
+  assert.equal(resolveDay(context, '2025-12-31').source, 'none');
+  assert.equal(resolveDay(context, '2026-01-05').source, 'schedule');
+});
+
+test('день до первого графика не идёт в счёт, а размеченный руками — идёт', () => {
+  const context = contextFor('2-2-day', '2026-09-15');
+  const empty = resolveDay(context, '2026-09-01');
+
+  assert.equal(countedDay(empty), false);
+  assert.equal(empty.workedMinutes, 0);
+  assert.equal(empty.plannedMinutes, 0);
+  assert.equal(empty.shiftType.kind, 'rest');
+
+  context.overrides.set('2026-09-14', { date: '2026-09-14', shiftTypeId: 'day12' });
+  const worked = resolveDay(context, '2026-09-14');
+  assert.equal(countedDay(worked), true);
+  assert.equal(worked.source, 'override');
+  assert.equal(worked.workedMinutes, 12 * 60);
+});
+
+test('смены всей истории видны будильнику, а не только текущие', () => {
+  const weekly = SCHEDULE_PRESETS.find((item) => item.id === '5-2')!;
+  const cycle = SCHEDULE_PRESETS.find((item) => item.id === '2-2-night')!;
+  const ids = scheduleShiftTypeIds([
+    { presetId: '5-2', pattern: weekly.pattern, anchorDate: '2026-01-05', startsOn: '2026-01-05' },
+    {
+      presetId: '2-2-night',
+      pattern: cycle.pattern,
+      anchorDate: '2026-10-01',
+      startsOn: '2026-10-01',
+    },
+  ]);
+
+  assert.ok(ids.includes('work8'));
+  assert.ok(ids.includes('night12'));
 });

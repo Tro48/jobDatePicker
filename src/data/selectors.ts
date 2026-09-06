@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { activeTrack, alarmTrack, useAppStore } from './store.ts';
+import { RU_HOLIDAYS } from '@/domain/holidays.ts';
+import type { HolidayCalendar } from '@/domain/holidays.ts';
 import { indexShiftTypes } from '@/domain/shifts.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import type { AlarmTrackContext } from '@/domain/alarm.ts';
@@ -15,8 +17,9 @@ import type { ScheduleTrack, ShiftType } from '@/domain/types.ts';
 export function buildScheduleContext(
   track: ScheduleTrack | null,
   shiftTypes: ShiftType[],
+  holidays: HolidayCalendar | null = null,
 ): ScheduleContext | null {
-  if (!track?.schedule) return null;
+  if (!track || track.schedules.length === 0) return null;
   const index = indexShiftTypes(shiftTypes);
 
   // Правки на удалённый тип смены отбрасываются здесь, а не в домене.
@@ -29,10 +32,23 @@ export function buildScheduleContext(
   );
 
   return {
-    schedule: track.schedule,
+    schedules: track.schedules,
     shiftTypes: index,
     overrides: new Map(usable),
+    holidays,
   };
+}
+
+/**
+ * Производственный календарь или null, если человек его выключил.
+ *
+ * Хук, а не чтение настройки на месте: контекст графика собирают четыре разных
+ * места, и забыть праздники в одном из них — значит получить календарь, где
+ * 12 июня выходной, а в сводке за июнь его нет.
+ */
+export function useHolidayCalendar(): HolidayCalendar | null {
+  const enabled = useAppStore((state) => state.holidays.enabled);
+  return enabled ? RU_HOLIDAYS : null;
 }
 
 /** Дорожка, на которую сейчас смотрит приложение. */
@@ -44,8 +60,12 @@ export function useActiveTrack(): ScheduleTrack | null {
 export function useScheduleContext(): ScheduleContext | null {
   const track = useActiveTrack();
   const shiftTypes = useAppStore((state) => state.shiftTypes);
+  const holidays = useHolidayCalendar();
 
-  return useMemo(() => buildScheduleContext(track, shiftTypes), [track, shiftTypes]);
+  return useMemo(
+    () => buildScheduleContext(track, shiftTypes, holidays),
+    [track, shiftTypes, holidays],
+  );
 }
 
 /** Дорожка, по которой звонит будильник, если он не выбрал графики сам. */
@@ -63,16 +83,17 @@ export function useAlarmTrack(): ScheduleTrack | null {
 export function useAlarmTracks(): Map<string, AlarmTrackContext> {
   const tracks = useAppStore((state) => state.tracks);
   const shiftTypes = useAppStore((state) => state.shiftTypes);
+  const holidays = useHolidayCalendar();
 
   return useMemo(() => {
     const named = tracks.length > 1;
     const result = new Map<string, AlarmTrackContext>();
     for (const track of tracks) {
-      const context = buildScheduleContext(track, shiftTypes);
+      const context = buildScheduleContext(track, shiftTypes, holidays);
       if (context) result.set(track.id, { context, name: track.name, named });
     }
     return result;
-  }, [tracks, shiftTypes]);
+  }, [tracks, shiftTypes, holidays]);
 }
 
 /**
@@ -85,13 +106,14 @@ export function useAlarmTracks(): Map<string, AlarmTrackContext> {
 export function useScheduleContexts(): Map<string, ScheduleContext> {
   const tracks = useAppStore((state) => state.tracks);
   const shiftTypes = useAppStore((state) => state.shiftTypes);
+  const holidays = useHolidayCalendar();
 
   return useMemo(() => {
     const contexts = new Map<string, ScheduleContext>();
     for (const track of tracks) {
-      const context = buildScheduleContext(track, shiftTypes);
+      const context = buildScheduleContext(track, shiftTypes, holidays);
       if (context) contexts.set(track.id, context);
     }
     return contexts;
-  }, [tracks, shiftTypes]);
+  }, [tracks, shiftTypes, holidays]);
 }

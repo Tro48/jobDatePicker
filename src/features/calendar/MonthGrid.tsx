@@ -1,8 +1,8 @@
 import { memo, useMemo } from 'react';
-import { View } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { monthGridDates } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
-import { resolveDay } from '@/domain/engine.ts';
+import { countedDay, resolveDay } from '@/domain/engine.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import { WEEKDAYS_SHORT, formatMonthTitle } from '@/domain/format.ts';
 import { AppText } from '@/ui';
@@ -21,6 +21,8 @@ export interface MonthGridProps {
    * набор гасит всё, что в него не попало.
    */
   highlighted?: Set<IsoDate>;
+  /** Чьи совпадения выделены: имя уходит в озвучку каждой выделенной клетки. */
+  highlightName?: string;
   width: number;
   onSelectDay: (date: IsoDate) => void;
 }
@@ -32,18 +34,22 @@ function MonthGridView({
   today,
   selectedDate,
   highlighted,
+  highlightName,
   width,
   onSelectDay,
 }: MonthGridProps) {
-  const { cellSize, gridWidth } = gridMetrics(width);
+  // Масштаб системного шрифта: от него зависит высота клетки, и меняется он
+  // на лету — человек уводит приложение в фон, крутит настройку и возвращается.
+  const { fontScale } = useWindowDimensions();
+  const { cellSize, cellHeight, gridWidth } = gridMetrics(width, fontScale);
 
   const days = useMemo(() => {
     // Сетка всегда 42 дня: хвосты соседних месяцев показываются как контекст,
     // чтобы было видно, как смены переходят через границу месяца.
-    return monthGridDates(year, month).map((cell) => ({
-      ...cell,
-      resolved: resolveDay(context, cell.date),
-    }));
+    return monthGridDates(year, month).map((cell) => {
+      const resolved = resolveDay(context, cell.date);
+      return { ...cell, resolved, counted: countedDay(resolved) };
+    });
   }, [year, month, context]);
 
   return (
@@ -58,14 +64,18 @@ function MonthGridView({
             key={cell.date}
             day={cell.resolved}
             size={cellSize}
+            height={cellHeight}
             inMonth={cell.inMonth}
+            counted={cell.counted}
             isToday={cell.date === today}
             // Сегодняшняя смена уже считается отработанной: приложение не
             // знает, закончилась она или нет, а «через час потускнеет» —
-            // поведение, которое ничего не объясняет.
-            isWorked={cell.date <= today && cell.resolved.shiftType.kind === 'work'}
+            // поведение, которое ничего не объясняет. Смена до первой
+            // отработанной не бывает: её не было.
+            isWorked={cell.counted && cell.date <= today && cell.resolved.shiftType.kind === 'work'}
             highlighting={highlighted !== undefined}
             dimmed={highlighted !== undefined && !highlighted.has(cell.date)}
+            sharedWith={highlightName}
             isSelected={cell.date === selectedDate}
             onPress={onSelectDay}
           />
@@ -88,6 +98,7 @@ export const MonthGrid = memo(MonthGridView);
  */
 export function WeekdayHeader({ width }: { width: number }) {
   const theme = useTheme();
+  // Шапке нужна только ширина колонки: высота клетки её не касается.
   const { cellSize, gridWidth } = gridMetrics(width);
 
   return (

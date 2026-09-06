@@ -1,10 +1,11 @@
 import { render, screen } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { DayCell } from './DayCell.tsx';
+import { DayCell, HOLIDAY_ICON } from './DayCell.tsx';
 import { resolveDay } from '@/domain/engine.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '@/domain/shifts.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
+import { RU_HOLIDAYS } from '@/domain/holidays.ts';
 import { lightPalette, ThemeProvider } from '@/theme';
 
 /**
@@ -15,11 +16,14 @@ import { lightPalette, ThemeProvider } from '@/theme';
 
 function contextFor(): ScheduleContext {
   return {
-    schedule: {
-      presetId: '2-2-day',
-      pattern: SCHEDULE_PRESETS.find((preset) => preset.id === '2-2-day')!.pattern,
-      anchorDate: '2026-09-01',
-    },
+    schedules: [
+      {
+        presetId: '2-2-day',
+        pattern: SCHEDULE_PRESETS.find((preset) => preset.id === '2-2-day')!.pattern,
+        anchorDate: '2026-09-01',
+        startsOn: '2026-09-01',
+      },
+    ],
     shiftTypes: indexShiftTypes(DEFAULT_SHIFT_TYPES),
     overrides: new Map(),
   };
@@ -34,8 +38,10 @@ interface CellOptions {
   date?: string;
   isToday?: boolean;
   isWorked?: boolean;
+  counted?: boolean;
   highlighting?: boolean;
   dimmed?: boolean;
+  sharedWith?: string;
   context?: ScheduleContext;
 }
 
@@ -43,8 +49,10 @@ function renderCell({
   date = '2026-09-01',
   isToday = false,
   isWorked = false,
+  counted = true,
   highlighting = false,
   dimmed = false,
+  sharedWith,
   context = contextFor(),
 }: CellOptions = {}) {
   return render(
@@ -52,16 +60,39 @@ function renderCell({
       <DayCell
         day={resolveDay(context, date)}
         size={48}
+        height={48}
         inMonth
+        counted={counted}
         isToday={isToday}
         isWorked={isWorked}
         highlighting={highlighting}
         dimmed={dimmed}
+        sharedWith={sharedWith}
         isSelected={false}
         onPress={() => {}}
       />,
     ),
   );
+}
+
+/** Имена значков в отрисованном дереве, по порядку. */
+function iconNames(tree: unknown): string[] {
+  const found: string[] = [];
+
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object' || node === null) return;
+
+    const element = node as { type?: string; props?: { name?: string }; children?: unknown };
+    if (element.type === 'Ionicons' && element.props?.name) found.push(element.props.name);
+    walk(element.children);
+  };
+
+  walk(tree);
+  return found;
 }
 
 /** Все цвета заливки в отрисованном дереве: точка — единственный крашеный кружок. */
@@ -196,4 +227,34 @@ test('выделение говорится словами, а не только
   const marked = await renderCell({ date: '2026-09-03', highlighting: true });
 
   expect(marked.getByRole('button').props.accessibilityLabel).toContain('общий выходной');
+});
+
+test('выделенный день говорит, чей он: при двух чужих графиках иначе не понять', async () => {
+  const marked = await renderCell({ date: '2026-09-03', highlighting: true, sharedWith: 'Аня' });
+
+  expect(marked.getByRole('button').props.accessibilityLabel).toContain('общий выходной с: Аня');
+});
+
+test('праздник помечен значком и назван словами', async () => {
+  const withHolidays = { ...contextFor(), holidays: RU_HOLIDAYS };
+  const cell = await renderCell({ date: '2026-06-12', context: withHolidays });
+  const plain = await renderCell({ date: '2026-06-11', context: withHolidays });
+
+  expect(cell.getByRole('button').props.accessibilityLabel).toContain('день россии');
+  expect(iconNames(cell.toJSON())).toEqual([HOLIDAY_ICON]);
+  // Обычный день значка не получает: иначе метка перестаёт что-либо значить.
+  expect(iconNames(plain.toJSON())).toEqual([]);
+});
+
+test('день до первой смены не залит и назван словами', async () => {
+  const before = await renderCell({ date: '2026-09-01', counted: false });
+  const after = await renderCell({ date: '2026-09-01' });
+
+  const label = before.getByRole('button').props.accessibilityLabel;
+  expect(label).toContain('до первой смены');
+  // «Отработана» такая смена не бывает: её не было.
+  expect(label).not.toContain('отработан');
+  // Заливки нет: цвет клетки — фон страницы, а не цвет смены.
+  expect(backgroundColors(before.toJSON())).toContain(lightPalette.background);
+  expect(backgroundColors(after.toJSON())).not.toContain(lightPalette.background);
 });

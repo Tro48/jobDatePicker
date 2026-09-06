@@ -1,7 +1,9 @@
 import { View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ShiftTypeTotals } from '@/domain/summary.ts';
 import { AppText } from '@/ui';
 import { useTheme, useShiftColors } from '@/theme';
+import { HOLIDAY_ICON, HOLIDAY_ICON_SIZE } from './DayCell.tsx';
 
 /**
  * Легенда показывает только те смены, которые в этом месяце реально есть, —
@@ -10,9 +12,12 @@ import { useTheme, useShiftColors } from '@/theme';
 export function Legend({
   totals,
   colorTokens,
+  hasHolidays = false,
 }: {
   totals: ShiftTypeTotals[];
   colorTokens: Record<string, string>;
+  /** В месяце есть праздники: объяснить значок в углу клетки больше негде. */
+  hasHolidays?: boolean;
 }) {
   const theme = useTheme();
 
@@ -30,6 +35,31 @@ export function Legend({
           colorToken={colorTokens[item.shiftTypeId] ?? ''}
         />
       ))}
+      {hasHolidays ? <HolidayLegendItem /> : null}
+    </View>
+  );
+}
+
+/** Значок праздника: ровно тот же, что в углу клетки, и подпись к нему. */
+function HolidayLegendItem() {
+  const theme = useTheme();
+
+  return (
+    <View
+      accessibilityRole="text"
+      accessibilityLabel="Значок в углу клетки — праздник"
+      style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs }}
+    >
+      <Ionicons
+        name={HOLIDAY_ICON}
+        size={HOLIDAY_ICON_SIZE}
+        color={theme.colors.text}
+        importantForAccessibility="no"
+        style={{ marginHorizontal: 4 }}
+      />
+      <AppText variant="caption" tone="muted" importantForAccessibility="no">
+        праздник
+      </AppText>
     </View>
   );
 }

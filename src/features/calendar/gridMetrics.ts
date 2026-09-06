@@ -1,8 +1,35 @@
 /** Промежуток между клетками. Два пункта — компромисс ради зоны нажатия. */
 export const GRID_GAP = 2;
 
+/**
+ * Минимальная зона нажатия по рекомендациям Android. Продублирована здесь, а
+ * не взята из темы: в этом файле намеренно нет импортов — арифметику гоняют
+ * тестами в обычном Node, где алиасы `@/` не разворачиваются.
+ */
+const MIN_TOUCH_TARGET = 48;
+
+/**
+ * Что стоит в клетке по высоте: число дня (label, 20 пунктов межстрочного) и
+ * буква-маркер (badge, 16). Оба масштабируются системным шрифтом, но не выше
+ * CELL_FONT_SCALE_CAP — это ограничение задано в самой клетке.
+ */
+const CELL_TEXT_HEIGHT = 20 + 16;
+
+/** Потолок масштаба шрифта внутри клетки, тот же, что в DayCell. */
+export const CELL_FONT_SCALE_CAP = 1.3;
+
+/** Воздух вокруг текста: без него буквы упираются в границу клетки. */
+const CELL_PADDING = 6;
+
 export interface GridMetrics {
+  /** Ширина клетки. Строго width / 7: колонок всегда семь. */
   cellSize: number;
+  /**
+   * Высота клетки. Обычно равна ширине, но при крупном системном шрифте
+   * клетка вытягивается вниз: расти вширь ей некуда, а обрезать число дня
+   * нельзя.
+   */
+  cellHeight: number;
   /** Реальная ширина сетки: она чуть меньше экрана из-за округления клетки. */
   gridWidth: number;
 }
@@ -15,14 +42,23 @@ export interface GridMetrics {
  * переносил седьмую клетку на новую строку, и весь месяц смещался на колонку —
  * воскресенья оставались пустыми. Остаток ширины уходит в поля по краям.
  *
+ * Высота считается отдельно от ширины: при системном шрифте в 200% число дня
+ * и буква-маркер перестают помещаться в квадрат со стороной width / 7, а на
+ * узком экране квадрат ещё и не дотягивает до зоны нажатия в 48 пунктов.
+ * Вширь клетке деваться некуда — колонок семь, — поэтому она растёт вниз.
+ *
  * Лежит отдельно от компонента намеренно: чистую арифметику можно прогнать
  * тестами в обычном Node, а файл с разметкой — нельзя. По той же причине здесь
  * нет ни одного импорта: алиасы `@/` в обычном Node не разворачиваются.
  */
-export function gridMetrics(width: number): GridMetrics {
+export function gridMetrics(width: number, fontScale = 1): GridMetrics {
   const cellSize = Math.floor((width - GRID_GAP * 6) / 7);
   const gridWidth = cellSize * 7 + GRID_GAP * 6;
-  return { cellSize, gridWidth };
+
+  const textHeight = Math.ceil(CELL_TEXT_HEIGHT * Math.min(fontScale, CELL_FONT_SCALE_CAP));
+  const cellHeight = Math.max(cellSize, textHeight + CELL_PADDING, MIN_TOUCH_TARGET);
+
+  return { cellSize, cellHeight, gridWidth };
 }
 
 /**
@@ -31,6 +67,6 @@ export function gridMetrics(width: number): GridMetrics {
  * Отдельно от ширины потому, что недель у месяца бывает четыре, пять или
  * шесть, а ширина клетки от месяца не зависит вовсе.
  */
-export function gridHeight(width: number, rows: number): number {
-  return rows * (gridMetrics(width).cellSize + GRID_GAP);
+export function gridHeight(width: number, rows: number, fontScale = 1): number {
+  return rows * (gridMetrics(width, fontScale).cellHeight + GRID_GAP);
 }

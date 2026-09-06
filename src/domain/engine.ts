@@ -7,21 +7,35 @@ import {
   weekday,
 } from './date.ts';
 import type { IsoDate, Weekday } from './date.ts';
+import type { HolidayCalendar } from './holidays.ts';
 import type {
   ActiveSchedule,
   DayOverride,
   ResolvedDay,
   SchedulePattern,
+  SchedulePeriod,
   SchedulePreset,
   ShiftType,
 } from './types.ts';
 
 /** Всё, что нужно движку, чтобы разложить любую дату. */
 export interface ScheduleContext {
-  schedule: ActiveSchedule;
+  /**
+   * История графиков по возрастанию startsOn. Пустой список сюда не попадает:
+   * дорожку без графика раскладывать нечем, и контекст для неё не собирают.
+   */
+  schedules: SchedulePeriod[];
   shiftTypes: Map<string, ShiftType>;
   /** Ручные правки по датам. */
   overrides: Map<IsoDate, DayOverride>;
+  /**
+   * Производственный календарь или null, если человек его отключил.
+   *
+   * Праздники правят только недельные графики: смена в праздник от календаря
+   * не зависит — на неё выходят по своему графику, и 12 июня в 2/2 такой же
+   * рабочий день, как любой другой.
+   */
+  holidays?: HolidayCalendar | null;
 }
 
 /**
@@ -66,6 +80,31 @@ export function resolvePlannedShiftId(schedule: ActiveSchedule, date: IsoDate): 
 }
 
 /**
+ * График, действовавший в этот день, или null, если он раньше первого периода.
+ *
+ * Периоды отсортированы по возрастанию, поэтому годится простой проход: их
+ * единицы, а не тысячи — человек меняет работу считаное число раз.
+ */
+export function scheduleOn(schedules: SchedulePeriod[], date: IsoDate): SchedulePeriod | null {
+  let found: SchedulePeriod | null = null;
+  for (const period of schedules) {
+    if (period.startsOn > date) break;
+    found = period;
+  }
+  return found;
+}
+
+/**
+ * С какого дня по этой дорожке вообще есть график.
+ *
+ * До него календарь не рисует смен, а сводка не считает часов: человек здесь
+ * ещё не работал. null — графика нет ни одного.
+ */
+export function scheduleStartsOn(schedules: SchedulePeriod[]): IsoDate | null {
+  return schedules[0]?.startsOn ?? null;
+}
+
+/**
  * Какие типы смен вообще встречаются в графике, по порядку появления.
  *
  * Нужно будильнику: когда в графике чередуются дневные и ночные, время
@@ -73,19 +112,86 @@ export function resolvePlannedShiftId(schedule: ActiveSchedule, date: IsoDate): 
  * сколько смен в графике, — спрашивать это у пользователя незачем.
  */
 export function patternShiftTypeIds(pattern: SchedulePattern): string[] {
-  const ids =
-    pattern.kind === 'cycle'
-      ? pattern.slots
-      : pattern.weeks.flatMap((week) => [1, 2, 3, 4, 5, 6, 7].map((day) => week[day as Weekday]));
+  return [...new Set(patternShiftTypeIdsWithRepeats(pattern))];
+}
 
-  return [...new Set(ids)];
+/** Все смены графика по порядку, с повторами: подсчёту нужен не набор, а список. */
+function patternShiftTypeIdsWithRepeats(pattern: SchedulePattern): string[] {
+  return pattern.kind === 'cycle'
+    ? pattern.slots
+    : pattern.weeks.flatMap((week) => [1, 2, 3, 4, 5, 6, 7].map((day) => week[day as Weekday]));
+}
+
+/**
+ * Смена, которую даёт график на эту дату, вместе с поправкой на
+ * производственный календарь.
+ *
+ * Отдельно от resolvePlannedShiftId, потому что поправка требует справочника
+ * смен: понять, что праздник попал на рабочий день, можно только зная, рабочая
+ * ли смена стоит в шаблоне.
+ */
+export function plannedShiftId(context: ScheduleContext, date: IsoDate): string | null {
+  const schedule = scheduleOn(context.schedules, date);
+  if (!schedule) return null;
+
+  const planned = resolvePlannedShiftId(schedule, date);
+  const holidays = context.holidays;
+
+  if (!holidays || schedule.pattern.kind !== 'weekly') return planned;
+
+  const type = context.shiftTypes.get(planned);
+  if (!type) return planned;
+
+  if (holidays.isNonWorking(date)) {
+    if (type.kind !== 'work') return planned;
+    return dominantShiftId(context, schedule.pattern, 'rest') ?? planned;
+  }
+
+  if (holidays.isWorkingWeekend(date)) {
+    if (type.kind !== 'rest') return planned;
+    return dominantShiftId(context, schedule.pattern, 'work') ?? planned;
+  }
+
+  return planned;
+}
+
+/**
+ * Самая частая смена нужного вида в недельном шаблоне.
+ *
+ * Ею и заполняется день, который правит производственный календарь: у
+ * пятидневки с сокращённой пятницей рабочая суббота по переносу должна выйти
+ * восьмичасовой, а не семичасовой, — восьмичасовых дней в неделе четыре.
+ */
+function dominantShiftId(
+  context: ScheduleContext,
+  pattern: SchedulePattern,
+  kind: 'work' | 'rest',
+): string | null {
+  const counts = new Map<string, number>();
+
+  for (const id of patternShiftTypeIdsWithRepeats(pattern)) {
+    if (context.shiftTypes.get(id)?.kind !== kind) continue;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [id, count] of counts) {
+    if (count > bestCount) {
+      best = id;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 /** Итоговый день календаря: график плюс ручная правка поверх него. */
 export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay {
   const override = context.overrides.get(date);
-  const plannedId = resolvePlannedShiftId(context.schedule, date);
-  const shiftTypeId = override?.shiftTypeId ?? plannedId;
+  const plannedId = plannedShiftId(context, date);
+  // День раньше первого графика: смены нет. Правка сильнее — вышел за коллегу
+  // накануне первого выхода, и это факт, а не продолжение шаблона назад.
+  const shiftTypeId = override?.shiftTypeId ?? plannedId ?? restStubId(context);
   const shiftType = context.shiftTypes.get(shiftTypeId);
 
   if (!shiftType) {
@@ -102,17 +208,59 @@ export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay
   // Норма берётся у смены из графика, даже когда день переопределён. Тип
   // смены из графика может отсутствовать в справочнике только у сломанного
   // сохранённого графика — это ловит scheduleUsesKnownShifts при подъёме
-  // состояния; ронять из-за этого клетку календаря незачем.
-  const plannedType = context.shiftTypes.get(plannedId);
+  // состояния; ронять из-за этого клетку календаря незачем. До первого графика
+  // нормы нет вовсе: сравнивать подработку не с чем.
+  const plannedType = plannedId === null ? undefined : context.shiftTypes.get(plannedId);
 
   return {
     date,
     shiftType,
-    source: changed ? 'override' : 'schedule',
+    source: changed ? 'override' : plannedId === null ? 'none' : 'schedule',
     workedMinutes: override?.workedMinutesOverride ?? shiftDurationMinutes(shiftType),
     plannedMinutes: plannedType ? shiftDurationMinutes(plannedType) : 0,
     note: override?.note,
+    // Название праздника едет вместе с днём: и клетка календаря, и карточка
+    // дня, и озвучка берут его отсюда, а не спрашивают календарь заново.
+    ...holidayNameOf(context, date),
   };
+}
+
+/**
+ * Чем заполнить день, на который графика нет: выходным.
+ *
+ * Своей смены у такого дня быть не может, а ResolvedDay без смены пришлось бы
+ * проверять на null в каждой клетке календаря и в каждом подсчёте. Берётся
+ * выходной самого раннего графика, а если по нему не понять — любой выходной
+ * из справочника: встроенный «Выходной» есть всегда.
+ */
+function restStubId(context: ScheduleContext): string {
+  const first = context.schedules[0];
+  const dominant = first ? dominantShiftId(context, first.pattern, 'rest') : null;
+  if (dominant) return dominant;
+
+  for (const [id, type] of context.shiftTypes) {
+    if (type.kind === 'rest') return id;
+  }
+  throw new ReferenceError('В справочнике нет ни одной нерабочей смены');
+}
+
+/** Праздник этого дня, если производственный календарь включён. */
+function holidayNameOf(context: ScheduleContext, date: IsoDate): { holiday?: string } {
+  const name = context.holidays?.nameOf(date) ?? null;
+  return name === null ? {} : { holiday: name };
+}
+
+/**
+ * Оплачиваемые минуты с учётом надбавки за смену.
+ *
+ * Ночная с множителем 1,2 за двенадцать часов приносит столько же, сколько
+ * дневная за четырнадцать с половиной. Приложение не начисляет зарплату, но
+ * ставку базового часа выводит делением полученной суммы именно на эти
+ * минуты — иначе месяц с одними ночными показывал бы ставку выше, чем месяц с
+ * одними дневными, хотя платят по одной и той же.
+ */
+export function weightedMinutes(day: ResolvedDay): number {
+  return day.workedMinutes * day.shiftType.rateMultiplier;
 }
 
 /**
@@ -150,6 +298,24 @@ export function overtimeMinutes(day: ResolvedDay): number {
 
 export function resolveRange(context: ScheduleContext, dates: IsoDate[]): ResolvedDay[] {
   return dates.map((date) => resolveDay(context, date));
+}
+
+/**
+ * Идёт ли день в счёт часов и смен.
+ *
+ * Не идут дни раньше самого первого графика дорожки: человек тогда здесь не
+ * работал, и месяц до устройства на работу иначе выдавал бы полную норму
+ * часов, а вместе с ней и ставку за час, выведенную неизвестно из чего.
+ *
+ * Ручная правка сильнее: отмеченный руками день до начала — это факт, и
+ * source у него 'override', а не 'none'.
+ *
+ * Календарь спрашивает то же самое по каждой клетке: день, который не идёт в
+ * счёт, не должен выглядеть обычной сменой — иначе месяц с полной сеткой смен
+ * и нулём в итоге читается как поломка.
+ */
+export function countedDay(day: ResolvedDay): boolean {
+  return day.source !== 'none';
 }
 
 /**
@@ -207,6 +373,17 @@ export function scheduleUsesKnownShifts(
   shiftTypes: Map<string, ShiftType>,
 ): boolean {
   return patternShiftTypeIds(schedule.pattern).every((id) => shiftTypes.has(id));
+}
+
+/**
+ * Все смены всей истории графиков, по порядку появления.
+ *
+ * Нужно будильнику «по графику»: время подъёма спрашивается по одному на смену,
+ * и после перевода с пятидневки на 2/2 в списке должны быть смены обоих
+ * графиков — иначе на новом графике будильник звонить перестанет.
+ */
+export function scheduleShiftTypeIds(schedules: SchedulePeriod[]): string[] {
+  return [...new Set(schedules.flatMap((period) => patternShiftTypeIds(period.pattern)))];
 }
 
 /** Непрерывный отрезок одинаковых ручных правок вокруг даты. */

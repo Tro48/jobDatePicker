@@ -1,5 +1,6 @@
 export { ThemeProvider, useTheme, useShiftColors } from './ThemeProvider.tsx';
 export {
+  SHIFT_COLOR_NAMES,
   WORKED_FADE,
   darkPalette,
   fadedShiftPair,

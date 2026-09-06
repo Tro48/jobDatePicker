@@ -26,7 +26,7 @@ const shiftTypes = indexShiftTypes(DEFAULT_SHIFT_TYPES);
 function contextFor(presetId: string, anchorDate: string): ScheduleContext {
   const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId)!;
   return {
-    schedule: { presetId, pattern: preset.pattern, anchorDate },
+    schedules: [{ presetId, pattern: preset.pattern, anchorDate, startsOn: anchorDate }],
     shiftTypes,
     overrides: new Map(),
   };

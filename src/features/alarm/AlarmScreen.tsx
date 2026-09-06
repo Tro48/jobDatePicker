@@ -9,7 +9,7 @@ import {
   openNotificationSettings,
   requestNotifications,
 } from '@modules/shift-alarm';
-import { AppText, Button, Card, Fab, Screen, useNow } from '@/ui';
+import { AppText, Button, Card, Fab, IconButton, Screen, useNow } from '@/ui';
 import { useTheme } from '@/theme';
 import { AlarmRow } from './AlarmRow.tsx';
 import { useAlarmSyncState } from './AlarmSyncProvider.tsx';
@@ -58,7 +58,18 @@ export function AlarmScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Screen title="Будильник" subtitle={subtitle}>
+      <Screen
+        title="Будильник"
+        subtitle={subtitle}
+        action={
+          <IconButton
+            name="help-circle-outline"
+            label="Будильник не звонит"
+            accessibilityHint="Что делать, если телефон выгружает приложение из памяти"
+            onPress={() => push('/alarm/help')}
+          />
+        }
+      >
         {!available ? (
           // Модуль нативный: в старой сборке его просто нет, и врать про
           // поставленные будильники нельзя.

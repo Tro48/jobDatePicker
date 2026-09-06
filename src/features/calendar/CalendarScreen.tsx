@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { todayIso } from '@/domain/date.ts';
+import { monthDays, todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import { resolveDay } from '@/domain/engine.ts';
 import {
@@ -13,6 +13,7 @@ import {
   pluralize,
 } from '@/domain/format.ts';
 import { periodOf } from '@/domain/payday.ts';
+import { describeScheduleStart } from '@/domain/describe.ts';
 import { buildMonthSummary } from '@/domain/summary.ts';
 import { useActiveTrack, useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
@@ -50,6 +51,17 @@ export function CalendarScreen() {
     [context, visible.period, today],
   );
 
+  /**
+   * Есть ли в этом месяце праздники. Легенда объясняет значок в углу клетки
+   * только тогда, когда объяснять есть что: в июле и августе строка «праздник»
+   * — лишний шум.
+   */
+  const monthHasHolidays = useMemo(() => {
+    const holidays = context?.holidays;
+    if (!holidays) return false;
+    return monthDays(visible.year, visible.month).some((date) => holidays.nameOf(date) !== null);
+  }, [context, visible.year, visible.month]);
+
   const sharedRows = useSharedRows(visible.year, visible.month);
 
   /**
@@ -65,6 +77,10 @@ export function CalendarScreen() {
     () => (shared.enabled && focused ? new Set(focused.dates) : undefined),
     [shared.enabled, focused],
   );
+
+  // Чьи именно дни выделены. Имя нужно и подписью над сеткой, и в озвучке
+  // каждой выделенной клетки: по заливке чей это выходной не узнать.
+  const highlightName = highlighted ? focused?.name : undefined;
 
   const colorTokens = useMemo(() => {
     if (!context) return {};
@@ -127,6 +143,9 @@ export function CalendarScreen() {
   }
 
   const todayDay = resolveDay(context, today);
+  // Почему за месяц числа меньше обычного — или нули. Та же строка стоит в
+  // сводке: расходиться в объяснении этим двум экранам нельзя.
+  const startNote = describeScheduleStart(visible.period, context.schedules[0].startsOn);
   // Прошлый месяц отработан целиком — дробить его числа незачем.
   const monthClosed = summary === null || summary.elapsedWorkedDays === summary.workedDays;
 
@@ -172,6 +191,16 @@ export function CalendarScreen() {
         <TodayCard day={todayDay} />
       </View>
 
+      {/* Чьи дни сейчас выделены — словами, над сеткой. Без этой строки
+          ответ на «чей это график» приходится искать в списке под календарём,
+          а при двух и более чужих графиках заливка сама по себе не отвечает
+          ни зрячему, ни скринридеру. */}
+      {highlightName ? (
+        <AppText variant="caption" tone="accent" style={{ marginBottom: theme.spacing.xs }}>
+          Выделены общие выходные: {highlightName}
+        </AppText>
+      ) : null}
+
       {/* Сетка идёт во всю ширину экрана: при семи колонках только так клетка
           дотягивает до 48 dp зоны нажатия на узких телефонах. */}
       <View style={{ marginHorizontal: -theme.spacing.lg }}>
@@ -184,13 +213,18 @@ export function CalendarScreen() {
           today={today}
           onSelectDay={openDay}
           highlighted={highlighted}
+          highlightName={highlightName}
           width={width}
         />
       </View>
 
-      {summary ? (
+      {summary && summary.byShiftType.length > 0 ? (
         <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.md }}>
-          <Legend totals={summary.byShiftType} colorTokens={colorTokens} />
+          <Legend
+            totals={summary.byShiftType}
+            colorTokens={colorTokens}
+            hasHolidays={monthHasHolidays}
+          />
           <View style={{ gap: theme.spacing.xs }}>
             {/* Только смены и часы. Число ручных правок отсюда убрано: после
                 двухнедельного отпуска строка «правок: 14» читается как «что-то
@@ -213,8 +247,19 @@ export function CalendarScreen() {
                 : `${summary.elapsedWorkedDays}/${summary.workedDays} ${plural(summary.workedDays, SHIFT_FORMS)} · ${formatHoursRatio(summary.elapsedWorkedMinutes, summary.workedMinutes)}`}
             </AppText>
             <OvertimeLine minutes={summary.overtimeMinutes} />
+            {startNote ? (
+              <AppText variant="caption" tone="muted">
+                {startNote}
+              </AppText>
+            ) : null}
           </View>
         </View>
+      ) : null}
+
+      {summary && summary.byShiftType.length === 0 && startNote ? (
+        <AppText variant="body" tone="muted" style={{ marginTop: theme.spacing.md }}>
+          {startNote}
+        </AppText>
       ) : null}
 
       {shared.enabled ? (

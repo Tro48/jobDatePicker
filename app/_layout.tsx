@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { enableFreeze } from 'react-native-screens';
 import { AlarmSyncProvider } from '@/features/alarm/AlarmSyncProvider.tsx';
 import { AppErrorScreen } from '@/features/errors/AppErrorScreen.tsx';
+import { WidgetSyncProvider } from '@/features/widget/WidgetSyncProvider.tsx';
 import { useReduceMotion } from '@/ui';
 import { ThemeProvider, useTheme } from '@/theme';
 
@@ -41,7 +42,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AlarmSyncProvider>
-          <RootStack />
+          <WidgetSyncProvider>
+            <RootStack />
+          </WidgetSyncProvider>
         </AlarmSyncProvider>
       </ThemeProvider>
     </SafeAreaProvider>
@@ -76,9 +79,18 @@ function RootStack() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="day/[date]" options={sheet} />
         <Stack.Screen name="alarm/[id]" options={sheet} />
+        <Stack.Screen name="alarm/help" options={sheet} />
         <Stack.Screen name="summary/year" options={sheet} />
         <Stack.Screen name="whats-new" options={sheet} />
+        {/* Ссылка jobdatepicker://track?v=1&d=… — её отдаёт приложению
+            системная камера Android, распознав QR-код. */}
+        <Stack.Screen name="track" options={sheet} />
         <Stack.Screen name="settings/schedule" options={sheet} />
+        <Stack.Screen name="settings/schedule-builder" options={sheet} />
+        <Stack.Screen name="settings/shift-types" options={sheet} />
+        <Stack.Screen name="settings/shift-type" options={sheet} />
+        <Stack.Screen name="settings/share" options={sheet} />
+        <Stack.Screen name="settings/scan" options={sheet} />
         <Stack.Screen name="settings/payroll" options={sheet} />
         <Stack.Screen name="settings/group" options={sheet} />
       </Stack>

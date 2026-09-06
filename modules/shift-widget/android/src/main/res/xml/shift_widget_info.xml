@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Описание виджета для системы.
+
+  updatePeriodMillis, а не будильник в полночь: система перерисовывает виджет
+  сама, не будит ради этого телефон и переживает перезагрузку без единой строки
+  кода. Перерисовка стоит дёшево — виджет только читает SharedPreferences.
+  Полчаса — минимум, который Android вообще принимает; более частые значения он
+  молча округляет вверх.
+
+  Размеры: ставится виджет размером 4 на 3 ячейки и показывает четыре недели, а
+  сжимается до 180 на 96 пунктов — это одна неделя вместе с заголовком. Сколько
+  недель рисовать при каждой высоте, решает сам виджет; пороги заданы в
+  ShiftWidget.weeksFitting и обязаны совпадать с объявленными там размерами.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:minWidth="250dp"
+  android:minHeight="180dp"
+  android:targetCellWidth="4"
+  android:targetCellHeight="3"
+  android:minResizeWidth="180dp"
+  android:minResizeHeight="96dp"
+  android:resizeMode="horizontal|vertical"
+  android:updatePeriodMillis="1800000"
+  android:widgetCategory="home_screen"
+  android:description="@string/shift_widget_description"
+  android:initialLayout="@layout/glance_default_loading_layout" />
