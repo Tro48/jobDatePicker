@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { AppText, Button, Card, ChoiceGroup, Screen, Toggle } from '@/ui';
 import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
+import { DataActions } from '@/features/backup/DataActions.tsx';
 import { AboutSection } from '@/features/settings/AboutSection.tsx';
 import { UpdateCard } from '@/features/updates/UpdateCard.tsx';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
@@ -27,6 +28,8 @@ export default function SettingsScreen() {
   const paymentCount = useAppStore((state) => state.payments.length);
   const own = tracks.filter((track) => track.own);
   const others = tracks.filter((track) => !track.own);
+  const holidays = useAppStore((state) => state.holidays);
+  const setHolidays = useAppStore((state) => state.setHolidays);
   const shared = useAppStore((state) => state.sharedDaysOff);
   const setSharedDaysOff = useAppStore((state) => state.setSharedDaysOff);
   const groups = useAppStore((state) => state.sharedGroups);
@@ -43,6 +46,22 @@ export default function SettingsScreen() {
         <AppText variant="caption" tone="muted">
           Сейчас применена {theme.scheme === 'dark' ? 'тёмная' : 'светлая'} тема.
         </AppText>
+      </Card>
+
+      {/* Смены живут в настройках, а не в календаре: их правят один раз при
+          заведении графика, а потом почти не трогают. */}
+      <Card title="График">
+        <Button
+          title="Смены"
+          accessibilityHint={`Сейчас в справочнике ${shiftTypeCount}. Здесь заводится своя смена: вечерняя, подработка, учёба`}
+          onPress={() => push('/settings/shift-types')}
+        />
+        <Toggle
+          label="Отмечать праздники"
+          hint="Российский производственный календарь: праздник помечается значком в клетке. В графике по дням недели он ещё и делает день нерабочим — на сменные графики не влияет"
+          value={holidays.enabled}
+          onValueChange={(enabled) => setHolidays({ enabled })}
+        />
       </Card>
 
       {/* Совпадающие выходные показываются, только когда есть с кем совпадать:
@@ -126,6 +145,10 @@ export default function SettingsScreen() {
             Внесённых выплат: {paymentCount}
           </AppText>
         </View>
+
+        {/* Копия и обмен живут здесь же, а не отдельной карточкой: это всё
+            про одни и те же данные, о которых карточка и рассказывает. */}
+        <DataActions />
 
         <AboutSection />
       </Card>
