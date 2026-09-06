@@ -47,11 +47,14 @@ function trackOf(id: string, name: string): ScheduleTrack {
     id,
     name,
     own: true,
-    schedule: {
-      presetId: '2-2-day',
-      pattern: SCHEDULE_PRESETS[0].pattern,
-      anchorDate: '2026-09-01',
-    },
+    schedules: [
+      {
+        presetId: '2-2-day',
+        pattern: SCHEDULE_PRESETS[0].pattern,
+        anchorDate: '2026-09-01',
+        startsOn: '2026-09-01',
+      },
+    ],
     overrides: {},
     payrollRules: DEFAULT_PAYMENT_RULES,
   };

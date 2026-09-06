@@ -12,6 +12,7 @@ import {
   plural,
   pluralize,
 } from '@/domain/format.ts';
+import { describeScheduleStart } from '@/domain/describe.ts';
 import { shiftPeriod, upcomingPayments } from '@/domain/payday.ts';
 import type { Period } from '@/domain/payday.ts';
 import { PAYMENT_KIND_LABELS } from '@/domain/payments.ts';
@@ -22,6 +23,8 @@ import type { IsoDate } from '@/domain/date.ts';
 import type { PaymentRecord, PaymentRule, PayrollSettings } from '@/domain/types.ts';
 import { AppText, Button, Card, Stat } from '@/ui';
 import { useTheme } from '@/theme';
+import { SupportSlot } from '@/features/support/SupportSlot.tsx';
+import { MonthExportCard } from './MonthExportCard.tsx';
 
 /** Сколько закрытых месяцев просматривать в поисках ставки для прогноза. */
 const HISTORY_DEPTH = 12;
@@ -41,6 +44,8 @@ export interface MonthSummaryPageProps {
   /** Ширина страницы пейджера: месяцы листаются вбок. */
   width: number;
   onOpenYear: () => void;
+  /** Имя работы: попадает в PDF, когда работ больше одной. */
+  trackName?: string;
 }
 
 /**
@@ -58,6 +63,7 @@ function MonthSummaryPageView({
   today,
   width,
   onOpenYear,
+  trackName,
 }: MonthSummaryPageProps) {
   const theme = useTheme();
 
@@ -100,6 +106,9 @@ function MonthSummaryPageView({
 
   const year = Number(period.slice(0, 4));
   const month = Number(period.slice(5, 7));
+  // Часы считаются с первой смены, а не с первого числа: без подписи урезанный
+  // месяц выглядит потерянными данными.
+  const startNote = describeScheduleStart(period, context.schedules[0].startsOn);
   // Месяц закрыт, когда все его смены уже позади: тогда «отработано» и
   // «запланировано» — одно и то же число.
   const monthClosed = summary.elapsedWorkedDays === summary.workedDays;
@@ -126,7 +135,16 @@ function MonthSummaryPageView({
         paddingBottom: theme.spacing.xxl,
       }}
     >
-      <View style={{ flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.lg }}>
+      {/* Перенос обязателен: на экране 5 дюймов три плитки по 96 пунктов в
+          строку не встают, и без него правая уезжает за край. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: theme.spacing.sm,
+          marginBottom: theme.spacing.lg,
+        }}
+      >
         {/* В незакрытом месяце показывается дробь «сделано из запланированного»:
             без неё «192 ч» в начале месяца читается как уже отработанные часы.
             В закрытом месяце дробь не рисуется — «192/192 ч» ничего не
@@ -162,42 +180,57 @@ function MonthSummaryPageView({
         />
       </View>
 
-      <Card title="По типам смен">
-        {summary.byShiftType.map((item) => (
-          <View
-            key={item.shiftTypeId}
-            accessibilityRole="text"
-            accessibilityLabel={`${item.name}: ${pluralize(item.days, DAY_FORMS)}${item.minutes > 0 ? `, ${formatTotalHours(item.minutes)}` : ''}`}
-            style={{ flexDirection: 'row', justifyContent: 'space-between', gap: theme.spacing.sm }}
-          >
-            <AppText variant="body" importantForAccessibility="no" style={{ flex: 1 }}>
-              {item.name}
-            </AppText>
-            <AppText variant="body" tone="muted" importantForAccessibility="no">
-              {pluralize(item.days, DAY_FORMS)}
-            </AppText>
-            <AppText
-              variant="body"
-              tone="muted"
-              importantForAccessibility="no"
-              style={{ minWidth: 72, textAlign: 'right' }}
+      {startNote ? (
+        <AppText variant="caption" tone="muted" style={{ marginBottom: theme.spacing.lg }}>
+          {startNote}
+        </AppText>
+      ) : null}
+
+      {/* Карточка пропадает целиком, когда считать нечего: до первой смены в
+          месяце нет ни одного дня, и пустая карточка с одним заголовком
+          читается как поломка. Причину объясняет строка выше. */}
+      {summary.byShiftType.length > 0 ? (
+        <Card title="По типам смен">
+          {summary.byShiftType.map((item) => (
+            <View
+              key={item.shiftTypeId}
+              accessibilityRole="text"
+              accessibilityLabel={`${item.name}: ${pluralize(item.days, DAY_FORMS)}${item.minutes > 0 ? `, ${formatTotalHours(item.minutes)}` : ''}`}
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                gap: theme.spacing.sm,
+              }}
             >
-              {item.minutes > 0 ? formatTotalHours(item.minutes) : '—'}
+              <AppText variant="body" importantForAccessibility="no" style={{ flex: 1 }}>
+                {item.name}
+              </AppText>
+              <AppText variant="body" tone="muted" importantForAccessibility="no">
+                {pluralize(item.days, DAY_FORMS)}
+              </AppText>
+              <AppText
+                variant="body"
+                tone="muted"
+                importantForAccessibility="no"
+                style={{ minWidth: 72, textAlign: 'right' }}
+              >
+                {item.minutes > 0 ? formatTotalHours(item.minutes) : '—'}
+              </AppText>
+            </View>
+          ))}
+          {summary.overtimeDays > 0 ? (
+            <AppText variant="caption" tone="muted" accessibilityLabel={overtimeSpoken}>
+              Сверх нормы смен: {formatOvertimeTotal(summary.overtimeMinutes)} на{' '}
+              {pluralize(summary.overtimeDays, DAY_FORMS)}
             </AppText>
-          </View>
-        ))}
-        {summary.overtimeDays > 0 ? (
-          <AppText variant="caption" tone="muted" accessibilityLabel={overtimeSpoken}>
-            Сверх нормы смен: {formatOvertimeTotal(summary.overtimeMinutes)} на{' '}
-            {pluralize(summary.overtimeDays, DAY_FORMS)}
-          </AppText>
-        ) : null}
-        {summary.adjustedDays > 0 ? (
-          <AppText variant="caption" tone="muted">
-            Изменено вручную: {pluralize(summary.adjustedDays, DAY_FORMS)}
-          </AppText>
-        ) : null}
-      </Card>
+          ) : null}
+          {summary.adjustedDays > 0 ? (
+            <AppText variant="caption" tone="muted">
+              Изменено вручную: {pluralize(summary.adjustedDays, DAY_FORMS)}
+            </AppText>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Card title="Деньги за месяц">
         {summary.payments.length > 0 ? (
@@ -264,6 +297,17 @@ function MonthSummaryPageView({
         />
       </Card>
 
+      {/* Выгрузка стоит рядом с выходом в год: и то и другое — «унести этот
+          месяц куда-то ещё». В шапку она не влезла: там уже две стрелки
+          листания, и третья кнопка на узком экране режет заголовок. */}
+      <MonthExportCard
+        period={period}
+        context={context}
+        summary={summary}
+        currency={currency}
+        trackName={trackName}
+      />
+
       <Card title={`Сравнение с ${previousTitle.toLowerCase()}`}>
         <ComparisonRow
           label="Часы"
@@ -312,6 +356,11 @@ function MonthSummaryPageView({
           </AppText>
         </Card>
       ) : null}
+
+      {/* Слот поддержки — последней карточкой и только здесь. На календарь,
+          в карточку дня и в будильник он не заходит: туда смотрят каждый
+          день, а сюда — раз в месяц. */}
+      <SupportSlot />
     </ScrollView>
   );
 }
@@ -388,7 +437,9 @@ function MoneyRow({
     <View
       accessibilityRole="text"
       accessibilityLabel={`${label}: ${value}`}
-      style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}
+      // При крупном шрифте сумма не влезает в строку рядом с подписью —
+      // тогда она переносится, а не обрезается.
+      style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8 }}
     >
       <AppText
         variant={variant}
