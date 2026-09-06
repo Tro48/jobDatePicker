@@ -1,11 +1,14 @@
 import { scheduleUsesKnownShifts } from '../domain/engine.ts';
-import { indexShiftTypes } from '../domain/shifts.ts';
+import { DEFAULT_SHIFT_TYPES, indexShiftTypes, sanitizeShiftType } from '../domain/shifts.ts';
 import type { Alarm, AlarmRepeat } from '../domain/alarm.ts';
+import { sanitizeCustomSchedule } from '../domain/customSchedules.ts';
 import type {
   ActiveSchedule,
+  CustomSchedule,
   DayOverride,
   PaymentRecord,
   PaymentRule,
+  SchedulePeriod,
   ScheduleTrack,
   ShiftType,
 } from '../domain/types.ts';
@@ -69,6 +72,104 @@ export function migrateAlarm(alarm: Alarm, tracks: ScheduleTrack[]): Alarm {
 }
 
 /**
+ * Справочник смен из снимка хранилища.
+ *
+ * До версии 13 смены задавались кодом и в хранилище не уходили вовсе: снимок
+ * из старой сборки перекрывал бы новые поля — так однажды пропал признак
+ * многодневности у отпуска. Теперь смены правит пользователь, и хранить их
+ * приходится, но исходная опасность никуда не делась. Поэтому встроенная смена
+ * не читается из снимка целиком, а собирается заново: код даёт основу и все
+ * поля, которых в снимке ещё нет, а снимок — только то, что человек правил
+ * руками.
+ *
+ * Встроенные смены присутствуют всегда, даже если в снимке их нет: на их id
+ * ссылаются встроенные графики.
+ */
+export function migrateShiftTypes(persisted: unknown): ShiftType[] {
+  const saved = Array.isArray(persisted) ? persisted : [];
+  const byBuiltin = new Map<string, ShiftType>();
+  const custom: ShiftType[] = [];
+  // Порядок списка — пользовательский: смены показываются в нём и в календаре,
+  // и в выборе смены на день, и переставлять их за человека незачем.
+  const order: string[] = [];
+
+  for (const raw of saved) {
+    const type = sanitizeShiftType(raw);
+    if (!type) continue;
+    if (type.builtinId !== null) {
+      if (byBuiltin.has(type.builtinId)) continue;
+      byBuiltin.set(type.builtinId, type);
+      order.push(type.builtinId);
+    } else {
+      custom.push(type);
+      order.push(type.id);
+    }
+  }
+
+  const result: ShiftType[] = [];
+  const takenIds = new Set<string>();
+
+  for (const id of order) {
+    const builtin = DEFAULT_SHIFT_TYPES.find((type) => type.builtinId === id);
+    const type = builtin
+      ? mergeBuiltinShiftType(builtin, byBuiltin.get(id))
+      : custom.find((item) => item.id === id);
+    // Встроенная смена, которой в коде больше нет, дальше не едет: ссылаться
+    // на неё некому — сохранённые графики чинит migrateSchedule.
+    if (!type || takenIds.has(type.id)) continue;
+    takenIds.add(type.id);
+    result.push(type);
+  }
+
+  // Смены, добавленные новой версией приложения, дописываются в конец: в
+  // снимке их нет, а без них сломаются встроенные графики.
+  for (const builtin of DEFAULT_SHIFT_TYPES) {
+    if (!takenIds.has(builtin.id)) result.push(builtin);
+  }
+
+  return result;
+}
+
+/**
+ * Встроенная смена: основа из кода, правки — из хранилища.
+ *
+ * Вид смены и многодневность из снимка не берутся намеренно. Отпуск, ставший
+ * рабочим днём, ломает сводку часов, а «Выходной», превратившийся в смену,
+ * ломает все встроенные графики разом — при том, что ни того, ни другого
+ * редактор сделать не даёт.
+ */
+function mergeBuiltinShiftType(builtin: ShiftType, saved: ShiftType | undefined): ShiftType {
+  if (!saved) return builtin;
+  return {
+    ...builtin,
+    name: saved.name,
+    badge: saved.badge,
+    colorToken: saved.colorToken,
+    rateMultiplier: saved.rateMultiplier,
+    // Времени нет у нерабочих смен — ни в коде, ни в правке.
+    ...(builtin.time && saved.time ? { time: saved.time } : {}),
+  };
+}
+
+/**
+ * Собранные руками графики из снимка хранилища.
+ *
+ * Проверяются по справочнику смен: график, собранный на смене, которой больше
+ * нет, разложить нечем. Такой выбрасывается из списка выбора целиком, а
+ * дорожки, на которых он уже стоит, не страдают — они держат свою копию
+ * раскладки, и её отдельно чинит migrateSchedule.
+ */
+export function migrateCustomSchedules(
+  persisted: unknown,
+  shiftTypes: ShiftType[],
+): CustomSchedule[] {
+  if (!Array.isArray(persisted)) return [];
+  return persisted
+    .map((raw) => sanitizeCustomSchedule(raw, shiftTypes))
+    .filter((schedule): schedule is CustomSchedule => schedule !== null);
+}
+
+/**
  * График, который ещё можно разложить, или ничего.
  *
  * При выборе графика его паттерн копируется в хранилище, а справочник смен
@@ -89,11 +190,51 @@ export function migrateSchedule(
   return scheduleUsesKnownShifts(schedule, indexShiftTypes(shiftTypes)) ? schedule : null;
 }
 
+/**
+ * История графиков дорожки из снимка любой версии.
+ *
+ * До версии 16 график был один: он и становится единственным периодом, а
+ * начинается с даты первой смены — единственной даты, которая тогда была. Для
+ * прожитых месяцев это ничего не меняет: раскладка та же, просто теперь у неё
+ * есть начало.
+ *
+ * Неразрешимые периоды выбрасываются поштучно: если исчезнувшая смена была
+ * только в прошлогодней пятидневке, терять из-за неё текущий график незачем.
+ * Порядок восстанавливается здесь же — на него опирается поиск графика по дате.
+ */
+export function migrateSchedules(
+  raw: unknown,
+  legacy: ActiveSchedule | null | undefined,
+  shiftTypes: ShiftType[],
+): SchedulePeriod[] {
+  const index = indexShiftTypes(shiftTypes);
+
+  const periods: SchedulePeriod[] = Array.isArray(raw)
+    ? (raw as SchedulePeriod[]).filter(
+        (period) =>
+          period !== null &&
+          typeof period === 'object' &&
+          typeof period.startsOn === 'string' &&
+          typeof period.anchorDate === 'string' &&
+          period.pattern !== undefined,
+      )
+    : legacy
+      ? [{ ...legacy, startsOn: legacy.anchorDate }]
+      : [];
+
+  return periods
+    .filter((period) => scheduleUsesKnownShifts(period, index))
+    .sort((a, b) => a.startsOn.localeCompare(b.startsOn));
+}
+
+/** Дорожка из снимка: до версии 16 график был один и лежал в поле schedule. */
+type LegacyTrack = ScheduleTrack & { schedule?: ActiveSchedule | null };
+
 /** Состояние до версии 9: график и правки лежали в корне, поодиночке. */
 export interface LegacyFlatState {
   schedule?: ActiveSchedule | null;
   overrides?: Record<IsoDate, DayOverride>;
-  tracks?: ScheduleTrack[];
+  tracks?: LegacyTrack[];
   /** До версии 10 числа выплат были общими и лежали в настройках денег. */
   payroll?: { rules?: PaymentRule[] };
   payments?: PaymentRecord[];
@@ -122,21 +263,21 @@ export function migrateTracks(
   // дорожке. Разойтись по работам они смогут дальше, руками.
   const rules = persisted.payroll?.rules ?? DEFAULT_PAYMENT_RULES;
 
-  const clean = (track: ScheduleTrack): ScheduleTrack => ({
+  const clean = (track: LegacyTrack): ScheduleTrack => ({
     ...track,
-    schedule: migrateSchedule(track.schedule, shiftTypes),
+    schedules: migrateSchedules(track.schedules, track.schedule, shiftTypes),
     overrides: track.overrides ?? {},
     payrollRules: track.payrollRules ?? rules,
   });
 
   if (Array.isArray(persisted.tracks)) return persisted.tracks.map(clean);
 
-  const schedule = migrateSchedule(persisted.schedule, shiftTypes);
+  const schedules = migrateSchedules(undefined, persisted.schedule, shiftTypes);
   const overrides = persisted.overrides ?? {};
-  if (!schedule && Object.keys(overrides).length === 0) return [];
+  if (schedules.length === 0 && Object.keys(overrides).length === 0) return [];
 
   return [
-    { id: 'main', name: MAIN_TRACK_NAME, own: true, schedule, overrides, payrollRules: rules },
+    { id: 'main', name: MAIN_TRACK_NAME, own: true, schedules, overrides, payrollRules: rules },
   ];
 }
 
