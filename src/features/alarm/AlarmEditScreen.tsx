@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { formatMinutesAsTime, parseTimeToMinutes } from '@/domain/date.ts';
+import { formatMinutesAsTime, parseTimeToMinutes, todayIso } from '@/domain/date.ts';
 import type { IsoDate, Weekday } from '@/domain/date.ts';
-import { resolveDay, scheduleShiftTypeIds } from '@/domain/engine.ts';
+import { resolveDay, upcomingShiftTypeIds } from '@/domain/engine.ts';
 import { formatDayLong } from '@/domain/format.ts';
 import {
   MAX_SNOOZE_MINUTES,
@@ -116,6 +116,10 @@ export function AlarmEditScreen() {
    */
   const [snoozeText, setSnoozeText] = useState(() => String(draft.snoozeMinutes));
 
+  // Сегодняшний день считается один раз за жизнь экрана: набор полей времени
+  // не должен смениться под руками у того, кто правит будильник в полночь.
+  const today = useMemo(() => todayIso(), []);
+
   /**
    * Рабочие смены каждого графика. Спрашивать их у пользователя незачем — они
    * заданы самим графиком; нужны только затем, чтобы у чередующихся дневных и
@@ -126,15 +130,16 @@ export function AlarmEditScreen() {
     return new Map(
       tracks.map((track) => [
         track.id,
-        // Смены всей истории графиков: после перевода с пятидневки на 2/2
-        // время подъёма нужно и для новых смен, иначе на них будильник
-        // замолчит.
-        scheduleShiftTypeIds(track.schedules)
+        // Только то, по чему ещё предстоит работать: действующий график и те,
+        // что начнутся позже. Вся история давала бы смены оставленных работ —
+        // после перевода с пятидневки на 2/2 человек получал четыре поля
+        // времени подъёма вместо одного.
+        upcomingShiftTypeIds(track.schedules, today)
           .map((id) => index.get(id))
           .filter((type): type is ShiftType => Boolean(type?.time) && type?.kind === 'work'),
       ]),
     );
-  }, [tracks, shiftTypes]);
+  }, [tracks, shiftTypes, today]);
 
   /** Графики, отмеченные в этом будильнике. */
   const picked = draft.repeat.kind === 'schedule' ? draft.repeat.tracks : [];

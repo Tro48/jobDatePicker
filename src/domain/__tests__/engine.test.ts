@@ -8,6 +8,7 @@ import {
   resolvePlannedShiftId,
   scheduleShiftTypeIds,
   scheduleUsesKnownShifts,
+  upcomingShiftTypeIds,
   shiftDurationMinutes,
   validatePreset,
 } from '../engine.ts';
@@ -293,7 +294,7 @@ test('день до первого графика не идёт в счёт, а 
   assert.equal(worked.workedMinutes, 12 * 60);
 });
 
-test('смены всей истории видны будильнику, а не только текущие', () => {
+test('scheduleShiftTypeIds отдаёт смены всей истории: по ним рисуется прошлое', () => {
   const weekly = SCHEDULE_PRESETS.find((item) => item.id === '5-2')!;
   const cycle = SCHEDULE_PRESETS.find((item) => item.id === '2-2-night')!;
   const ids = scheduleShiftTypeIds([
@@ -308,4 +309,65 @@ test('смены всей истории видны будильнику, а н�
 
   assert.ok(ids.includes('work8'));
   assert.ok(ids.includes('night12'));
+});
+
+const patternOf = (id: string) => SCHEDULE_PRESETS.find((item) => item.id === id)!.pattern;
+
+test('вперёд смотрят только действующий график и назначенные позже', () => {
+  // Человека перевели с пятидневки на 2/2. Смены оставленной работы будильнику
+  // предлагать нечего: в календаре их больше не будет никогда, а человек
+  // получал четыре поля времени подъёма вместо одного.
+  const history: SchedulePeriod[] = [
+    {
+      presetId: '5-2-short-friday',
+      pattern: patternOf('5-2-short-friday'),
+      anchorDate: '2026-01-05',
+      startsOn: '2026-01-05',
+    },
+    {
+      presetId: '2-2-day',
+      pattern: patternOf('2-2-day'),
+      anchorDate: '2026-09-01',
+      startsOn: '2026-09-01',
+    },
+  ];
+
+  assert.deepEqual(upcomingShiftTypeIds(history, '2026-09-10'), ['day12', 'off']);
+  // Сама история никуда не делась: прошлые месяцы без неё не разложить.
+  assert.ok(scheduleShiftTypeIds(history).includes('work8'));
+});
+
+test('назначенный на будущее график попадает в смены заранее', () => {
+  // Иначе в день перехода будильник замолчит: времени подъёма для новых смен
+  // никто не спросил.
+  const history: SchedulePeriod[] = [
+    {
+      presetId: '2-2-day',
+      pattern: patternOf('2-2-day'),
+      anchorDate: '2026-01-01',
+      startsOn: '2026-01-01',
+    },
+    {
+      presetId: '2-2-night',
+      pattern: patternOf('2-2-night'),
+      anchorDate: '2026-10-01',
+      startsOn: '2026-10-01',
+    },
+  ];
+
+  assert.deepEqual(upcomingShiftTypeIds(history, '2026-09-10'), ['day12', 'off', 'night12']);
+});
+
+test('до первого периода смен нет вовсе: человек здесь ещё не работал', () => {
+  const history: SchedulePeriod[] = [
+    {
+      presetId: '2-2-day',
+      pattern: patternOf('2-2-day'),
+      anchorDate: '2026-09-01',
+      startsOn: '2026-09-01',
+    },
+  ];
+
+  assert.deepEqual(upcomingShiftTypeIds(history, '2026-08-01'), ['day12', 'off']);
+  assert.deepEqual(upcomingShiftTypeIds([], '2026-09-10'), []);
 });
