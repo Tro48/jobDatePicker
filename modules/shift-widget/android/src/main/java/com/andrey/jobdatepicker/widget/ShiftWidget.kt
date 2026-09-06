@@ -15,7 +15,11 @@ import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.glance.appwidget.provideContent
+import androidx.glance.currentState
+import androidx.glance.state.PreferencesGlanceStateDefinition
 // Пара «день/ночь» лежит в androidx.glance.color, а не рядом с однотонным
 // ColorProvider в androidx.glance.unit — проверено по самому артефакту Glance.
 // Второй нужен, когда тему задаёт приложение, а не система, и выбирать между
@@ -78,9 +82,23 @@ class ShiftWidget : GlanceAppWidget() {
     )
   )
 
+  /**
+   * Своё состояние виджету нужно ровно ради одной метки — времени последней
+   * выкладки снимка. Сам снимок в него не кладётся: он общий для всех виджетов
+   * на экране, а состояние Glance заводится на каждый отдельно.
+   */
+  override val stateDefinition = PreferencesGlanceStateDefinition
+
   override suspend fun provideGlance(context: Context, id: GlanceId) {
-    val snapshot = WidgetSnapshot.parse(WidgetStore.read(context))
-    provideContent { Body(context, snapshot) }
+    provideContent {
+      // Метка читается первой и только за этим: она подписывает композицию на
+      // изменения. Снимок лежит в обычном файле, а файл состоянием Compose не
+      // является — без подписки виджет, пока он на экране, рисовал бы то, что
+      // прочиталось при самом первом показе, и никакие updateAll этого не
+      // меняли бы: сессия жива, перечитывать снимок в ней нечему.
+      currentState<Preferences>()[SNAPSHOT_STAMP]
+      Body(context, WidgetSnapshot.parse(WidgetStore.read(context)))
+    }
   }
 
   /**
@@ -329,7 +347,13 @@ class ShiftWidget : GlanceAppWidget() {
     }
   }
 
-  private companion object {
+  companion object {
+    /**
+     * Когда снимок последний раз выложили. Значение само по себе не нужно —
+     * нужна его смена: она и заставляет виджет перечитать файл.
+     */
+    val SNAPSHOT_STAMP = longPreferencesKey("snapshotStamp")
+
     /** Больше четырёх недель не показываем даже в полный рост: клетки мельчают. */
     const val MAX_WEEKS = 4
 

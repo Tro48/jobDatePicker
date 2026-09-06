@@ -1,6 +1,8 @@
 package com.andrey.jobdatepicker.widget
 
 import android.content.Context
+import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
@@ -27,12 +29,23 @@ class ShiftWidgetModule : Module() {
     /**
      * Записать снимок и перерисовать виджеты.
      *
-     * Перерисовка идёт в фоне: Glance обновляет виджеты через корутину, а
-     * держать из-за этого поток JS незачем — результат никого не ждёт.
+     * Двумя шагами, и первый обязателен. Снимок лежит в обычном файле, а файл
+     * состоянием Compose не является: пока виджет на экране, сессия Glance жива,
+     * и один updateAll заставит её только перекомпоноваться — теми же данными,
+     * что прочитались при первом показе. Поэтому сначала в состояние каждого
+     * виджета кладётся новая метка времени, и уже она поднимает композицию,
+     * которая перечитывает файл.
+     *
+     * В фоне: JS ждать нечего, результат никому не возвращается.
      */
     Function("write") { snapshot: String ->
       WidgetStore.write(context, snapshot)
+
       CoroutineScope(Dispatchers.Default).launch {
+        val stamp = System.currentTimeMillis()
+        for (id in GlanceAppWidgetManager(context).getGlanceIds(ShiftWidget::class.java)) {
+          updateAppWidgetState(context, id) { it[ShiftWidget.SNAPSHOT_STAMP] = stamp }
+        }
         ShiftWidget().updateAll(context)
       }
     }

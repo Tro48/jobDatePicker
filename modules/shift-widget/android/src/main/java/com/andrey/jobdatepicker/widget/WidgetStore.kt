@@ -17,7 +17,10 @@ object WidgetStore {
     prefs(context).getString(KEY, null)
 
   fun write(context: Context, snapshot: String) {
-    prefs(context).edit().putString(KEY, snapshot).apply()
+    // commit, а не apply: сразу после записи приложение просит систему поднять
+    // провайдер виджета, и тот обязан прочитать уже новый снимок. Запись редкая
+    // — только когда график и правда изменился, — так что ждать диска не жалко.
+    prefs(context).edit().putString(KEY, snapshot).commit()
   }
 
   private fun prefs(context: Context) =
