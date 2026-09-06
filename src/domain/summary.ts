@@ -1,6 +1,6 @@
 import { monthDays } from './date.ts';
 import type { IsoDate } from './date.ts';
-import { overtimeMinutes, resolveRange } from './engine.ts';
+import { countedDay, overtimeMinutes, resolveRange, weightedMinutes } from './engine.ts';
 import type { ScheduleContext } from './engine.ts';
 import type { Period } from './payday.ts';
 import { assertPeriod } from './payday.ts';
@@ -26,6 +26,11 @@ export interface MonthSummary {
    */
   elapsedWorkedDays: number;
   elapsedWorkedMinutes: number;
+  /**
+   * Отработанные минуты с учётом надбавок за смену. При надбавках, равных
+   * единице, — те же workedMinutes. Из них выводится ставка базового часа.
+   */
+  paidMinutes: number;
   /** Сумма отклонений факта от нормы смен, со знаком: плюс — переработка. */
   overtimeMinutes: number;
   /** Сколько дней разошлись с нормой — в любую сторону. */
@@ -44,8 +49,8 @@ export interface MonthSummary {
   byPaymentKind: PaymentKindTotals[];
   payments: PaymentRecord[];
   /**
-   * Ставка за час, выведенная из факта: аванс и зарплата ÷ отработанные часы.
-   * null, если за месяц нет таких выплат или нет отработанных часов.
+   * Ставка базового часа, выведенная из факта: аванс и зарплата ÷ часы с
+   * учётом надбавок. null, если за месяц нет таких выплат или нет часов.
    */
   effectiveHourlyRate: number | null;
   /** Средняя оплата за смену: аванс и зарплата ÷ число рабочих смен. */
@@ -71,13 +76,14 @@ export function buildMonthSummary(
   assertPeriod(period);
   const year = Number(period.slice(0, 4));
   const month = Number(period.slice(5, 7));
-  const days = resolveRange(context, monthDays(year, month));
+  const days = resolveRange(context, monthDays(year, month)).filter(countedDay);
 
   const totals = new Map<string, ShiftTypeTotals>();
   let workedDays = 0;
   let workedMinutes = 0;
   let elapsedWorkedDays = 0;
   let elapsedWorkedMinutes = 0;
+  let paidMinutes = 0;
   let overtime = 0;
   let overtimeDays = 0;
   let restDays = 0;
@@ -99,6 +105,7 @@ export function buildMonthSummary(
     if (shiftType.kind === 'work') {
       workedDays += 1;
       workedMinutes += day.workedMinutes;
+      paidMinutes += weightedMinutes(day);
       // Сегодняшняя смена считается отработанной целиком: приложение не знает
       // ни времени, ни того, ушёл ли человек раньше. Дробить её по часам —
       // выдумывать точность, которой нет.
@@ -144,6 +151,7 @@ export function buildMonthSummary(
     workedMinutes,
     elapsedWorkedDays,
     elapsedWorkedMinutes,
+    paidMinutes,
     overtimeMinutes: overtime,
     overtimeDays,
     restDays,
@@ -156,7 +164,7 @@ export function buildMonthSummary(
     compensationPaid,
     byPaymentKind,
     payments,
-    effectiveHourlyRate: hasWorkMoney && workedMinutes > 0 ? workPaid / (workedMinutes / 60) : null,
+    effectiveHourlyRate: hasWorkMoney && paidMinutes > 0 ? workPaid / (paidMinutes / 60) : null,
     effectiveShiftRate: hasWorkMoney && workedDays > 0 ? workPaid / workedDays : null,
   };
 }
@@ -191,10 +199,18 @@ export function forecastMonth(
   return {
     basedOnPeriod: reference.period,
     hourlyRate,
-    projectedTotal: hourlyRate * (current.workedMinutes / 60),
+    // Часы с надбавками: ставка выведена из них же, иначе месяц с ночными
+    // прогнозировался бы ниже, чем выйдет на самом деле.
+    projectedTotal: hourlyRate * (current.paidMinutes / 60),
     // Отработанные часы месяц уже посчитал сам — второй раз разворачивать его
-    // по дням незачем.
-    earnedSoFar: hourlyRate * (current.elapsedWorkedMinutes / 60),
+    // по дням незачем. Надбавка в прошедшей части учтена пропорционально:
+    // раскладывать её по дням второй раз ради подписи «уже заработано» дорого.
+    earnedSoFar:
+      current.workedMinutes > 0
+        ? hourlyRate *
+          (current.paidMinutes / 60) *
+          (current.elapsedWorkedMinutes / current.workedMinutes)
+        : 0,
   };
 }
 

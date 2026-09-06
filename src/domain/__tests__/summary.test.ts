@@ -19,7 +19,7 @@ const AFTER_ALL = '2026-12-31';
 function contextFor(presetId: string, anchorDate: string): ScheduleContext {
   const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId)!;
   return {
-    schedule: { presetId, pattern: preset.pattern, anchorDate },
+    schedules: [{ presetId, pattern: preset.pattern, anchorDate, startsOn: anchorDate }],
     shiftTypes,
     overrides: new Map(),
   };
@@ -123,7 +123,9 @@ test('ручные правки считаются отдельно и меня�
 });
 
 test('прогноз незакрытого месяца берёт ставку из последнего закрытого', () => {
-  const context = contextFor('2-2-day', '2026-09-01');
+  // Отсчёт в январе: август должен быть настоящим отработанным месяцем, а не
+  // продолжением графика назад — иначе часов в нём нет и ставку взять неоткуда.
+  const context = contextFor('2-2-day', '2026-01-05');
   const august = buildMonthSummary(
     context,
     '2026-08',
@@ -311,15 +313,47 @@ test('отработанное считается по дату включите
 });
 
 test('будущий месяц ещё не отработан, закрытый — отработан целиком', () => {
-  const context = contextFor('2-2-day', '2026-09-01');
+  const context = contextFor('2-2-day', '2026-01-05');
 
   const future = buildMonthSummary(context, '2026-10', [], '2026-09-14');
   assert.equal(future.elapsedWorkedDays, 0);
   assert.equal(future.elapsedWorkedMinutes, 0);
 
   const closed = buildMonthSummary(context, '2026-08', [], '2026-09-14');
+  assert.ok(closed.workedDays > 0);
   assert.equal(closed.elapsedWorkedDays, closed.workedDays);
   assert.equal(closed.elapsedWorkedMinutes, closed.workedMinutes);
+});
+
+test('до первой смены часов нет: график разворачивается назад, а человек — нет', () => {
+  const context = contextFor('2-2-day', '2026-09-15');
+
+  const before = buildMonthSummary(context, '2026-08', [], AFTER_ALL);
+  const started = buildMonthSummary(context, '2026-09', [], AFTER_ALL);
+  const whole = buildMonthSummary(contextFor('2-2-day', '2026-08-01'), '2026-09', [], AFTER_ALL);
+
+  // Месяц до устройства на работу пустой целиком: ни смен, ни выходных.
+  assert.equal(before.workedDays, 0);
+  assert.equal(before.workedMinutes, 0);
+  assert.equal(before.restDays, 0);
+  assert.equal(before.byShiftType.length, 0);
+
+  // Месяц первой смены считается с неё, а не с первого числа.
+  assert.equal(started.workedDays + started.restDays, 16);
+  assert.ok(started.workedDays < whole.workedDays);
+});
+
+test('правка до первой смены остаётся: это факт, а не шаблон назад', () => {
+  const context = contextFor('2-2-day', '2026-09-15');
+  // Вышел за коллегу накануне выхода на новую работу — день настоящий.
+  context.overrides.set('2026-09-14', { date: '2026-09-14', shiftTypeId: 'day12' });
+
+  const summary = buildMonthSummary(context, '2026-09', [], AFTER_ALL);
+  const plain = buildMonthSummary(contextFor('2-2-day', '2026-09-15'), '2026-09', [], AFTER_ALL);
+
+  assert.equal(summary.workedDays, plain.workedDays + 1);
+  assert.equal(summary.workedMinutes, plain.workedMinutes + 12 * 60);
+  assert.equal(summary.adjustedDays, 1);
 });
 
 test('переработка и недоработка за месяц складываются со знаком', () => {
@@ -435,4 +469,40 @@ test('итог без единой работы — нули, а не паден
   assert.equal(empty.tracks, 0);
   assert.equal(empty.workedMinutes, 0);
   assert.equal(empty.totalPaid, 0);
+});
+
+test('месяц перевода считается по обоим графикам, а прошлые — по прежнему', () => {
+  const weekly = SCHEDULE_PRESETS.find((item) => item.id === '5-2')!;
+  const cycle = SCHEDULE_PRESETS.find((item) => item.id === '2-2-day')!;
+  const context: ScheduleContext = {
+    schedules: [
+      {
+        presetId: '5-2',
+        pattern: weekly.pattern,
+        anchorDate: '2026-01-05',
+        startsOn: '2026-01-05',
+      },
+      {
+        presetId: '2-2-day',
+        pattern: cycle.pattern,
+        anchorDate: '2026-09-16',
+        startsOn: '2026-09-16',
+      },
+    ],
+    shiftTypes,
+    overrides: new Map(),
+  };
+
+  const august = buildMonthSummary(context, '2026-08', [], AFTER_ALL);
+  const september = buildMonthSummary(context, '2026-09', [], AFTER_ALL);
+
+  // Август целиком на пятидневке: 21 рабочий день, по 8 часов.
+  assert.equal(august.workedDays, 21);
+  assert.equal(august.workedMinutes, 21 * 8 * 60);
+
+  // Сентябрь пополам: 11 рабочих дней пятидневки до 16-го и 8 смен по 12 часов после.
+  const byType = new Map(september.byShiftType.map((item) => [item.shiftTypeId, item.days]));
+  assert.equal(byType.get('work8'), 11);
+  assert.equal(byType.get('day12'), 8);
+  assert.equal(september.workedMinutes, 11 * 8 * 60 + 8 * 12 * 60);
 });

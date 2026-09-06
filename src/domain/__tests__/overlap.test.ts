@@ -11,7 +11,7 @@ function contextFor(presetId: string, anchorDate: IsoDate): ScheduleContext {
   const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId);
   if (!preset) throw new ReferenceError(`Нет графика "${presetId}"`);
   return {
-    schedule: { presetId, pattern: preset.pattern, anchorDate },
+    schedules: [{ presetId, pattern: preset.pattern, anchorDate, startsOn: anchorDate }],
     shiftTypes: indexShiftTypes(DEFAULT_SHIFT_TYPES),
     overrides: new Map(),
   };
