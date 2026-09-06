@@ -116,3 +116,23 @@ test('битый список выпусков сборкой не считае�
   await waitFor(() => expect(useAppStore.getState().buildCheck.checkedAt).toBeGreaterThan(0));
   expect(result.current.build).toBeNull();
 });
+
+test('поставленная сборка перестаёт предлагаться, не дожидаясь похода в сеть', async () => {
+  // Так выглядит телефон сразу после установки APK: сборка найдена в прошлый
+  // раз, лежит в хранилище, а отпечаток у неё теперь тот же, что у
+  // установленной. В сеть при этом идти рано — срок проверки не подошёл.
+  useAppStore.setState({
+    buildCheck: {
+      ...INITIAL_STATE.buildCheck,
+      build: { ...manifest, runtimeVersion: 'test-runtime' },
+      checkedAt: Date.now(),
+    },
+  });
+  const fetchMock = respondWith(manifest);
+
+  const { result } = await renderHook(() => useBuildSignal());
+
+  await waitFor(() => expect(result.current.build).toBeNull());
+  expect(result.current.notice).toBe(false);
+  expect(fetchMock).not.toHaveBeenCalled();
+});

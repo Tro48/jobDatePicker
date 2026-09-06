@@ -386,6 +386,32 @@ export function scheduleShiftTypeIds(schedules: SchedulePeriod[]): string[] {
   return [...new Set(schedules.flatMap((period) => patternShiftTypeIds(period.pattern)))];
 }
 
+/**
+ * Смены, по которым ещё предстоит работать: действующий график плюс те, что
+ * начнутся позже.
+ *
+ * Отдельно от scheduleShiftTypeIds, потому что будильник смотрит только вперёд.
+ * Вся история ему даёт смены уже оставленных работ: человек, переведённый с
+ * пятидневки на 2/2, получал четыре поля времени подъёма вместо одного — и три
+ * из них для смен, которых в его календаре больше не будет никогда.
+ *
+ * Будущие периоды при этом нужны: если переход на другой график уже назначен,
+ * время подъёма для его смен спросить надо заранее, иначе в день перехода
+ * будильник замолчит.
+ */
+export function upcomingShiftTypeIds(schedules: SchedulePeriod[], from: IsoDate): string[] {
+  const current = scheduleOn(schedules, from);
+  const ahead = schedules.filter((period) => period.startsOn > from);
+
+  return [
+    ...new Set(
+      (current ? [current, ...ahead] : ahead).flatMap((period) =>
+        patternShiftTypeIds(period.pattern),
+      ),
+    ),
+  ];
+}
+
 /** Непрерывный отрезок одинаковых ручных правок вокруг даты. */
 export interface OverrideRun {
   start: IsoDate;
