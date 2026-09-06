@@ -9,10 +9,18 @@ export interface IconButtonProps {
   /** Доступное имя обязательно: у иконки нет текста, который мог бы её заменить. */
   label: string;
   onPress: () => void;
+  /** Что произойдёт по нажатию, если одного имени мало. */
+  accessibilityHint?: string;
   disabled?: boolean;
 }
 
-export function IconButton({ name, label, onPress, disabled = false }: IconButtonProps) {
+export function IconButton({
+  name,
+  label,
+  onPress,
+  accessibilityHint,
+  disabled = false,
+}: IconButtonProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
 
@@ -20,6 +28,7 @@ export function IconButton({ name, label, onPress, disabled = false }: IconButto
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

@@ -41,6 +41,13 @@ export function AlarmPermissionNotice() {
         accessibilityHint="Вкладка «Будильник», там кнопки выдачи разрешений"
         onPress={() => router.navigate('/alarm')}
       />
+      {/* Разрешения — только половина причин молчания: вторая половина это
+          оболочка телефона, и починить её из настроек Android нельзя. */}
+      <Button
+        title="Почему будильник не звонит"
+        accessibilityHint="Автозапуск и экономия батареи в оболочках Xiaomi, Huawei, Oppo, Vivo, Samsung"
+        onPress={() => router.navigate('/alarm/help')}
+      />
     </Card>
   );
 }
