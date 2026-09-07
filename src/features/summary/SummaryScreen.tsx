@@ -5,7 +5,6 @@ import { todayIso } from '@/domain/date.ts';
 import { formatMoney, formatTotalHours } from '@/domain/format.ts';
 import { buildMonthSummary, combineTotals } from '@/domain/summary.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
-import type { PaymentRule } from '@/domain/types.ts';
 import { MonthSwitcher } from '@/features/calendar/MonthSwitcher.tsx';
 import { useMonthWindow } from '@/features/calendar/useMonthWindow.ts';
 import { TrackTabs } from '@/features/calendar/TrackTabs.tsx';
@@ -16,9 +15,6 @@ import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, HorizontalPager } from '@/ui';
 import { useTheme } from '@/theme';
 import { MonthSummaryPage } from './MonthSummaryPage.tsx';
-
-/** Пустой список правил выплат: новый массив в пропсах ломал бы memo страницы. */
-const EMPTY_RULES: PaymentRule[] = [];
 
 /** Ключ страницы. Вне компонента — чтобы пейджер получал одну и ту же функцию. */
 const keyOfMonth = (item: MonthRef): string => item.period;
@@ -50,15 +46,14 @@ export function SummaryScreen() {
   );
 
   /**
-   * Данные страницы одним значением: график, его выплаты и его числа аванса и
-   * зарплаты. Вместе, а не по отдельности, потому что показывать часы одной
-   * работы рядом с деньгами другой нельзя ни одного кадра.
+   * Данные страницы одним значением: график, его выплаты и его имя. Вместе, а
+   * не по отдельности, потому что показывать часы одной работы рядом с
+   * деньгами другой нельзя ни одного кадра.
    */
   const active = useMemo(
     () => ({
       context: activeContext,
       payments: activePayments,
-      payrollRules: track?.payrollRules ?? EMPTY_RULES,
       name: track?.name ?? '',
     }),
     [activeContext, activePayments, track],
@@ -133,7 +128,6 @@ export function SummaryScreen() {
           context={shown.context as ScheduleContext}
           payments={shown.payments}
           payroll={payroll}
-          payrollRules={shown.payrollRules}
           today={today}
           width={width}
           onOpenYear={() =>

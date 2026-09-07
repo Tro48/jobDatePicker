@@ -2,10 +2,12 @@ import { memo, useMemo } from 'react';
 import { ScrollView, View } from 'react-native';
 import { formatMonthName, formatMoney, pluralize } from '@/domain/format.ts';
 import { yearlyPaymentTotals } from '@/domain/summary.ts';
+import { buildYearReportHtml } from '@/domain/yearReport.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type { PaymentRecord } from '@/domain/types.ts';
 import { AppText, Card, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
+import { PdfExportButton } from './PdfExportButton.tsx';
 
 const MONTH_FORMS = ['месяц', 'месяца', 'месяцев'] as const;
 
@@ -16,6 +18,8 @@ export interface YearMoneyPageProps {
   today: IsoDate;
   /** Ширина страницы пейджера: годы листаются вбок. */
   width: number;
+  /** Имя работы: попадает в PDF, когда работ больше одной. */
+  trackName?: string;
 }
 
 /**
@@ -24,7 +28,14 @@ export interface YearMoneyPageProps {
  * Считается по выплатам, а не по графику: месяц выплаты — тот, ЗА который она
  * пришла. Поэтому страница работает и без выбранного графика смен.
  */
-function YearMoneyPageView({ year, payments, currency, today, width }: YearMoneyPageProps) {
+function YearMoneyPageView({
+  year,
+  payments,
+  currency,
+  today,
+  width,
+  trackName,
+}: YearMoneyPageProps) {
   const theme = useTheme();
   const scroll = useSheetScroll();
 
@@ -57,7 +68,18 @@ function YearMoneyPageView({ year, payments, currency, today, width }: YearMoney
         )}
       </Card>
 
-      <Card title="По месяцам">
+      {/* Год в PDF — значком у заголовка, как и месяц в сводке: печатают их
+          одинаково часто и одинаково зачем. */}
+      <Card
+        title="По месяцам"
+        action={
+          <PdfExportButton
+            label={`Сохранить PDF за ${year} год`}
+            hint="Соберёт PDF с суммами по всем месяцам года и откроет системное «Поделиться»"
+            buildHtml={() => buildYearReportHtml({ year, months, currency, trackName })}
+          />
+        }
+      >
         <View accessibilityRole="list" style={{ gap: theme.spacing.md }}>
           {months.map((item) => {
             const isCurrent = item.period === currentPeriod;

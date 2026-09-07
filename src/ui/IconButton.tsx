@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { AppText } from './AppText.tsx';
 import { useTheme } from '@/theme';
 
-export interface IconButtonProps {
-  name: ComponentProps<typeof Ionicons>['name'];
+interface IconButtonBaseProps {
   /** Доступное имя обязательно: у иконки нет текста, который мог бы её заменить. */
   label: string;
   onPress: () => void;
@@ -32,11 +31,24 @@ export interface IconButtonProps {
   badge?: number;
 }
 
+/**
+ * Значок задаётся именем из Ionicons или готовым узлом.
+ *
+ * Второе — для того, чего в Ionicons нет: значка PDF, например. Цвет такой
+ * значок красит сам, поэтому вместе с ним обычно передаётся и `color`.
+ */
+export type IconButtonProps = IconButtonBaseProps &
+  (
+    | { name: ComponentProps<typeof Ionicons>['name']; icon?: never }
+    | { icon: ReactNode; name?: never }
+  );
+
 /** Кружок счётчика: два знака помещаются, дальше растёт вширь. */
 const BADGE_SIZE = 16;
 
 export function IconButton({
   name,
+  icon,
   label,
   onPress,
   accessibilityHint,
@@ -68,7 +80,7 @@ export function IconButton({
         opacity: disabled ? 0.4 : 1,
       }}
     >
-      <Ionicons name={name} size={24} color={color ?? theme.colors.text} />
+      {icon ?? <Ionicons name={name} size={24} color={color ?? theme.colors.text} />}
 
       {/* Счётчик — акцентом, а не цветом значка: на заливке смены он иначе
           сливается с самим значком, а акцент проверен на контраст и с

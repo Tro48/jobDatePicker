@@ -29,8 +29,13 @@ export function YearMoneyScreen() {
   // складывать деньги двух работодателей в одну годовую таблицу нельзя. Работа
   // берётся та же, что в сводке, — чужой график денег не считает.
   const track = useSummaryTrack();
+  const tracks = useAppStore((state) => state.tracks);
   const allPayments = useAppStore((state) => state.payments);
   const payroll = useAppStore((state) => state.payroll);
+
+  // Имя работы подписывается в PDF только когда своих работ несколько: с одной
+  // подписывать нечего, отчёт и так про неё.
+  const trackName = tracks.filter((item) => item.own).length > 1 ? track?.name : undefined;
 
   const payments = useMemo(
     () => allPayments.filter((payment) => payment.trackId === track?.id),
@@ -57,13 +62,14 @@ export function YearMoneyScreen() {
         currency={payroll.currency}
         today={today}
         width={width}
+        trackName={trackName}
       />
     ),
-    [payments, payroll.currency, today, width],
+    [payments, payroll.currency, today, width, trackName],
   );
 
   return (
-    <Sheet title="Деньги по месяцам" onClose={() => router.back()}>
+    <Sheet title="Сводка за год" onClose={() => router.back()}>
       <View
         style={{
           flexDirection: 'row',

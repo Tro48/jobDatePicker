@@ -12,10 +12,15 @@ export interface CardProps {
    * иначе пришлось бы объяснять абзацем поверх содержимого.
    */
   help?: string;
+  /**
+   * Действие всей секции — кнопка-значок справа от заголовка. Для того, что
+   * относится к карточке целиком и не должно занимать строку внутри неё.
+   */
+  action?: ReactNode;
   children: ReactNode;
 }
 
-export function Card({ title, help, children }: CardProps) {
+export function Card({ title, help, action, children }: CardProps) {
   const theme = useTheme();
 
   return (
@@ -35,6 +40,7 @@ export function Card({ title, help, children }: CardProps) {
           <AppText variant="heading" accessibilityRole="header" style={{ flex: 1 }}>
             {title}
           </AppText>
+          {action}
           {help ? <HelpButton title={title} text={help} /> : null}
         </View>
       ) : null}
