@@ -3,43 +3,36 @@ import { ScrollView, View } from 'react-native';
 import {
   DAY_FORMS,
   SHIFT_FORMS,
-  formatDayShort,
   formatHours,
   formatMonthTitle,
   formatMoney,
-  formatOvertimeTotal,
   formatTotalHours,
   plural,
   pluralize,
 } from '@/domain/format.ts';
 import { describeScheduleStart } from '@/domain/describe.ts';
-import { shiftPeriod, upcomingPayments } from '@/domain/payday.ts';
+import { shiftPeriod } from '@/domain/payday.ts';
 import type { Period } from '@/domain/payday.ts';
 import { PAYMENT_KIND_LABELS } from '@/domain/payments.ts';
+import { buildMonthReportHtml } from '@/domain/monthReport.ts';
 import { buildMonthSummary, forecastMonth } from '@/domain/summary.ts';
 import type { MonthSummary } from '@/domain/summary.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import type { IsoDate } from '@/domain/date.ts';
-import type { PaymentRecord, PaymentRule, PayrollSettings } from '@/domain/types.ts';
+import type { PaymentRecord, PayrollSettings } from '@/domain/types.ts';
 import { AppText, Button, Card, Stat } from '@/ui';
 import { useTheme } from '@/theme';
 import { SupportSlot } from '@/features/support/SupportSlot.tsx';
-import { MonthExportCard } from './MonthExportCard.tsx';
+import { PdfExportButton } from './PdfExportButton.tsx';
 
 /** Сколько закрытых месяцев просматривать в поисках ставки для прогноза. */
 const HISTORY_DEPTH = 12;
-
-/** Стрелка «стало» и прочерк «данных нет» — одинаковые во всём экране. */
-const ARROW = '→';
-const DASH = '—';
 
 export interface MonthSummaryPageProps {
   period: Period;
   context: ScheduleContext;
   payments: PaymentRecord[];
   payroll: PayrollSettings;
-  /** Числа аванса и зарплаты этой работы: у каждой свои. */
-  payrollRules: PaymentRule[];
   today: IsoDate;
   /** Ширина страницы пейджера: месяцы листаются вбок. */
   width: number;
@@ -59,7 +52,6 @@ function MonthSummaryPageView({
   context,
   payments,
   payroll,
-  payrollRules,
   today,
   width,
   onOpenYear,
@@ -77,31 +69,23 @@ function MonthSummaryPageView({
   const wantsForecast = payroll.forecastFromLastClosedMonth && summary.payments.length === 0;
 
   /**
-   * Закрытые месяцы, от ближайшего к дальнему.
-   *
-   * Первый нужен всегда — с ним сравнивается текущий. Вся глубина нужна одному
-   * прогнозу, поэтому без него считается ровно один месяц: каждая сводка
-   * разворачивает месяц целиком, а страниц в пейджере три.
+   * Закрытые месяцы, от ближайшего к дальнему. Нужны одному прогнозу, поэтому
+   * без него не считаются вовсе: каждый месяц разворачивается по дням целиком,
+   * а страниц в пейджере три.
    */
   const history = useMemo<MonthSummary[]>(
     () =>
-      Array.from({ length: wantsForecast ? HISTORY_DEPTH : 1 }, (_, index) =>
-        buildMonthSummary(context, shiftPeriod(period, -(index + 1)), payments, today),
-      ),
+      wantsForecast
+        ? Array.from({ length: HISTORY_DEPTH }, (_, index) =>
+            buildMonthSummary(context, shiftPeriod(period, -(index + 1)), payments, today),
+          )
+        : [],
     [context, period, payments, today, wantsForecast],
   );
-
-  // Предыдущий месяц — первый в истории, второй раз его считать незачем.
-  const previous = history[0];
 
   const forecast = useMemo(
     () => (wantsForecast ? forecastMonth(summary, history) : null),
     [summary, history, wantsForecast],
-  );
-
-  const upcoming = useMemo(
-    () => upcomingPayments(payrollRules, today, 1)[0],
-    [payrollRules, today],
   );
 
   const year = Number(period.slice(0, 4));
@@ -113,18 +97,14 @@ function MonthSummaryPageView({
   // «запланировано» — одно и то же число.
   const monthClosed = summary.elapsedWorkedDays === summary.workedDays;
   // Плюсы и минусы за месяц складываются: два дня «+2» и «−2» дают ноль, и это
-  // не «нет отклонений», а «сошлось». Формулировка это различает.
-  const overtimeSpoken =
+  // не «нет отклонений», а «сошлось». Формулировка это различает. Одна строка
+  // на глаз и на слух: сокращать её для скринридера здесь нечего.
+  const overtimeNote =
     summary.overtimeMinutes === 0
       ? `Переработка и недоработка сошлись в ноль на ${pluralize(summary.overtimeDays, DAY_FORMS)}`
-      : `${summary.overtimeMinutes > 0 ? 'Переработка' : 'Недоработка'} за месяц: ${formatTotalHours(Math.abs(summary.overtimeMinutes))} на ${pluralize(summary.overtimeDays, DAY_FORMS)}`;
+      : `${summary.overtimeMinutes > 0 ? 'Переработка' : 'Недоработка'}: ${formatTotalHours(Math.abs(summary.overtimeMinutes))} на ${pluralize(summary.overtimeDays, DAY_FORMS)}`;
   const currency = payroll.currency;
-  const currentTitle = formatMonthTitle(year, month);
-  const previousPeriod = shiftPeriod(period, -1);
-  const previousTitle = formatMonthTitle(
-    Number(previousPeriod.slice(0, 4)),
-    Number(previousPeriod.slice(5, 7)),
-  );
+  const title = formatMonthTitle(year, month);
 
   return (
     <ScrollView
@@ -219,20 +199,28 @@ function MonthSummaryPageView({
             </View>
           ))}
           {summary.overtimeDays > 0 ? (
-            <AppText variant="caption" tone="muted" accessibilityLabel={overtimeSpoken}>
-              Сверх нормы смен: {formatOvertimeTotal(summary.overtimeMinutes)} на{' '}
-              {pluralize(summary.overtimeDays, DAY_FORMS)}
-            </AppText>
-          ) : null}
-          {summary.adjustedDays > 0 ? (
             <AppText variant="caption" tone="muted">
-              Изменено вручную: {pluralize(summary.adjustedDays, DAY_FORMS)}
+              {overtimeNote}
             </AppText>
           ) : null}
         </Card>
       ) : null}
 
-      <Card title="Деньги за месяц">
+      {/* Выгрузка стоит значком в заголовке денег: этот PDF и просят ради
+          сверки табеля, а отдельная карточка под одну кнопку занимала экран
+          больше, чем весила. */}
+      <Card
+        title="Деньги за месяц"
+        action={
+          <PdfExportButton
+            label={`Сохранить PDF за ${title.toLowerCase()}`}
+            hint="Соберёт PDF с сеткой месяца, часами по дням, отклонением от графика и суммами и откроет системное «Поделиться»"
+            buildHtml={() =>
+              buildMonthReportHtml({ period, context, summary, trackName, currency })
+            }
+          />
+        }
+      >
         {summary.payments.length > 0 ? (
           <>
             <MoneyRow label="Итого" value={formatMoney(summary.totalPaid, currency)} emphasis />
@@ -276,65 +264,11 @@ function MonthSummaryPageView({
           </AppText>
         )}
 
-        {upcoming ? (
-          <AppText variant="caption" tone="muted">
-            Ближайшая: {PAYMENT_KIND_LABELS[upcoming.rule.kind].toLowerCase()} за{' '}
-            {formatMonthTitle(
-              Number(upcoming.period.slice(0, 4)),
-              Number(upcoming.period.slice(5, 7)),
-            ).toLowerCase()}
-            , {formatDayShort(upcoming.date)}
-            {upcoming.daysAway === 0
-              ? ' — сегодня'
-              : `, через ${pluralize(upcoming.daysAway, DAY_FORMS)}`}
-          </AppText>
-        ) : null}
-
         <Button
-          title="Деньги по месяцам"
+          title="Сводка за год"
           onPress={onOpenYear}
           accessibilityHint="Открывает суммы за все месяцы года"
         />
-      </Card>
-
-      {/* Выгрузка стоит рядом с выходом в год: и то и другое — «унести этот
-          месяц куда-то ещё». В шапку она не влезла: там уже две стрелки
-          листания, и третья кнопка на узком экране режет заголовок. */}
-      <MonthExportCard
-        period={period}
-        context={context}
-        summary={summary}
-        currency={currency}
-        trackName={trackName}
-      />
-
-      <Card title={`Сравнение с ${previousTitle.toLowerCase()}`}>
-        <ComparisonRow
-          label="Часы"
-          previous={formatTotalHours(previous.workedMinutes)}
-          current={formatTotalHours(summary.workedMinutes)}
-          spoken={`Часы: в ${previousTitle.toLowerCase()} ${formatTotalHours(previous.workedMinutes)}, в ${currentTitle.toLowerCase()} ${formatTotalHours(summary.workedMinutes)}`}
-        />
-        <ComparisonRow
-          label="Смены"
-          previous={pluralize(previous.workedDays, SHIFT_FORMS)}
-          current={pluralize(summary.workedDays, SHIFT_FORMS)}
-          spoken={`Смены: в ${previousTitle.toLowerCase()} ${pluralize(previous.workedDays, SHIFT_FORMS)}, в ${currentTitle.toLowerCase()} ${pluralize(summary.workedDays, SHIFT_FORMS)}`}
-        />
-        {/* Показываются суммы обоих месяцев, а не разница: месяц с отпуском
-            давал минус во всю зарплату прошлого — число верное, толку ноль.
-            Прочерк вместо суммы честнее нуля: выплат просто ещё нет. */}
-        <ComparisonRow
-          label="Деньги"
-          previous={previous.payments.length > 0 ? formatMoney(previous.totalPaid, currency) : DASH}
-          current={summary.payments.length > 0 ? formatMoney(summary.totalPaid, currency) : DASH}
-          spoken={`Деньги: в ${previousTitle.toLowerCase()} ${previous.payments.length > 0 ? formatMoney(previous.totalPaid, currency) : 'выплат нет'}, в ${currentTitle.toLowerCase()} ${summary.payments.length > 0 ? formatMoney(summary.totalPaid, currency) : 'выплат нет'}`}
-        />
-        {summary.payments.length === 0 || previous.payments.length === 0 ? (
-          <AppText variant="caption" tone="muted">
-            Прочерк — за месяц ещё не внесено ни одной выплаты.
-          </AppText>
-        ) : null}
       </Card>
 
       {forecast ? (
@@ -372,49 +306,6 @@ function MonthSummaryPageView({
  * незачем.
  */
 export const MonthSummaryPage = memo(MonthSummaryPageView);
-
-function ComparisonRow({
-  label,
-  previous,
-  current,
-  spoken,
-}: {
-  label: string;
-  previous: string;
-  current: string;
-  spoken: string;
-}) {
-  return (
-    <View
-      accessibilityRole="text"
-      accessibilityLabel={spoken}
-      style={{
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'baseline',
-        flexWrap: 'wrap',
-        gap: 8,
-      }}
-    >
-      <AppText variant="body" importantForAccessibility="no">
-        {label}
-      </AppText>
-      {/* Значения в своей строке: на узком экране она переносится целиком,
-          а не наезжает на подпись слева. */}
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexShrink: 1 }}>
-        <AppText variant="body" tone="muted" importantForAccessibility="no">
-          {previous}
-        </AppText>
-        <AppText variant="body" tone="muted" importantForAccessibility="no">
-          {ARROW}
-        </AppText>
-        <AppText variant="body" importantForAccessibility="no">
-          {current}
-        </AppText>
-      </View>
-    </View>
-  );
-}
 
 /**
  * Строка денежного блока. Итог выделен начертанием, а не только размером:
