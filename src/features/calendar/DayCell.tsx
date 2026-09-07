@@ -1,4 +1,5 @@
 import { memo, useState } from 'react';
+import type { ComponentProps } from 'react';
 import { Pressable, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { describeBaseDay, describeDay, isWeekend } from '@/domain/describe.ts';
@@ -13,13 +14,39 @@ import { CELL_FONT_SCALE_CAP } from './gridMetrics.ts';
  * Значок праздника. Тот же и в клетке, и в легенде: объяснять один значок
  * другим бессмысленно.
  */
-export const HOLIDAY_ICON = 'sparkles';
+export const HOLIDAY_ICON: IoniconName = 'sparkles';
+
+/** Имя значка из набора Ionicons — того же, которым рисует IconButton. */
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 /**
- * Значок мельче числа дня намеренно: он живёт в углу клетки шириной сорок с
- * небольшим пунктов и не должен наезжать на само число.
+ * Размер значка в углу клетки — один на все три: праздник, заметку и выплату.
+ *
+ * Мельче числа дня намеренно: клетка шириной сорок с небольшим пунктов, и
+ * наезжать на само число значку нельзя. Ниже тринадцати опускаться тоже
+ * нельзя — на одиннадцати рисунок значка сливается в пятно, и отличить заметку
+ * от выплаты уже не выходит.
  */
-export const HOLIDAY_ICON_SIZE = 11;
+export const MARKER_ICON_SIZE = 13;
+
+/** Отступ значка от края клетки. Меньше — значок липнет к рамке. */
+const ICON_INSET = 1;
+
+/**
+ * Значки в нижних углах клетки: заметка слева, выплата справа.
+ *
+ * Разные значки, а не одна общая точка: заметка и деньги — разные вещи, и
+ * различать их по одному лишь положению нельзя. Заливка тоже отпадает — цветом
+ * клетка уже говорит про смену. Названия и суммы читает озвучка клетки.
+ */
+export const NOTE_ICON: IoniconName = 'document-text';
+export const PAYMENT_ICON: IoniconName = 'cash';
+
+/**
+ * Насколько полоска общего выходного отступает от краёв, когда в нижних углах
+ * стоят значки: иначе она заезжает прямо под них.
+ */
+const STRIPE_INSET_WITH_MARKERS = 18;
 
 export interface DayCellProps {
   day: ResolvedDay;
@@ -55,6 +82,14 @@ export interface DayCellProps {
    * узнать ни скринридером, ни при дальтонизме.
    */
   sharedWith?: string;
+  /**
+   * Заметки этого дня одной строкой. Заданы — в углу клетки стоит значок, а
+   * озвучка читает сам текст: заметки живут отдельно от графика, и движок про
+   * них не знает.
+   */
+  note?: string;
+  /** В этот день записана выплата: в другом углу клетки свой значок. */
+  hasPayment?: boolean;
   isSelected: boolean;
   onPress: (date: IsoDate) => void;
 }
@@ -77,6 +112,8 @@ function DayCellView({
   highlighting = false,
   dimmed = false,
   sharedWith,
+  note,
+  hasPayment = false,
   isSelected,
   onPress,
 }: DayCellProps) {
@@ -122,7 +159,6 @@ function DayCellView({
         : shiftColors;
 
   const dayNumber = Number(day.date.slice(8, 10));
-  const outlined = focused || isSelected || (isToday && !plain);
 
   /**
    * Рамка клетки. Фокус и выбор перекрывают всё, сегодняшний день обводится
@@ -153,12 +189,25 @@ function DayCellView({
       accessibilityRole="button"
       accessibilityLabel={
         !inMonth
-          ? `${describeDay(day, { isWorked })}, соседний месяц`
+          ? `${describeDay(day, { isWorked, note, hasPayment })}, соседний месяц`
           : counted
-            ? describeDay(day, { isToday, isShared: highlighted, isWorked, sharedWith })
+            ? describeDay(day, {
+                isToday,
+                isShared: highlighted,
+                isWorked,
+                sharedWith,
+                note,
+                hasPayment,
+              })
             : // Смены здесь нет вовсе: озвучивается день недели, а не заглушка
               // из справочника. Заливка сама по себе этого не скажет.
-              describeBaseDay(day.date, { isToday, holiday: day.holiday })
+              [
+                describeBaseDay(day.date, { isToday, holiday: day.holiday }),
+                hasPayment ? 'есть выплата' : null,
+                note,
+              ]
+                .filter(Boolean)
+                .join(', ')
       }
       accessibilityState={{ selected: isSelected }}
       onPress={() => onPress(day.date)}
@@ -171,7 +220,12 @@ function DayCellView({
         backgroundColor: colors.surface,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: outlined ? theme.focusRingWidth : 1,
+        // Толщина рамки одна и та же всегда, меняется только цвет. Прежде она
+        // росла при выборе и на фокусе, а вместе с ней ехало внутрь всё, что
+        // стоит в клетке по углам: абсолютные координаты значков считаются от
+        // внутреннего края рамки, и заметка с выплатой дёргались на каждое
+        // нажатие по дню.
+        borderWidth: theme.focusRingWidth,
         borderColor,
       }}
     >
@@ -211,8 +265,8 @@ function DayCellView({
           importantForAccessibility="no"
           style={{
             position: 'absolute',
-            left: 6,
-            right: 6,
+            left: note ? STRIPE_INSET_WITH_MARKERS : 6,
+            right: hasPayment ? STRIPE_INSET_WITH_MARKERS : 6,
             bottom: 3,
             height: 2,
             borderRadius: 1,
@@ -229,10 +283,33 @@ function DayCellView({
       {day.holiday && !plain ? (
         <Ionicons
           name={HOLIDAY_ICON}
-          size={HOLIDAY_ICON_SIZE}
+          size={MARKER_ICON_SIZE}
           color={colors.on}
           importantForAccessibility="no"
-          style={{ position: 'absolute', top: 2, left: 2 }}
+          style={{ position: 'absolute', top: ICON_INSET, left: ICON_INSET }}
+        />
+      ) : null}
+
+      {/* Заметка и выплата — значки в нижних углах: их видно, не открывая
+          день, и по ним понятно, куда нажимать. Значок берёт цвет подписи
+          клетки — ту же проверенную на контраст пару, что и буква-маркер. */}
+      {note ? (
+        <Ionicons
+          name={NOTE_ICON}
+          size={MARKER_ICON_SIZE}
+          color={colors.on}
+          importantForAccessibility="no"
+          style={{ position: 'absolute', bottom: ICON_INSET, left: ICON_INSET }}
+        />
+      ) : null}
+
+      {hasPayment ? (
+        <Ionicons
+          name={PAYMENT_ICON}
+          size={MARKER_ICON_SIZE}
+          color={colors.on}
+          importantForAccessibility="no"
+          style={{ position: 'absolute', bottom: ICON_INSET, right: ICON_INSET }}
         />
       ) : null}
 
@@ -276,7 +353,6 @@ function sameDay(a: ResolvedDay, b: ResolvedDay): boolean {
     a.source === b.source &&
     a.workedMinutes === b.workedMinutes &&
     a.plannedMinutes === b.plannedMinutes &&
-    a.note === b.note &&
     a.holiday === b.holiday
   );
 }
@@ -298,6 +374,8 @@ export const DayCell = memo(
     before.highlighting === after.highlighting &&
     before.dimmed === after.dimmed &&
     before.sharedWith === after.sharedWith &&
+    before.note === after.note &&
+    before.hasPayment === after.hasPayment &&
     before.isSelected === after.isSelected &&
     before.onPress === after.onPress,
 );

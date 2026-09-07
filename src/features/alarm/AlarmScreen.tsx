@@ -41,17 +41,27 @@ export function AlarmScreen() {
     void requestNotifications().then(refreshPermissions);
   }, [refreshPermissions]);
 
-  /** Ближайшее срабатывание каждого будильника — то, что показывает карточка. */
+  /**
+   * Ближайшее срабатывание каждого будильника — то, что показывает карточка.
+   *
+   * Напоминания заметок сюда не попадают: они живут вместе со своей заметкой, и
+   * на этом экране их не поправить и не выключить.
+   */
+  const alarmOccurrences = useMemo(
+    () => occurrences.filter((occurrence) => occurrence.kind === 'alarm'),
+    [occurrences],
+  );
+
   const nextByAlarm = useMemo(() => {
     const map = new Map<string, (typeof occurrences)[number]>();
-    for (const occurrence of occurrences) {
+    for (const occurrence of alarmOccurrences) {
       if (!map.has(occurrence.alarmId)) map.set(occurrence.alarmId, occurrence);
     }
     return map;
-  }, [occurrences]);
+  }, [alarmOccurrences]);
 
   // Под заголовком — время до ближайшего звонка, а не описание возможностей.
-  const soonest = occurrences[0];
+  const soonest = alarmOccurrences[0];
   const subtitle = soonest
     ? `Звонок через ${formatTimeUntil(Math.round((soonest.triggerAtMillis - now) / 60_000))}`
     : undefined;

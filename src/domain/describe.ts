@@ -77,6 +77,10 @@ export function describeDay(
     isShared?: boolean;
     /** С кем совпал выходной: «Аня», «друзья». */
     sharedWith?: string;
+    /** Заметки этого дня одной строкой. Живут отдельно от графика. */
+    note?: string;
+    /** В этот день записана выплата. В клетке она помечена значком. */
+    hasPayment?: boolean;
   } = {},
 ): string {
   const parts: string[] = [formatDayShort(day.date), formatWeekdayName(day.date)];
@@ -126,7 +130,11 @@ export function describeDay(
   }
 
   if (day.source === 'override') parts.push('изменено вручную');
-  if (day.note) parts.push(day.note);
+  // Значки заметки и выплаты в углах клетки скринридеру не видны, поэтому обе
+  // вещи называются словами. Заметка — своим текстом: пересказывать её
+  // «есть заметка» значит заставить открыть день, чтобы узнать, о чём она.
+  if (options.hasPayment) parts.push('есть выплата');
+  if (options.note) parts.push(options.note);
 
   return parts.join(', ');
 }

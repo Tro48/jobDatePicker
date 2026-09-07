@@ -70,7 +70,11 @@ test('обновление со схемы 8: график и правки пе�
   expect(activeTrack(migrated)?.id).toBe(migrated.tracks[0].id);
   expect(migrated.tracks[0].own).toBe(true);
   expect(migrated.tracks[0].schedules.at(-1)?.presetId).toBe('2-2-day');
-  expect(migrated.tracks[0].overrides['2026-09-05'].note).toBe('за Сергея');
+  // Заметка из правки дня переехала в общий список, а сама правка исчезла:
+  // кроме подписи в ней ничего не было.
+  expect(migrated.notes.map((note) => note.text)).toEqual(['за Сергея']);
+  expect(migrated.notes[0].date).toBe('2026-09-05');
+  expect(migrated.tracks[0].overrides['2026-09-05']).toBeUndefined();
 
   // Плоские поля прошлой схемы дальше не едут — иначе висели бы мёртвым грузом.
   expect(migrated).not.toHaveProperty('schedule');
@@ -314,9 +318,45 @@ describe('дорожки', () => {
   });
 
   test('без единой дорожки правки дня некуда класть и состояние не портится', () => {
-    useAppStore.getState().setOverride({ date: '2026-09-05', note: 'мимо' });
+    useAppStore.getState().setOverride({ date: '2026-09-05', workedMinutesOverride: 300 });
 
     expect(useAppStore.getState().tracks).toEqual([]);
+  });
+
+  test('заметка живёт без дорожки: она про день, а не про работу', () => {
+    const id = useAppStore.getState().addNote({
+      date: '2026-09-05',
+      text: '  забрать посылку  ',
+      remindAt: '09:00',
+    });
+
+    const notes = useAppStore.getState().notes;
+    expect(id).not.toBeNull();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].text).toBe('забрать посылку');
+    expect(notes[0].remindAt).toBe('09:00');
+
+    // Пустая заметка не заводится: открывать в списке было бы нечего.
+    expect(
+      useAppStore.getState().addNote({ date: '2026-09-05', text: '   ', remindAt: null }),
+    ).toBeNull();
+    expect(useAppStore.getState().notes).toHaveLength(1);
+  });
+
+  test('заметка правится и удаляется по своему id', () => {
+    const id = useAppStore.getState().addNote({
+      date: '2026-09-05',
+      text: 'первый вариант',
+      remindAt: null,
+    });
+    if (id === null) throw new Error('заметка не завелась');
+
+    useAppStore.getState().updateNote(id, { text: 'второй вариант', remindAt: '07:30' });
+    expect(useAppStore.getState().notes[0].text).toBe('второй вариант');
+    expect(useAppStore.getState().notes[0].remindAt).toBe('07:30');
+
+    useAppStore.getState().removeNote(id);
+    expect(useAppStore.getState().notes).toEqual([]);
   });
 });
 
@@ -424,7 +464,7 @@ describe('свои смены', () => {
     expect(useAppStore.getState().shiftTypes.some((type) => type.id === id)).toBe(true);
   });
 
-  test('удаление смены оставляет заметку дня, но снимает саму смену', () => {
+  test('удаление смены оставляет правленые часы, но снимает саму смену', () => {
     const id = useAppStore.getState().addShiftType(evening);
     useAppStore.getState().addTrack({
       name: 'Основная',
@@ -432,13 +472,18 @@ describe('свои смены', () => {
       presetId: '2-2-day',
       anchorDate: '2026-09-01',
     });
-    useAppStore.getState().setOverride({ date: '2026-09-10', shiftTypeId: id, note: 'за Сергея' });
+    useAppStore
+      .getState()
+      .setOverride({ date: '2026-09-10', shiftTypeId: id, workedMinutesOverride: 300 });
     useAppStore.getState().setOverride({ date: '2026-09-11', shiftTypeId: id });
 
     useAppStore.getState().removeShiftType(id);
 
     const overrides = activeTrack(useAppStore.getState())?.overrides ?? {};
-    expect(overrides['2026-09-10']).toEqual({ date: '2026-09-10', note: 'за Сергея' });
+    expect(overrides['2026-09-10']).toEqual({
+      date: '2026-09-10',
+      workedMinutesOverride: 300,
+    });
     // Правка, в которой не осталось ничего, кроме снятой смены, исчезает целиком.
     expect(overrides['2026-09-11']).toBeUndefined();
   });

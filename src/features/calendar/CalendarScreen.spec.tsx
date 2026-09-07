@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { CalendarScreen } from './CalendarScreen.tsx';
+import { addDays, todayIso } from '@/domain/date.ts';
+import { formatDayShort } from '@/domain/format.ts';
 import { AlarmSyncProvider } from '@/features/alarm/AlarmSyncProvider.tsx';
 import { INITIAL_STATE, useAppStore } from '@/data/store.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
@@ -39,7 +41,8 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 // Переход стабилен и в приложении: useGuardedPush держит его в useCallback.
-const mockPush = () => {};
+// jest.fn такой же стабильный, а заодно видно, звали ли переход вообще.
+const mockPush = jest.fn();
 jest.mock('@/navigation/useGuardedPush.ts', () => ({ useGuardedPush: () => mockPush }));
 
 function trackOf(id: string, name: string): ScheduleTrack {
@@ -125,4 +128,63 @@ test('смена графика перерисовывает клетки: дн�
   await settle();
 
   expect(renders.day).toBeGreaterThan(0);
+});
+
+/**
+ * Клетка этой даты в открытом месяце.
+ *
+ * Даты считаются от сегодняшней: сетка всегда рисует шесть недель, и завтра в
+ * ней есть при любом дне запуска. Берётся первая найденная — у самого края
+ * месяца тот же день виден ещё и на соседней странице пейджера.
+ */
+function cellOf(date: string) {
+  return screen.getAllByLabelText(new RegExp(`^${formatDayShort(date)},`))[0];
+}
+
+/**
+ * Нажатие на клетку.
+ *
+ * Раньше оно открывало шторку дня, и на каждый взгляд «а что у меня в четверг»
+ * приходилось открывать и закрывать экран. Теперь оно только переносит выбор, а
+ * ответ приходит в карточку над календарём.
+ */
+test('нажатие на день переносит выбор, а шторку не открывает', async () => {
+  await renderScreen();
+
+  // Приложение открывается на сегодняшнем дне: карточка называет его словом.
+  expect(screen.queryByLabelText(/^Сегодня,/)).toBeTruthy();
+
+  await act(async () => {
+    fireEvent.press(cellOf(addDays(todayIso(), 1)));
+  });
+
+  expect(mockPush).not.toHaveBeenCalled();
+  // Карточка переехала на выбранный день: «сегодня» с неё пропало.
+  expect(screen.queryByLabelText(/^Сегодня,/)).toBeNull();
+});
+
+test('карточка дня открывает правку и заметки выбранного дня', async () => {
+  await renderScreen();
+  const tomorrow = addDays(todayIso(), 1);
+
+  await act(async () => {
+    fireEvent.press(cellOf(tomorrow));
+  });
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText('Изменить день'));
+  });
+
+  expect(mockPush).toHaveBeenCalledWith({
+    pathname: '/day/[date]',
+    params: { date: tomorrow },
+  });
+
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText('Добавить заметку'));
+  });
+
+  expect(mockPush).toHaveBeenCalledWith({
+    pathname: '/notes/[date]',
+    params: { date: tomorrow },
+  });
 });

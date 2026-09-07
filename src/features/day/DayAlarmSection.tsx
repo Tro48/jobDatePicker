@@ -20,7 +20,11 @@ export function DayAlarmSection({ date }: { date: IsoDate }) {
   const { occurrences } = useAlarmSyncState();
   const [focused, setFocused] = useState<string | null>(null);
 
-  const forDay = occurrences.filter((occurrence) => occurrence.date === date);
+  // Только будильники: напоминание заметки открывается из своего списка, а
+  // здесь оно вело бы на экран будильника, которого нет.
+  const forDay = occurrences.filter(
+    (occurrence) => occurrence.date === date && occurrence.kind === 'alarm',
+  );
   const past = date < todayIso();
 
   return (

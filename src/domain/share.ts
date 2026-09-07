@@ -10,7 +10,9 @@ import { fromEpochDay, toEpochDay } from './date.ts';
 import type { IsoDate, Weekday } from './date.ts';
 import { FALLBACK_COLOR_TOKEN, SHIFT_COLOR_TOKENS, sanitizeShiftType } from './shifts.ts';
 import { PAYMENT_KINDS } from './payments.ts';
+import { notesByDate } from './notes.ts';
 import type {
+  DayNote,
   DayOverride,
   PaymentKind,
   PaymentRecord,
@@ -61,9 +63,25 @@ export interface SharedTrack {
   pattern: SchedulePattern;
   anchorDate: IsoDate;
   /** Ручные правки. Заметки внутри них включаются отдельно. */
-  overrides: DayOverride[];
+  overrides: SharedOverride[];
   /** Выплаты. Пусто, если их решили не отдавать. */
   payments: Array<Omit<PaymentRecord, 'id' | 'trackId'>>;
+}
+
+/**
+ * Правка дня в коде графика.
+ *
+ * Заметки уезжают внутри неё одним текстом, хотя в приложении они давно живут
+ * отдельно от правок: формат старше этого разделения, и ломать совместимость
+ * ради него незачем. День с одними заметками едет правкой без смены и часов —
+ * принимающая сторона разбирает её обратно в заметки.
+ *
+ * Напоминания не передаются: время звонка — дело телефона, на котором заметку
+ * завели.
+ */
+export interface SharedOverride extends DayOverride {
+  /** Заметки этого дня, склеенные переводом строки. */
+  note?: string;
 }
 
 /** Что именно кладём в код или файл. */
@@ -120,6 +138,8 @@ export function buildSharedTrack(
     pattern: SchedulePattern;
     anchorDate: IsoDate;
     overrides: DayOverride[];
+    /** Заметки всех дней: в код попадают только при включённой галочке. */
+    notes: DayNote[];
     payments: Array<Omit<PaymentRecord, 'id' | 'trackId'>>;
   },
   options: ShareOptions = DEFAULT_SHARE_OPTIONS,
@@ -129,22 +149,32 @@ export function buildSharedTrack(
     if (override.shiftTypeId) used.add(override.shiftTypeId);
   }
 
+  /** Правки по датам: заметки дописываются в ту же запись, что и смена дня. */
+  const packed = new Map<IsoDate, SharedOverride>();
+
+  for (const override of source.overrides) {
+    // Правка на смену, которой в коде не будет, теряет смысл; правка без
+    // смены едет, только если в ней есть часы.
+    const usable =
+      override.shiftTypeId === undefined
+        ? override.workedMinutesOverride !== undefined
+        : used.has(override.shiftTypeId);
+    if (usable) packed.set(override.date, { ...override });
+  }
+
+  if (options.notes) {
+    for (const [date, notes] of notesByDate(source.notes)) {
+      const text = notes.map((note) => note.text).join('\n');
+      packed.set(date, { ...(packed.get(date) ?? { date }), note: text });
+    }
+  }
+
   return {
     name: source.name,
     shiftTypes: source.shiftTypes.filter((type) => used.has(type.id)),
     pattern: source.pattern,
     anchorDate: source.anchorDate,
-    overrides: source.overrides
-      .filter(
-        (override) => used.has(override.shiftTypeId ?? '') || override.shiftTypeId === undefined,
-      )
-      .map((override) => (options.notes ? override : { ...override, note: undefined }))
-      // Правка, в которой после снятия заметки ничего не осталось, — это не
-      // правка: тащить её в код незачем.
-      .filter(
-        (override) =>
-          override.shiftTypeId !== undefined || override.workedMinutesOverride !== undefined,
-      ),
+    overrides: [...packed.values()],
     payments: options.payments ? source.payments : [],
   };
 }
@@ -303,7 +333,7 @@ export function unpackTrack(bytes: Uint8Array): SharedTrack {
   const overrideCount = reader.varint();
   if (overrideCount > 20_000) throw new ShareFormatError('corrupt', 'Слишком много правок');
 
-  const overrides: DayOverride[] = [];
+  const overrides: SharedOverride[] = [];
   let previousDay = anchorDay;
   for (let position = 0; position < overrideCount; position += 1) {
     const day = previousDay + reader.signed();

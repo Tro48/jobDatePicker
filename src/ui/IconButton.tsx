@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
+import { AppText } from './AppText.tsx';
 import { useTheme } from '@/theme';
 
 export interface IconButtonProps {
@@ -12,7 +13,27 @@ export interface IconButtonProps {
   /** Что произойдёт по нажатию, если одного имени мало. */
   accessibilityHint?: string;
   disabled?: boolean;
+  /**
+   * Цвет значка и кольца фокуса. По умолчанию — обычный текст на фоне страницы.
+   *
+   * Задаётся там, где кнопка стоит на цветной заливке: значок обязан
+   * контрастировать со своей подложкой, и подходит для этого ровно тот цвет,
+   * которым на ней пишут текст, — пары «заливка + текст» проверены скриптом
+   * контраста. Кольцо фокуса красится тем же цветом по той же причине.
+   */
+  color?: string;
+  /**
+   * Счётчик в углу значка: сколько всего того, что откроется по нажатию.
+   *
+   * Ноль не рисуется — пустой кружок ничего не сообщает. Само число обязано
+   * стоять и в доступном имени кнопки: значок с цифрой скринридеру не виден, и
+   * «Заметки» без числа скажут меньше, чем видит зрячий.
+   */
+  badge?: number;
 }
+
+/** Кружок счётчика: два знака помещаются, дальше растёт вширь. */
+const BADGE_SIZE = 16;
 
 export function IconButton({
   name,
@@ -20,6 +41,8 @@ export function IconButton({
   onPress,
   accessibilityHint,
   disabled = false,
+  color,
+  badge,
 }: IconButtonProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
@@ -41,11 +64,43 @@ export function IconButton({
         justifyContent: 'center',
         borderRadius: theme.radius.md,
         borderWidth: focused ? theme.focusRingWidth : 0,
-        borderColor: theme.colors.focus,
+        borderColor: color ?? theme.colors.focus,
         opacity: disabled ? 0.4 : 1,
       }}
     >
-      <Ionicons name={name} size={24} color={theme.colors.text} />
+      <Ionicons name={name} size={24} color={color ?? theme.colors.text} />
+
+      {/* Счётчик — акцентом, а не цветом значка: на заливке смены он иначе
+          сливается с самим значком, а акцент проверен на контраст и с
+          заливками, и со своей цифрой. */}
+      {badge !== undefined && badge > 0 ? (
+        <View
+          importantForAccessibility="no"
+          style={{
+            position: 'absolute',
+            top: 4,
+            right: 2,
+            minWidth: BADGE_SIZE,
+            height: BADGE_SIZE,
+            paddingHorizontal: 3,
+            borderRadius: BADGE_SIZE / 2,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: theme.colors.accent,
+          }}
+        >
+          <AppText
+            variant="badge"
+            color={theme.colors.onAccent}
+            // Единственное место кнопки, которому некуда расти: кружок стоит в
+            // её углу. Потолок тот же, что у клетки календаря.
+            maxFontSizeMultiplier={1.3}
+            numberOfLines={1}
+          >
+            {badge}
+          </AppText>
+        </View>
+      ) : null}
     </Pressable>
   );
 }

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { monthDays, todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import { resolveDay } from '@/domain/engine.ts';
+import type { DayNote } from '@/domain/types.ts';
 import {
   SHIFT_FORMS,
   formatHoursRatio,
@@ -15,7 +16,7 @@ import {
 import { periodOf } from '@/domain/payday.ts';
 import { describeScheduleStart } from '@/domain/describe.ts';
 import { buildMonthSummary } from '@/domain/summary.ts';
-import { useActiveTrack, useScheduleContext } from '@/data/selectors.ts';
+import { useActiveTrack, useNotesByDate, useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, IconButton } from '@/ui';
@@ -27,9 +28,12 @@ import { WeekdayHeader } from './MonthGrid.tsx';
 import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
 import { MonthPager } from './MonthPager.tsx';
 import { SharedDaysOffCard } from './SharedDaysOffCard.tsx';
-import { TodayCard } from './TodayCard.tsx';
+import { DayCard } from './DayCard.tsx';
 import { useSharedRows } from './useSharedDays.ts';
 import { TrackTabs } from './TrackTabs.tsx';
+
+/** Пустой список заметок: одна ссылка на всё приложение — карточка мемоизируется. */
+const EMPTY_NOTES: DayNote[] = [];
 
 export function CalendarScreen() {
   const theme = useTheme();
@@ -40,11 +44,49 @@ export function CalendarScreen() {
   const track = useActiveTrack();
   const tracks = useAppStore((state) => state.tracks);
   const shared = useAppStore((state) => state.sharedDaysOff);
+  const payments = useAppStore((state) => state.payments);
+  const currency = useAppStore((state) => state.payroll.currency);
+  const notesByDay = useNotesByDate();
 
   const today = useMemo(() => todayIso(), []);
   const months = useMemo(() => buildMonthWindow(periodOf(today)), [today]);
   const [index, setIndex] = useState(MONTH_RANGE);
   const visible = months[index];
+
+  /**
+   * День, на который сейчас смотрит карточка над календарём.
+   *
+   * Приложение открывается на сегодняшнем: это ответ на главный вопрос к нему.
+   * Дальше выбор двигает только нажатие на клетку — листание месяцев его не
+   * трогает, поэтому в карточке всегда написана полная дата, а не одно число.
+   *
+   * Живёт в экране, а не в хранилище: это состояние взгляда, а любая запись в
+   * persist сериализует всё состояние и синхронно кладёт его в MMKV.
+   */
+  const [selected, setSelected] = useState<IsoDate>(today);
+
+  /** Выплаты открытой работы по датам: в клетке у них свой значок. */
+  const paymentDates = useMemo(
+    () =>
+      new Set(
+        payments
+          .filter((payment) => payment.trackId === track?.id)
+          .map((payment) => payment.receivedOn),
+      ),
+    [payments, track?.id],
+  );
+
+  // Карта уже отсортирована по порядку появления — брать из неё готовый
+  // список дешевле, чем заново перебирать все заметки приложения.
+  const selectedNotes = notesByDay.get(selected) ?? EMPTY_NOTES;
+
+  const selectedPayments = useMemo(
+    () =>
+      payments.filter(
+        (payment) => payment.trackId === track?.id && payment.receivedOn === selected,
+      ),
+    [payments, track?.id, selected],
+  );
 
   const summary = useMemo(
     () => (context ? buildMonthSummary(context, visible.period, [], today) : null),
@@ -114,10 +156,14 @@ export function CalendarScreen() {
       />
     ) : null;
 
-  const openDay = useCallback(
-    (date: IsoDate) => push({ pathname: '/day/[date]', params: { date } }),
-    [push],
-  );
+  /**
+   * Нажатие на клетку только переносит выбор.
+   *
+   * Раньше оно открывало шторку дня — на каждый взгляд «а что у меня в
+   * четверг» приходилось открывать и закрывать экран. Теперь ответ приходит в
+   * карточку над календарём, а правка дня — отдельное действие с её кнопки.
+   */
+  const selectDay = useCallback((date: IsoDate) => setSelected(date), []);
 
   const padding = {
     paddingTop: insets.top + theme.spacing.md,
@@ -153,7 +199,7 @@ export function CalendarScreen() {
     );
   }
 
-  const todayDay = resolveDay(context, today);
+  const selectedDay = resolveDay(context, selected);
   // Почему за месяц числа меньше обычного — или нули. Та же строка стоит в
   // сводке: расходиться в объяснении этим двум экранам нельзя.
   const startNote = describeScheduleStart(visible.period, context.schedules[0].startsOn);
@@ -199,7 +245,15 @@ export function CalendarScreen() {
           иначе её никто не увидит. */}
       <View style={{ marginBottom: theme.spacing.md, gap: theme.spacing.md }}>
         <UpdateNotice />
-        <TodayCard day={todayDay} />
+        <DayCard
+          day={selectedDay}
+          isToday={selected === today}
+          notes={selectedNotes}
+          payments={selectedPayments}
+          currency={currency}
+          onEdit={() => push({ pathname: '/day/[date]', params: { date: selected } })}
+          onNotes={() => push({ pathname: '/notes/[date]', params: { date: selected } })}
+        />
       </View>
 
       {/* Сетка идёт во всю ширину экрана: при семи колонках только так клетка
@@ -212,9 +266,12 @@ export function CalendarScreen() {
           onIndexChange={setIndex}
           context={context}
           today={today}
-          onSelectDay={openDay}
+          selectedDate={selected}
+          onSelectDay={selectDay}
           highlighted={highlighted}
           highlightName={highlightName}
+          notes={notesByDay}
+          paymentDates={paymentDates}
           width={width}
         />
       </View>
@@ -228,6 +285,8 @@ export function CalendarScreen() {
             totals={summary.byShiftType}
             colorTokens={colorTokens}
             hasHolidays={monthHasHolidays}
+            hasNotes={monthHas(notesByDay.keys(), visible.period)}
+            hasPayments={monthHas(paymentDates, visible.period)}
             shared={highlight}
             reserveShared={sharedListVisible}
           />
@@ -289,6 +348,20 @@ export function CalendarScreen() {
       ) : null}
     </ScrollView>
   );
+}
+
+/**
+ * Есть ли в этом месяце хоть одна такая дата.
+ *
+ * По ней легенда решает, объяснять ли значок в углу клетки: в месяце без
+ * единой заметки строка «заметка» — лишний шум, ровно как строка «праздник» в
+ * июле.
+ */
+function monthHas(dates: Iterable<IsoDate>, period: string): boolean {
+  for (const date of dates) {
+    if (date.slice(0, 7) === period) return true;
+  }
+  return false;
 }
 
 /**

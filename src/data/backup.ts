@@ -34,6 +34,7 @@ export interface BackupSummary {
   overrides: number;
   payments: number;
   alarms: number;
+  notes: number;
 }
 
 export type BackupParseResult =
@@ -56,6 +57,7 @@ export function createBackup(state: AppState, now = new Date()): BackupFile {
       sharedDaysOff: state.sharedDaysOff,
       sharedGroups: state.sharedGroups,
       alarms: state.alarms,
+      notes: state.notes,
       payments: state.payments,
       lastSeenReleaseId: state.lastSeenReleaseId,
       buildCheck: state.buildCheck,
@@ -133,6 +135,9 @@ function summarize(backup: BackupFile): BackupSummary {
     ),
     payments: Array.isArray(state.payments) ? state.payments.length : 0,
     alarms: Array.isArray(state.alarms) ? state.alarms.length : 0,
+    // Заметки в копии старше версии 17 лежат внутри правок: там их считает
+    // уже миграция, а сводка показывает то, что в файле, — ноль.
+    notes: Array.isArray(state.notes) ? state.notes.length : 0,
   };
 }
 

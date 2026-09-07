@@ -132,8 +132,8 @@ export const MAX_SNOOZE_MINUTES = 60;
  */
 const OCCURRENCES_PER_ALARM = 7;
 
-/** Общий потолок на все будильники разом: AlarmManager не резиновый. */
-const MAX_SCHEDULED_ALARMS = 50;
+/** Общий потолок на все звонки разом: AlarmManager не резиновый. */
+export const MAX_SCHEDULED_ALARMS = 50;
 
 /** Насколько далеко заглядывать вперёд в поисках подходящего дня. */
 const PLANNING_HORIZON_DAYS = 120;
@@ -149,6 +149,15 @@ export interface AlarmOccurrence {
    * звонок остаётся один: будить дважды в одну минуту незачем.
    */
   id: string;
+  /**
+   * Кто звонит: будильник или напоминание заметки.
+   *
+   * До AlarmManager они доезжают одинаковыми, а в приложении это разные вещи:
+   * список будильников не должен показывать у себя заметки, а карточка дня —
+   * открывать заметку как будильник.
+   */
+  kind: 'alarm' | 'note';
+  /** Будильник или заметка, из которых вырос этот звонок. */
   alarmId: string;
   date: IsoDate;
   time: string;
@@ -240,6 +249,7 @@ export function nextOccurrences(
 
     const occurrence: AlarmOccurrence = {
       id,
+      kind: 'alarm',
       alarmId: alarm.id,
       date,
       time,
@@ -313,8 +323,23 @@ export function planAlarms(
   now: Date,
   limit = MAX_SCHEDULED_ALARMS,
 ): AlarmOccurrence[] {
-  return alarms
-    .flatMap((alarm) => nextOccurrences(alarm, tracks, now))
+  return mergeOccurrences([alarms.flatMap((alarm) => nextOccurrences(alarm, tracks, now))], limit);
+}
+
+/**
+ * Несколько наборов звонков в одно расписание: по времени и не больше потолка.
+ *
+ * Через неё же в расписание попадают напоминания заметок. Отбор идёт строго по
+ * времени, без приоритета по виду: ближайший звонок нужнее дальнего, кем бы он
+ * ни был поставлен, — иначе десяток будильников с недельным запасом занял бы
+ * все места, и заметка на завтра не зазвонила бы вовсе.
+ */
+export function mergeOccurrences(
+  lists: AlarmOccurrence[][],
+  limit = MAX_SCHEDULED_ALARMS,
+): AlarmOccurrence[] {
+  return lists
+    .flat()
     .sort((a, b) => a.triggerAtMillis - b.triggerAtMillis)
     .slice(0, limit);
 }

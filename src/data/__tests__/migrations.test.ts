@@ -4,6 +4,7 @@ import {
   MAIN_TRACK_NAME,
   migrateAlarm,
   migrateCustomSchedules,
+  migrateNotes,
   migratePayments,
   migrateSchedule,
   migrateShiftTypes,
@@ -119,7 +120,60 @@ test('версия 8: плоский график и правки сворачи
   assert.equal(tracks[0].own, true);
   // График становится первым периодом истории и начинается с даты первой смены.
   assert.deepEqual(tracks[0].schedules, [{ ...usable, startsOn: usable.anchorDate }]);
-  assert.equal(tracks[0].overrides['2026-09-05'].note, 'за Сергея');
+  // Заметка уехала в общий список, а правка, в которой кроме неё ничего не
+  // было, исчезла: тронутым день делала не подпись.
+  assert.equal(tracks[0].overrides['2026-09-05'], undefined);
+});
+
+test('версия 17: заметки из правок переезжают в общий список', () => {
+  const notes = migrateNotes({
+    schedule: usable,
+    overrides: {
+      '2026-09-05': { date: '2026-09-05', note: 'за Сергея' },
+      '2026-09-06': { date: '2026-09-06', shiftTypeId: 'off' },
+    },
+  });
+
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].date, '2026-09-05');
+  assert.equal(notes[0].text, 'за Сергея');
+  // Напоминания у переехавшей заметки нет: в старой схеме его негде было взять.
+  assert.equal(notes[0].remindAt, null);
+});
+
+test('заметки всех дорожек переезжают разом и не задваиваются', () => {
+  const snapshot = {
+    tracks: [
+      {
+        id: 'main',
+        name: 'Основная',
+        own: true,
+        schedules: [],
+        overrides: { '2026-09-05': { date: '2026-09-05' as const, note: 'за Сергея' } },
+        payrollRules: [],
+      },
+      {
+        id: 'other',
+        name: 'Аня',
+        own: false,
+        schedules: [],
+        overrides: { '2026-09-05': { date: '2026-09-05' as const, note: 'к врачу' } },
+        payrollRules: [],
+      },
+    ],
+  };
+
+  // Две заметки на одно число не слипаются: id собирается из дорожки и даты.
+  const first = migrateNotes(snapshot);
+  assert.deepEqual(
+    first.map((note) => note.text),
+    ['за Сергея', 'к врачу'],
+  );
+
+  // Второй запуск читает уже перенесённые заметки и ничего не задваивает:
+  // правок с заметками в снимке больше нет.
+  const again = migrateNotes({ notes: first, tracks: [] });
+  assert.deepEqual(again, first);
 });
 
 test('версия 8 без графика и без правок: дорожек не заводится', () => {

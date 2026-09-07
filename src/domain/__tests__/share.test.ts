@@ -13,13 +13,12 @@ import {
   trackShareUrl,
   unpackTrack,
 } from '../share.ts';
-import type { SharedTrack } from '../share.ts';
+import type { SharedOverride, SharedTrack } from '../share.ts';
 import { decodeBase64Url, decodeUtf8, encodeBase64Url, encodeUtf8 } from '../bytes.ts';
 import { DEFAULT_SHIFT_TYPES } from '../shifts.ts';
 import { SCHEDULE_PRESETS } from '../presets.ts';
 import { addDays } from '../date.ts';
 import { shiftDurationMinutes } from '../engine.ts';
-import type { DayOverride } from '../types.ts';
 
 const evening = {
   id: 'evening',
@@ -36,7 +35,7 @@ const dayShift = DEFAULT_SHIFT_TYPES.find((type) => type.id === 'day12')!;
 const off = DEFAULT_SHIFT_TYPES.find((type) => type.id === 'off')!;
 
 function shareOf(
-  overrides: DayOverride[] = [],
+  overrides: SharedOverride[] = [],
   payments: SharedTrack['payments'] = [],
 ): SharedTrack {
   return {
@@ -153,10 +152,9 @@ test('заметки и выплаты в код не попадают, пока
       shiftTypes: [dayShift, off, evening],
       pattern: { kind: 'cycle', slots: [dayShift.id, off.id] },
       anchorDate: '2026-09-01',
-      overrides: [
-        { date: '2026-09-10', shiftTypeId: 'evening', note: 'подмена за Сергея' },
-        // Правка с одной заметкой после снятия заметок пустеет и не едет вовсе.
-        { date: '2026-09-11', note: 'просто подпись' },
+      overrides: [{ date: '2026-09-10', shiftTypeId: 'evening' }],
+      notes: [
+        { id: 'n1', date: '2026-09-11', text: 'просто подпись', remindAt: null, createdAt: 0 },
       ],
       payments: [{ kind: 'salary', period: '2026-09', receivedOn: '2026-10-10', amount: 75_000 }],
     },
@@ -164,8 +162,36 @@ test('заметки и выплаты в код не попадают, пока
   );
 
   assert.equal(built.payments.length, 0);
+  // День, у которого была одна заметка, не едет вовсе: правки на нём нет.
   assert.equal(built.overrides.length, 1);
   assert.equal(built.overrides[0].note, undefined);
+});
+
+test('включённые заметки уезжают даже с дня, где правки нет', () => {
+  const built = buildSharedTrack(
+    {
+      name: 'Аня',
+      shiftTypes: [dayShift, off, evening],
+      pattern: { kind: 'cycle', slots: [dayShift.id, off.id] },
+      anchorDate: '2026-09-01',
+      overrides: [{ date: '2026-09-10', shiftTypeId: 'evening' }],
+      notes: [
+        { id: 'n1', date: '2026-09-11', text: 'первая', remindAt: '09:00', createdAt: 1 },
+        { id: 'n2', date: '2026-09-11', text: 'вторая', remindAt: null, createdAt: 2 },
+      ],
+      payments: [],
+    },
+    { notes: true, payments: false },
+  );
+
+  const back = decodeTrack(encodeTrack(built));
+  const day = back.overrides.find((override) => override.date === '2026-09-11');
+
+  assert.equal(back.overrides.length, 2);
+  // Заметки одного дня уезжают одним текстом: формат обмена знает про день, а
+  // не про отдельные заметки. Напоминание не передаётся вовсе.
+  assert.equal(day?.note, 'первая\nвторая');
+  assert.equal(day?.shiftTypeId, undefined);
 });
 
 test('включённые заметки и выплаты доезжают целиком', () => {

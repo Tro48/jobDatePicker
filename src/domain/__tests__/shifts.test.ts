@@ -120,7 +120,7 @@ test('ручные правки на смену считаются, но уда�
       overrides: {
         '2026-09-10': { date: '2026-09-10', shiftTypeId: 'evening' },
         '2026-09-11': { date: '2026-09-11', shiftTypeId: 'evening' },
-        '2026-09-12': { date: '2026-09-12', note: 'за Сергея' },
+        '2026-09-12': { date: '2026-09-12', workedMinutesOverride: 300 },
       },
     }),
   ];
