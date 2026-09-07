@@ -122,7 +122,7 @@ export function PayrollSettingsScreen() {
           />
           <Toggle
             label="Прогноз для незакрытого месяца"
-            hint="Считает по ставке последнего месяца, где есть и часы, и выплаты"
+            help="Приложение не знает твою ставку. Для прогноза оно берёт её из последнего закрытого месяца, где есть и часы, и выплаты, и умножает на уже отработанное. Такая сумма всегда помечена как прогноз."
             value={payroll.forecastFromLastClosedMonth}
             onValueChange={(value) =>
               setPayroll({ ...payroll, forecastFromLastClosedMonth: value })

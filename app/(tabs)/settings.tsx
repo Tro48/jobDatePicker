@@ -43,9 +43,6 @@ export default function SettingsScreen() {
           value={appearance}
           onChange={setAppearance}
         />
-        <AppText variant="caption" tone="muted">
-          Сейчас применена {theme.scheme === 'dark' ? 'тёмная' : 'светлая'} тема.
-        </AppText>
       </Card>
 
       {/* Смены живут в настройках, а не в календаре: их правят один раз при
@@ -58,7 +55,7 @@ export default function SettingsScreen() {
         />
         <Toggle
           label="Отмечать праздники"
-          hint="Российский производственный календарь: праздник помечается значком в клетке. В графике по дням недели он ещё и делает день нерабочим — на сменные графики не влияет"
+          help="Российский производственный календарь: праздник помечается значком в клетке. В графике по дням недели он ещё и делает день нерабочим — на сменные графики не влияет."
           value={holidays.enabled}
           onValueChange={(enabled) => setHolidays({ enabled })}
         />
@@ -70,13 +67,11 @@ export default function SettingsScreen() {
         <Card title="Общие выходные">
           <Toggle
             label="Показывать на календаре"
-            hint={`Блок со списком дней, когда свободны и ты, и ${others.map((track) => track.name).join(', ')}`}
+            hint={`Свободны и ты, и ${others.map((track) => track.name).join(', ')}`}
+            help="Под календарём появится список дней, когда свободны все. Нажатие на строку выделяет эти дни в сетке, остальные при этом гаснут. Отсыпной после ночной за общий выходной не считается."
             value={shared.enabled}
             onValueChange={(enabled) => setSharedDaysOff({ enabled })}
           />
-          <AppText variant="caption" tone="muted">
-            Выделить чьи-то дни на календаре можно прямо в списке: остальные при этом гаснут.
-          </AppText>
 
           {/* Группы отвечают на вопрос, который по одному человеку не задать:
               когда свободны все разом. */}

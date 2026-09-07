@@ -64,13 +64,7 @@ export function SharedGroupScreen() {
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
       >
         <Card title="Группа">
-          <TextField
-            label="Название"
-            value={name}
-            onChangeText={setName}
-            placeholder="Друзья"
-            hint="Так группа подписана в списке общих выходных"
-          />
+          <TextField label="Название" value={name} onChangeText={setName} placeholder="Друзья" />
         </Card>
 
         <Card title="Кто входит">

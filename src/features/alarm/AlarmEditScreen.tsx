@@ -284,17 +284,13 @@ export function AlarmEditScreen() {
   return (
     <Sheet title={isNew ? 'Новый будильник' : 'Будильник'} onClose={() => router.back()}>
       <ScrollView {...scroll} style={{ flex: 1 }} contentContainerStyle={padding}>
-        <Card title="Когда звонить">
+        <Card
+          title="Когда звонить"
+          help="Там, где в графике чередуются дневные и ночные, вставать надо в разное время — у таких смен своё поле подъёма. Если все смены графика начинаются в один час, хватает общего времени."
+        >
           {/* Общее время нужно всегда: по нему звонят разовый, недельный и те
               графики, где рабочая смена одна. */}
           <TimeSelect label="Время" value={draft.time} onChange={setTime} />
-
-          {picked.filter((item) => perShiftTimes(item.trackId)).length > 0 ? (
-            <AppText variant="body" tone="muted">
-              Там, где в графике чередуются дневные и ночные, вставать надо в разное время — для
-              таких смен время задаётся отдельно.
-            </AppText>
-          ) : null}
 
           {picked.map((item) => {
             if (!perShiftTimes(item.trackId)) return null;
@@ -319,17 +315,22 @@ export function AlarmEditScreen() {
             value={draft.label}
             onChangeText={(label) => setDraft((current) => ({ ...current, label }))}
             placeholder="На смену"
-            hint="Показывается на экране будильника"
           />
           <Toggle
             label="Включён"
-            hint="Выключенный остаётся в списке со всеми настройками"
             value={draft.enabled}
             onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
           />
         </Card>
 
-        <Card title={fromCalendar ? 'День' : 'Повтор'}>
+        <Card
+          title={fromCalendar ? 'День' : 'Повтор'}
+          help={
+            fromCalendar
+              ? undefined
+              : 'Режим «по графику» звонит в каждый рабочий день отмеченных графиков. Выходные, отсыпные, отпуск и больничный пропускаются, ручные правки дней учитываются.'
+          }
+        >
           {fromCalendar ? (
             <AppText variant="body" tone="muted">
               Разовый будильник на выбранный день. Повторы настраиваются на вкладке «Будильник».
@@ -393,10 +394,6 @@ export function AlarmEditScreen() {
                     onValueChange={(on) => toggleTrack(track.id, on)}
                   />
                 ))}
-                <AppText variant="body" tone="muted">
-                  Звонит в каждый рабочий день отмеченных графиков. Выходные, отсыпные, отпуск и
-                  больничный пропускаются, ручные правки дней учитываются.
-                </AppText>
               </>
             )
           ) : null}
