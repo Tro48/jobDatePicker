@@ -78,9 +78,20 @@ export function CalendarScreen() {
     [shared.enabled, focused],
   );
 
-  // Чьи именно дни выделены. Имя нужно и подписью над сеткой, и в озвучке
+  // Чьи именно дни выделены. Имя нужно и легенде под календарём, и в озвучке
   // каждой выделенной клетки: по заливке чей это выходной не узнать.
   const highlightName = highlighted ? focused?.name : undefined;
+
+  /**
+   * Что скажет строка под легендой. Число дней здесь не украшение: в месяц без
+   * единого совпадения календарь всё равно гаснет, и без слов непонятно, что
+   * искать нечего.
+   */
+  const highlight =
+    highlighted && focused ? { name: focused.name, days: focused.dates.length } : undefined;
+
+  // Список совпадений показывается, только когда есть с кем совпадать.
+  const sharedListVisible = shared.enabled && sharedRows.length > 0;
 
   const colorTokens = useMemo(() => {
     if (!context) return {};
@@ -191,16 +202,6 @@ export function CalendarScreen() {
         <TodayCard day={todayDay} />
       </View>
 
-      {/* Чьи дни сейчас выделены — словами, над сеткой. Без этой строки
-          ответ на «чей это график» приходится искать в списке под календарём,
-          а при двух и более чужих графиках заливка сама по себе не отвечает
-          ни зрячему, ни скринридеру. */}
-      {highlightName ? (
-        <AppText variant="caption" tone="accent" style={{ marginBottom: theme.spacing.xs }}>
-          Выделены общие выходные: {highlightName}
-        </AppText>
-      ) : null}
-
       {/* Сетка идёт во всю ширину экрана: при семи колонках только так клетка
           дотягивает до 48 dp зоны нажатия на узких телефонах. */}
       <View style={{ marginHorizontal: -theme.spacing.lg }}>
@@ -220,10 +221,15 @@ export function CalendarScreen() {
 
       {summary && summary.byShiftType.length > 0 ? (
         <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.md }}>
+          {/* Выделение объясняется легендой под календарём, вместе с
+              заливками смен: своей строки у него нет — она стояла над сеткой
+              и на каждое нажатие в списке двигала весь экран вниз. */}
           <Legend
             totals={summary.byShiftType}
             colorTokens={colorTokens}
             hasHolidays={monthHasHolidays}
+            shared={highlight}
+            reserveShared={sharedListVisible}
           />
           <View style={{ gap: theme.spacing.xs }}>
             {/* Только смены и часы. Число ручных правок отсюда убрано: после
@@ -262,7 +268,7 @@ export function CalendarScreen() {
         </AppText>
       ) : null}
 
-      {shared.enabled ? (
+      {sharedListVisible ? (
         <View style={{ marginTop: theme.spacing.md }}>
           <SharedDaysOffCard rows={sharedRows} focusedId={focusedId} onFocus={setFocusedId} />
         </View>
