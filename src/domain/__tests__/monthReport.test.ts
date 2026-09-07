@@ -79,3 +79,23 @@ test('название смены не ломает разметку', () => {
   assert.match(html, /&lt;b&gt;Ночь&lt;\/b&gt;/);
   assert.doesNotMatch(html, /<b>Ночь<\/b>/);
 });
+
+test('в незакрытом месяце отработано — это факт, а не весь график', () => {
+  // Седьмое сентября: позади четыре смены из шестнадцати за месяц.
+  const summary = buildMonthSummary(context, '2026-09', [], '2026-09-07');
+  const html = buildMonthReportHtml({ period: '2026-09', context, summary, currency: '\u20BD' });
+
+  assert.match(html, /<td>Отработано<\/td><td><\/td><td>50\u00A0ч из 194\u00A0ч<\/td>/);
+  assert.match(html, /<td>Смен<\/td><td><\/td><td>4 из 16 смен<\/td>/);
+  // И сказано, почему числа идут парой: иначе «50 ч из 194 ч» читается как ошибка.
+  assert.match(html, /Месяц ещё идёт/);
+});
+
+test('в закрытом месяце числа не дробятся', () => {
+  const summary = buildMonthSummary(context, '2026-09', [], '2026-12-31');
+  const html = buildMonthReportHtml({ period: '2026-09', context, summary, currency: '\u20BD' });
+
+  assert.match(html, /<td>Отработано<\/td><td><\/td><td>194\u00A0ч<\/td>/);
+  assert.match(html, /<td>Смен<\/td><td><\/td><td>16 смен<\/td>/);
+  assert.doesNotMatch(html, /Месяц ещё идёт/);
+});
