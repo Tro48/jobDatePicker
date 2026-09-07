@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { activeTrack, alarmTrack, useAppStore } from './store.ts';
+import { activeTrack, alarmTrack, summaryTrack, useAppStore } from './store.ts';
 import { RU_HOLIDAYS } from '@/domain/holidays.ts';
 import type { HolidayCalendar } from '@/domain/holidays.ts';
 import { indexShiftTypes } from '@/domain/shifts.ts';
@@ -66,6 +66,14 @@ export function useScheduleContext(): ScheduleContext | null {
     () => buildScheduleContext(track, shiftTypes, holidays),
     [track, shiftTypes, holidays],
   );
+}
+
+/**
+ * Дорожка, по которой считается сводка: чужие графики в неё не попадают.
+ * Подробности — у самого селектора.
+ */
+export function useSummaryTrack(): ScheduleTrack | null {
+  return useAppStore(summaryTrack);
 }
 
 /** Дорожка, по которой звонит будильник, если он не выбрал графики сам. */

@@ -372,3 +372,72 @@ test('до первого периода смен нет вовсе: челов�
   assert.deepEqual(upcomingShiftTypeIds(history, '2026-08-01'), ['day12', 'off']);
   assert.deepEqual(upcomingShiftTypeIds([], '2026-09-10'), []);
 });
+
+/**
+ * Своё начало смен графика.
+ *
+ * Справочник смен один на всё приложение, а выходят по нему по-разному.
+ * Проверяется и то, что время в календаре меняется, и то, что за ним не
+ * потянулись часы: поле показательное.
+ */
+test('график со своим началом смен показывает своё время, а часы оставляет прежними', () => {
+  const plain = contextFor('2-2-day', '2026-09-01');
+  const shifted: ScheduleContext = {
+    ...plain,
+    schedules: [{ ...plain.schedules[0], shiftStarts: { day12: '09:00' } }],
+  };
+
+  const before = resolveDay(plain, '2026-09-01');
+  const after = resolveDay(shifted, '2026-09-01');
+
+  assert.equal(before.shiftType.time?.start, '08:00');
+  assert.deepEqual(after.shiftType.time, {
+    start: '09:00',
+    end: '21:00',
+    unpaidBreakMinutes: before.shiftType.time?.unpaidBreakMinutes,
+  });
+  assert.equal(after.workedMinutes, before.workedMinutes);
+  assert.equal(after.plannedMinutes, before.plannedMinutes);
+  assert.equal(overtimeMinutes(after), 0);
+});
+
+test('своё начало действует только в своём периоде истории', () => {
+  const preset = SCHEDULE_PRESETS.find((item) => item.id === '2-2-day');
+  assert.ok(preset);
+
+  const context: ScheduleContext = {
+    schedules: [
+      {
+        presetId: '2-2-day',
+        pattern: preset.pattern,
+        anchorDate: '2026-01-01',
+        startsOn: '2026-01-01',
+        shiftStarts: { day12: '09:00' },
+      },
+      {
+        presetId: '2-2-day',
+        pattern: preset.pattern,
+        anchorDate: '2026-09-01',
+        startsOn: '2026-09-01',
+      },
+    ],
+    shiftTypes,
+    overrides: new Map(),
+  };
+
+  assert.equal(resolveDay(context, '2026-01-01').shiftType.time?.start, '09:00');
+  // Новая работа — новый период: он идёт по справочнику, пока не сказано иное.
+  assert.equal(resolveDay(context, '2026-09-01').shiftType.time?.start, '08:00');
+});
+
+test('день до первого графика идёт по справочнику: своего начала у него нет', () => {
+  const plain = contextFor('2-2-day', '2026-09-01');
+  const shifted: ScheduleContext = {
+    ...plain,
+    schedules: [{ ...plain.schedules[0], shiftStarts: { day12: '09:00' } }],
+  };
+
+  const early = resolveDay(shifted, '2026-08-20');
+  assert.equal(countedDay(early), false);
+  assert.equal(early.shiftType.kind, 'rest');
+});

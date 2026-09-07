@@ -59,6 +59,11 @@ export function DayPaymentSection({ date }: { date: IsoDate }) {
   const describe = (paymentKind: PaymentKind, value: number) =>
     `${PAYMENT_KIND_LABELS[paymentKind]} ${formatMoney(value, payroll.currency)}`;
 
+  // У чужого графика денег нет: приложение не считает по нему ни часы, ни
+  // зарплату, и в сводку такая сумма всё равно не попадёт. Стоит после хуков —
+  // выше выходить из компонента нельзя.
+  if (!track?.own) return null;
+
   return (
     <Card title="Выплата в этот день">
       {dayPayments.map((payment) => (

@@ -12,6 +12,7 @@ import {
   trackShareUrl,
 } from '@/domain/share.ts';
 import type { ShareOptions } from '@/domain/share.ts';
+import { applyShiftStarts } from '@/domain/shifts.ts';
 import { activeTrack, useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, Sheet, Toggle, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
@@ -57,7 +58,9 @@ export function ShareTrackScreen() {
     return buildSharedTrack(
       {
         name: track.name,
-        shiftTypes,
+        // Смены уезжают с тем временем, которое человек видит у себя: своё
+        // начало смен живёт в графике, а не в справочнике.
+        shiftTypes: applyShiftStarts(shiftTypes, current.shiftStarts),
         pattern: current.pattern,
         anchorDate: current.anchorDate,
         overrides: Object.values(track.overrides),
