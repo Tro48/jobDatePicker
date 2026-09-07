@@ -2,18 +2,18 @@ import { startTransition, useCallback, useEffect, useMemo, useState } from 'reac
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { todayIso } from '@/domain/date.ts';
-import { formatMonthTitle, formatMoney, formatTotalHours } from '@/domain/format.ts';
+import { formatMoney, formatTotalHours } from '@/domain/format.ts';
 import { buildMonthSummary, combineTotals } from '@/domain/summary.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import type { PaymentRule } from '@/domain/types.ts';
+import { MonthSwitcher } from '@/features/calendar/MonthSwitcher.tsx';
+import { useMonthWindow } from '@/features/calendar/useMonthWindow.ts';
 import { TrackTabs } from '@/features/calendar/TrackTabs.tsx';
-import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
 import type { MonthRef } from '@/domain/months.ts';
-import { periodOf } from '@/domain/payday.ts';
 import { useScheduleContexts, useSummaryTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
-import { AppText, Button, Card, HorizontalPager, IconButton } from '@/ui';
+import { AppText, Button, Card, HorizontalPager } from '@/ui';
 import { useTheme } from '@/theme';
 import { MonthSummaryPage } from './MonthSummaryPage.tsx';
 
@@ -40,10 +40,7 @@ export function SummaryScreen() {
   const allPayments = useAppStore((state) => state.payments);
 
   const today = useMemo(() => todayIso(), []);
-  const months = useMemo(() => buildMonthWindow(periodOf(today)), [today]);
-  const [index, setIndex] = useState(MONTH_RANGE);
-
-  const current = months[index];
+  const { months, index, visible: current, setIndex, goTo, key: windowKey } = useMonthWindow(today);
 
   // Сводка всегда про одну работу: смешивать часы двух работодателей в одной
   // таблице нельзя — ставка за час у них разная.
@@ -204,35 +201,15 @@ export function SummaryScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      {/* Шапка вне листалки: стрелки и свайп двигают один и тот же индекс. */}
+      {/* Шапка вне листалки: стрелки, выбор месяца и свайп двигают один и тот
+          же индекс. */}
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
           paddingTop: insets.top + theme.spacing.md,
           paddingHorizontal: theme.spacing.lg,
         }}
       >
-        <IconButton
-          name="chevron-back"
-          label="Предыдущий месяц"
-          disabled={index === 0}
-          onPress={() => setIndex((value) => Math.max(0, value - 1))}
-        />
-        <AppText
-          variant="title"
-          accessibilityRole="header"
-          accessibilityLiveRegion="polite"
-          style={{ flex: 1, textAlign: 'center' }}
-        >
-          {formatMonthTitle(current.year, current.month)}
-        </AppText>
-        <IconButton
-          name="chevron-forward"
-          label="Следующий месяц"
-          disabled={index === months.length - 1}
-          onPress={() => setIndex((value) => Math.min(months.length - 1, value + 1))}
-        />
+        <MonthSwitcher period={current.period} onChange={goTo} />
       </View>
 
       {/* Вкладки — только свои работы: переключать сводку на чужой график
@@ -257,6 +234,7 @@ export function SummaryScreen() {
       ) : null}
 
       <HorizontalPager
+        key={windowKey}
         items={months}
         keyOf={keyOfMonth}
         index={index}
