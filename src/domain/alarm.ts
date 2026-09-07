@@ -10,6 +10,7 @@ import type { IsoDate, Weekday } from './date.ts';
 import { resolveDay } from './engine.ts';
 import type { ScheduleContext } from './engine.ts';
 import { WEEKDAYS_SHORT, formatDayLong, formatDayShort } from './format.ts';
+import { shiftStartGroups } from './shifts.ts';
 import type { ShiftType } from './types.ts';
 
 /**
@@ -84,26 +85,13 @@ export interface ShiftWakeGroup {
 }
 
 /**
- * Рабочие смены, сгруппированные по началу. Порядок — по времени суток: утро
- * идёт раньше вечера, и список не переставляется от правки справочника.
+ * Рабочие смены, сгруппированные по началу.
+ *
+ * Та же группировка, по которой график спрашивает своё начало смен: вопрос в
+ * обоих случаях один — сколько на этом графике разных времён начала.
  */
 export function shiftWakeGroups(types: ShiftType[]): ShiftWakeGroup[] {
-  const byStart = new Map<string, ShiftType[]>();
-
-  for (const type of types) {
-    if (type.kind !== 'work' || !type.time) continue;
-    const group = byStart.get(type.time.start);
-    if (group) group.push(type);
-    else byStart.set(type.time.start, [type]);
-  }
-
-  return [...byStart.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([start, group]) => ({
-      start,
-      shiftTypeIds: group.map((type) => type.id),
-      label: group.map((type) => type.name).join(' · '),
-    }));
+  return shiftStartGroups(types);
 }
 
 /** Час до начала смены — то, что обычно и ставят. Дальше правится руками. */

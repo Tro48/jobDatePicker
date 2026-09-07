@@ -4,7 +4,9 @@ import {
   DEFAULT_SHIFT_TYPES,
   isBuiltinShiftType,
   sanitizeShiftType,
+  shiftStartGroups,
   shiftTypeUsage,
+  withShiftStart,
 } from '../shifts.ts';
 import { shiftDurationMinutes } from '../engine.ts';
 import { DEFAULT_PAYMENT_RULES } from '../payday.ts';
@@ -158,4 +160,49 @@ test('смену держит и прошлый график из истории
 
   // Удалить «вечернюю» нельзя: на ней стоят уже прожитые месяцы.
   assert.deepEqual(shiftTypeUsage(tracks, 'evening'), { schedules: ['Основная'], overrides: 0 });
+});
+
+/**
+ * Своё начало смены на этой работе.
+ *
+ * Поле показательное, и проверяется ровно это: во что превращается окно смены
+ * и что при этом не меняется — длительность, а вместе с ней часы и деньги.
+ */
+test('сдвиг начала двигает и конец: длительность смены та же', () => {
+  const later = withShiftStart(evening, '17:00');
+
+  assert.deepEqual(later.time, { start: '17:00', end: '01:00', unpaidBreakMinutes: 30 });
+  assert.equal(shiftDurationMinutes(later), shiftDurationMinutes(evening));
+});
+
+test('сдвинутая смена уезжает через полночь, а не обрезается', () => {
+  const day = DEFAULT_SHIFT_TYPES.find((type) => type.builtinId === 'day12');
+  assert.ok(day);
+
+  // 08:00 → 20:00, сдвинутая на 20:00, кончается в восемь утра следующего дня.
+  const night = withShiftStart(day, '20:00');
+  assert.equal(night.time?.end, '08:00');
+  assert.equal(shiftDurationMinutes(night), shiftDurationMinutes(day));
+});
+
+test('выходному и смене без своего времени двигать нечего', () => {
+  const off = DEFAULT_SHIFT_TYPES.find((type) => type.builtinId === 'off');
+  assert.ok(off);
+
+  assert.equal(withShiftStart(off, '09:00'), off);
+  assert.equal(withShiftStart(evening, undefined), evening);
+  assert.equal(withShiftStart(evening, evening.time!.start), evening);
+});
+
+test('смены с одинаковым началом идут одной группой, а группы — по времени суток', () => {
+  const groups = shiftStartGroups(DEFAULT_SHIFT_TYPES);
+  const starts = groups.map((group) => group.start);
+
+  assert.deepEqual([...starts].sort(), starts);
+  // Рабочий день и сокращённый начинаются в одно время — время у них общее.
+  const morning = groups.find((group) => group.shiftTypeIds.includes('work8'));
+  assert.ok(morning);
+  assert.ok(morning.shiftTypeIds.includes('work7'));
+  // Выходных в списке нет вовсе: у них нет начала.
+  assert.ok(!groups.some((group) => group.shiftTypeIds.includes('off')));
 });

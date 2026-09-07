@@ -8,6 +8,7 @@ import {
 } from './date.ts';
 import type { IsoDate, Weekday } from './date.ts';
 import type { HolidayCalendar } from './holidays.ts';
+import { withShiftStart } from './shifts.ts';
 import type {
   ActiveSchedule,
   DayOverride,
@@ -193,11 +194,19 @@ export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay
   // будни и выходные, без раскладки. Правка сильнее: вышел за коллегу накануне
   // первого выхода, и это факт, а не продолжение шаблона назад.
   const shiftTypeId = override?.shiftTypeId ?? plannedId ?? restStubId(context);
-  const shiftType = context.shiftTypes.get(shiftTypeId);
+  const known = context.shiftTypes.get(shiftTypeId);
 
-  if (!shiftType) {
+  if (!known) {
     throw new ReferenceError(`Неизвестный тип смены "${shiftTypeId}" на дату ${date}`);
   }
+
+  // Своё начало смен этого периода: справочник у всех графиков общий, а
+  // выходят по нему по-разному. Сдвигается только окно смены — длительность
+  // та же, поэтому ни часы ниже, ни норма дня от этого не меняются.
+  const shiftType = withShiftStart(
+    known,
+    scheduleOn(context.schedules, date)?.shiftStarts?.[shiftTypeId],
+  );
 
   // Правка, которая ничего не меняет по существу, — это заметка, а не
   // изменённый день. Иначе одна подпись «вышел за Сергея» зажигала бы точку в

@@ -3,13 +3,13 @@ import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDays, todayIso } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
-import { resolveDay, resolveRange, scheduleOn } from '@/domain/engine.ts';
+import { patternShiftTypeIds, resolveDay, resolveRange, scheduleOn } from '@/domain/engine.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import { formatDayShort, formatDuration, formatMonthTitle } from '@/domain/format.ts';
 import { periodOf, shiftPeriod } from '@/domain/payday.ts';
 import { describePattern } from '@/domain/customSchedules.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
-import { indexShiftTypes } from '@/domain/shifts.ts';
+import { indexShiftTypes, shiftStartGroups } from '@/domain/shifts.ts';
 import { useActiveTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
@@ -21,6 +21,7 @@ import {
   Select,
   Sheet,
   TextField,
+  TimeSelect,
   Toggle,
   useSheetScroll,
 } from '@/ui';
@@ -111,6 +112,13 @@ export function SchedulePickerScreen() {
   const [startsOn, setStartsOn] = useState<IsoDate>(saved?.startsOn ?? today);
   const [previewPeriod, setPreviewPeriod] = useState(() => periodOf(saved?.startsOn ?? today));
   /**
+   * Своё начало смен этого графика: id смены → «ЧЧ:ММ». Пусто — как в
+   * справочнике; там же лежит и всё остальное про смену.
+   */
+  const [shiftStarts, setShiftStarts] = useState<Record<string, string>>(
+    () => saved?.shiftStarts ?? {},
+  );
+  /**
    * Какую из двух дат ставит нажатие по календарю. Один календарь на обе: две
    * сетки подряд на телефоне не помещаются, а разница между ними — одна
    * подсвеченная кнопка.
@@ -149,14 +157,53 @@ export function SchedulePickerScreen() {
     }
   }, [latestCustomId]);
 
+  /**
+   * По каким временам спрашивать начало: рабочие смены выбранного графика,
+   * сгруппированные по началу. У 2/2 это одно поле, у графика с чередованием
+   * дня и ночи — два, а сокращённая пятница отдельного поля не получает: она
+   * начинается тогда же, когда обычный день.
+   */
+  const startGroups = useMemo(() => {
+    const index = indexShiftTypes(shiftTypes);
+    const types = patternShiftTypeIds(preset.pattern)
+      .map((id) => index.get(id))
+      .filter((type) => type !== undefined);
+    return shiftStartGroups(types);
+  }, [preset, shiftTypes]);
+
+  /** Что стоит в поле группы: своё время, если его задавали, иначе справочник. */
+  const startOf = (group: { start: string; shiftTypeIds: string[] }): string =>
+    shiftStarts[group.shiftTypeIds[0]] ?? group.start;
+
+  /**
+   * Время уходит всем сменам группы разом: в будильник и в календарь оно
+   * попадает по типу смены, и смена без записи осталась бы со справочным.
+   * Возврат к справочному значению запись удаляет — иначе правка справочника
+   * перестала бы доезжать до графика.
+   */
+  const setGroupStart = (group: { start: string; shiftTypeIds: string[] }, time: string): void =>
+    setShiftStarts((current) => {
+      const next = { ...current };
+      for (const id of group.shiftTypeIds) {
+        if (time === group.start) delete next[id];
+        else next[id] = time;
+      }
+      return next;
+    });
+
   // Имя обязательно ровно там, где его спрашивают: без него вкладки
   // получаются безымянными, и переключаться между ними не по чему.
   const incomplete = named && name.trim().length === 0;
 
   const save = (): void => {
     if (incomplete) return;
+    // Времена смен, которых в выбранном графике нет, с ним и не сохраняются:
+    // иначе смена графика тащила бы за собой время от прежнего.
+    const used = new Set(patternShiftTypeIds(preset.pattern));
+    const starts = Object.fromEntries(Object.entries(shiftStarts).filter(([id]) => used.has(id)));
+
     if (!edited) {
-      addTrack({ name: name.trim(), own, presetId: preset.id, anchorDate });
+      addTrack({ name: name.trim(), own, presetId: preset.id, anchorDate, shiftStarts: starts });
       router.back();
       return;
     }
@@ -164,7 +211,12 @@ export function SchedulePickerScreen() {
     updateTrack(edited.id, { name: name.trim() || edited.name, own });
     // У первого графика начало и первая смена — одно и то же: отдельного поля
     // там нет, и брать оттуда нечего.
-    const entry = { presetId: preset.id, anchorDate, startsOn: showsStart ? startsOn : anchorDate };
+    const entry = {
+      presetId: preset.id,
+      anchorDate,
+      startsOn: showsStart ? startsOn : anchorDate,
+      shiftStarts: starts,
+    };
     if (addsPeriod) addTrackSchedule(edited.id, entry);
     else setTrackSchedule(edited.id, periodIndex, entry);
     router.back();
@@ -194,12 +246,13 @@ export function SchedulePickerScreen() {
           pattern: preset.pattern,
           anchorDate,
           startsOn: showsStart ? startsOn : anchorDate,
+          shiftStarts,
         },
       ],
       shiftTypes: indexShiftTypes(shiftTypes),
       overrides: new Map(),
     }),
-    [preset, anchorDate, startsOn, showsStart, shiftTypes],
+    [preset, anchorDate, startsOn, showsStart, shiftTypes, shiftStarts],
   );
 
   /** Как называется график периода в истории: пресет, свой или пришедший чужой. */
@@ -344,6 +397,31 @@ export function SchedulePickerScreen() {
             }
           />
         </Card>
+
+        {/* Начало смен спрашивается у графика, а не в справочнике смен:
+            двенадцатичасовая дневная одна на всё приложение, а выходят по ней
+            у кого в восемь, у кого в девять. Правка справочника меняла бы
+            смену сразу во всех графиках и у всех дорожек. */}
+        {startGroups.length > 0 ? (
+          <Card
+            title="Время смен"
+            help="Во сколько смена начинается на самом деле. Поле показательное: конец едет вместе с началом, длительность та же — часы, деньги и время будильника не меняются."
+          >
+            {startGroups.map((group) => (
+              <TimeSelect
+                key={group.start}
+                label={group.label}
+                value={startOf(group)}
+                hint={
+                  startOf(group) === group.start
+                    ? 'Как в справочнике смен'
+                    : `В справочнике смен — ${group.start}`
+                }
+                onChange={(time) => setGroupStart(group, time)}
+              />
+            ))}
+          </Card>
+        ) : null}
 
         <Card title={showsStart ? 'Когда действует' : 'Дата первой смены'}>
           {showsStart ? (

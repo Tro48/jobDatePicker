@@ -297,6 +297,8 @@ export interface ScheduleEntry {
   startsOn: IsoDate;
   /** Точка выравнивания раскладки. По умолчанию совпадает с началом. */
   anchorDate: IsoDate;
+  /** Своё начало смен: id смены → «ЧЧ:ММ». Пусто — как в справочнике. */
+  shiftStarts?: Record<string, string>;
 }
 
 /** Что нужно, чтобы завести дорожку: остальное собирается из пресета. */
@@ -305,6 +307,8 @@ export interface NewTrack {
   own: boolean;
   presetId: string;
   anchorDate: IsoDate;
+  /** Своё начало смен: id смены → «ЧЧ:ММ». Пусто — как в справочнике. */
+  shiftStarts?: Record<string, string>;
 }
 
 /**
@@ -362,7 +366,7 @@ export function summaryTrack(state: AppState): ScheduleTrack | null {
  * ничем не отличаются.
  */
 function scheduleFromPreset(
-  { presetId, startsOn, anchorDate }: ScheduleEntry,
+  { presetId, startsOn, anchorDate, shiftStarts }: ScheduleEntry,
   customSchedules: CustomSchedule[],
 ): SchedulePeriod {
   const pattern =
@@ -370,7 +374,10 @@ function scheduleFromPreset(
     customSchedules.find((item) => item.id === presetId)?.pattern;
 
   if (!pattern) throw new ReferenceError(`Неизвестный график "${presetId}"`);
-  return { presetId, pattern, anchorDate, startsOn };
+  // Пустой набор не сохраняется вовсе: смены без своего времени должны и
+  // дальше идти по справочнику, а не застыть на его сегодняшнем значении.
+  const own = shiftStarts && Object.keys(shiftStarts).length > 0 ? { shiftStarts } : {};
+  return { presetId, pattern, anchorDate, startsOn, ...own };
 }
 
 /**
@@ -505,7 +512,7 @@ export const useAppStore = create<AppState & AppActions>()(
           customSchedules: state.customSchedules.filter((schedule) => schedule.id !== id),
         })),
 
-      addTrack: ({ name, own, presetId, anchorDate }) => {
+      addTrack: ({ name, own, presetId, anchorDate, shiftStarts }) => {
         const id = createId();
         const track: ScheduleTrack = {
           id,
@@ -516,7 +523,7 @@ export const useAppStore = create<AppState & AppActions>()(
           // История начинается с первой смены: раньше неё человек здесь не работал.
           schedules: [
             scheduleFromPreset(
-              { presetId, startsOn: anchorDate, anchorDate },
+              { presetId, startsOn: anchorDate, anchorDate, shiftStarts },
               get().customSchedules,
             ),
           ],

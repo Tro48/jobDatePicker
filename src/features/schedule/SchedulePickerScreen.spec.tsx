@@ -4,11 +4,12 @@ import { INITIAL_STATE, useAppStore } from '@/data/store.ts';
 import { ThemeProvider } from '@/theme';
 
 /**
- * Смена графика с даты.
+ * Смена графика с даты и своё начало смен.
  *
  * Проверяется ловушка, из-за которой день перед началом нового графика молча
  * остаётся прежней работе рабочей сменой: в сводке это всплывает недоработкой,
- * а на экране до правки не было видно ничего.
+ * а на экране до правки не было видно ничего. Плюс время смены: справочник
+ * смен один на всё приложение, а начало у работы своё.
  */
 
 jest.mock('expo-router', () => ({
@@ -87,4 +88,28 @@ test('выходной перед началом не поднимает шум�
   });
 
   expect(view.queryByText(/останется на графике/)).toBeNull();
+});
+
+test('своё начало смены сохраняется в графике, а не в справочнике смен', async () => {
+  const view = await renderPicker();
+
+  // Новый период открывается на 2/2: её дневная смена в справочнике с восьми.
+  await act(async () => {
+    fireEvent.press(view.getByLabelText('Часы: 08'));
+  });
+  await act(async () => {
+    fireEvent.press(view.getByLabelText('10'));
+  });
+
+  expect(view.getByText('В справочнике смен — 08:00')).toBeTruthy();
+
+  await act(async () => {
+    fireEvent.press(view.getByText('Сохранить график'));
+  });
+
+  const track = useAppStore.getState().tracks[0];
+  expect(track.schedules.at(-1)?.shiftStarts).toEqual({ day12: '10:00' });
+  // Справочник смен при этом остался нетронутым: время своё только у графика.
+  const day12 = useAppStore.getState().shiftTypes.find((type) => type.id === 'day12');
+  expect(day12?.time?.start).toBe('08:00');
 });

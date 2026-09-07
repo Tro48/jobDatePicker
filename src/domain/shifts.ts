@@ -1,4 +1,4 @@
-import { parseTimeToMinutes } from './date.ts';
+import { formatMinutesAsTime, parseTimeToMinutes } from './date.ts';
 import type { ScheduleTrack, ShiftType } from './types.ts';
 
 /**
@@ -157,6 +157,80 @@ export const SLEEP_SHIFT_BUILTIN_ID = 'sleep';
  */
 export function isSleepShift(type: ShiftType): boolean {
   return type.builtinId === SLEEP_SHIFT_BUILTIN_ID;
+}
+
+/** Сутки в минутах: смена может переходить через полночь. */
+const DAY_MINUTES = 24 * 60;
+
+/**
+ * Та же смена, начинающаяся в другое время.
+ *
+ * Двигается всё окно целиком: конец едет вместе с началом, перерыв остаётся
+ * прежним. Значит, и оплачиваемая длительность прежняя — сдвиг начала это
+ * подпись, а не другая смена, и часы за месяц от него не меняются.
+ *
+ * Нерабочая смена и смена без времени возвращаются как есть: двигать там
+ * нечего.
+ */
+export function withShiftStart(type: ShiftType, start: string | undefined): ShiftType {
+  if (start === undefined || type.kind !== 'work' || !type.time) return type;
+  if (type.time.start === start) return type;
+
+  const from = parseTimeToMinutes(type.time.start);
+  const to = parseTimeToMinutes(type.time.end);
+  // Ровно сутки, когда конец совпал с началом: так же считает и длительность.
+  const span = to > from ? to - from : to - from + DAY_MINUTES;
+  const end = formatMinutesAsTime((parseTimeToMinutes(start) + span) % DAY_MINUTES);
+
+  return { ...type, time: { ...type.time, start, end } };
+}
+
+/**
+ * Справочник со сдвинутым началом смен. Без сдвигов возвращается тот же
+ * массив: одинаковость ссылок держит memo экранов, которые его получают.
+ */
+export function applyShiftStarts(
+  types: ShiftType[],
+  starts: Record<string, string> | undefined,
+): ShiftType[] {
+  if (!starts || Object.keys(starts).length === 0) return types;
+  return types.map((type) => withShiftStart(type, starts[type.id]));
+}
+
+/**
+ * Рабочие смены, сгруппированные по началу. Порядок — по времени суток: утро
+ * идёт раньше вечера, и список не переставляется от правки справочника.
+ *
+ * Группа, а не смена поштучно, потому что вопрос всегда про время, а не про
+ * названия: на 5/2 с сокращённой пятницей смен две, но начинаются обе в
+ * девять, и спрашивать время дважды значит заставить набрать одно и то же. Там
+ * же, где день чередуется с ночью, времени и правда два.
+ */
+export interface ShiftStartGroup {
+  /** Начало смен группы, «ЧЧ:ММ». */
+  start: string;
+  shiftTypeIds: string[];
+  /** Подпись поля: названия смен группы через точку. */
+  label: string;
+}
+
+export function shiftStartGroups(types: ShiftType[]): ShiftStartGroup[] {
+  const byStart = new Map<string, ShiftType[]>();
+
+  for (const type of types) {
+    if (type.kind !== 'work' || !type.time) continue;
+    const group = byStart.get(type.time.start);
+    if (group) group.push(type);
+    else byStart.set(type.time.start, [type]);
+  }
+
+  return [...byStart.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([start, group]) => ({
+      start,
+      shiftTypeIds: group.map((type) => type.id),
+      label: group.map((type) => type.name).join(' · '),
+    }));
 }
 
 /** Длиннее в клетку календаря не влезает — она и так 46 dp. */

@@ -472,3 +472,28 @@ test('подъём по умолчанию — за час до смены, че
   assert.equal(defaultWakeTime('00:30'), '23:30');
   assert.equal(defaultWakeTime(undefined), '07:00');
 });
+
+test('своё начало смены в графике не двигает звонок, только его подпись', () => {
+  const plain = contextFor('2-2-day', '2026-09-01');
+  const shifted: ScheduleContext = {
+    ...plain,
+    schedules: [{ ...plain.schedules[0], shiftStarts: { day12: '09:00' } }],
+  };
+
+  const bySchedule: Alarm = {
+    ...base,
+    repeat: { kind: 'schedule', tracks: [{ trackId: 'main', times: { day12: '06:30' } }] },
+  };
+
+  const before = nextOccurrences(bySchedule, alone(plain), localNoon('2026-09-01'), 2);
+  const after = nextOccurrences(bySchedule, alone(shifted), localNoon('2026-09-01'), 2);
+
+  // Время подъёма человек задал сам — от того, что смена начинается на час
+  // позже, оно не сдвигается ни на минуту.
+  assert.deepEqual(
+    after.map((item) => `${item.date} ${item.time}`),
+    before.map((item) => `${item.date} ${item.time}`),
+  );
+  // А вот в подписи звонка стоит то начало, которое человек видит в календаре.
+  assert.match(after[0].subtitle, /09:00/);
+});
