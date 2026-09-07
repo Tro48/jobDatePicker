@@ -145,6 +145,20 @@ export function isBuiltinShiftType(type: ShiftType): boolean {
   return type.builtinId !== null;
 }
 
+/** Отсыпной после ночной смены. */
+export const SLEEP_SHIFT_BUILTIN_ID = 'sleep';
+
+/**
+ * Отсыпной ли это.
+ *
+ * Формально день нерабочий, но полноценным выходным он не бывает: человек его
+ * отсыпается после ночной. Смену можно переименовать и перекрасить — опознаём
+ * по происхождению, а не по названию.
+ */
+export function isSleepShift(type: ShiftType): boolean {
+  return type.builtinId === SLEEP_SHIFT_BUILTIN_ID;
+}
+
 /** Длиннее в клетку календаря не влезает — она и так 46 dp. */
 export const MAX_BADGE_LENGTH = 3;
 

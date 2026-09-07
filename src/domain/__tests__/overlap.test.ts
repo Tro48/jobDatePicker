@@ -145,3 +145,61 @@ test('2/2 против 2/2 со сдвигом на половину цикла 
     assert.deepEqual(sharedDaysOff([mine], [shifted], monthDays(2026, month)), []);
   }
 });
+
+test('отсыпной общим выходным не считается', () => {
+  // ДНОВ от 1 сентября: 1 — день, 2 — ночь, 3 — отсыпной, 4 — выходной.
+  const mine = contextFor('dnso', '2026-09-01');
+  const theirs = contextFor('dnso', '2026-09-01');
+
+  const shared = sharedDaysOff([mine], [theirs], september);
+
+  // День после ночной уходит на сон: договориться о встрече в него нельзя.
+  assert.ok(!shared.includes('2026-09-03'));
+  assert.ok(shared.includes('2026-09-04'));
+});
+
+test('переименованный отсыпной остаётся отсыпным', () => {
+  // Смены правятся руками, и «Отсыпной» легко превращается в «После ночи».
+  // Опознаётся он по происхождению, поэтому название на ответ не влияет.
+  const renamed = DEFAULT_SHIFT_TYPES.map((type) =>
+    type.id === 'sleep' ? { ...type, name: 'После ночи', badge: 'ПН' } : type,
+  );
+  const mine = contextFor('dnso', '2026-09-01');
+  const theirs: ScheduleContext = {
+    ...contextFor('dnso', '2026-09-01'),
+    shiftTypes: indexShiftTypes(renamed),
+  };
+
+  assert.ok(!sharedDaysOff([mine], [theirs], september).includes('2026-09-03'));
+});
+
+test('своя смена отдыха идёт за полноценный выходной', () => {
+  // Пользовательский нерабочий день — не отсыпной: происхождения у него нет.
+  const custom = {
+    id: 'my-off',
+    builtinId: null,
+    name: 'Свой выходной',
+    badge: 'СВ',
+    kind: 'rest' as const,
+    colorToken: 'shift.off',
+    rateMultiplier: 0,
+  };
+  const mine = contextFor('dnso', '2026-09-01');
+  const theirs: ScheduleContext = {
+    schedules: [
+      {
+        presetId: 'custom',
+        pattern: { kind: 'cycle', slots: ['my-off'] },
+        anchorDate: '2026-09-01',
+        startsOn: '2026-09-01',
+      },
+    ],
+    shiftTypes: indexShiftTypes([...DEFAULT_SHIFT_TYPES, custom]),
+    overrides: new Map(),
+  };
+
+  const shared = sharedDaysOff([mine], [theirs], september);
+
+  assert.ok(shared.includes('2026-09-04'));
+  assert.ok(!shared.includes('2026-09-03'));
+});
