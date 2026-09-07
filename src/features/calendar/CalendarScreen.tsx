@@ -8,25 +8,24 @@ import type { DayNote } from '@/domain/types.ts';
 import {
   SHIFT_FORMS,
   formatHoursRatio,
-  formatMonthTitle,
   formatTotalHours,
   plural,
   pluralize,
 } from '@/domain/format.ts';
-import { periodOf } from '@/domain/payday.ts';
 import { describeScheduleStart } from '@/domain/describe.ts';
 import { buildMonthSummary } from '@/domain/summary.ts';
 import { useActiveTrack, useNotesByDate, useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
-import { AppText, Button, Card, IconButton } from '@/ui';
+import { AppText, Button, Card } from '@/ui';
 import { useTheme } from '@/theme';
 import { AlarmPermissionNotice } from '@/features/alarm/AlarmPermissionNotice.tsx';
 import { UpdateNotice } from '@/features/updates/UpdateNotice.tsx';
 import { Legend } from './Legend.tsx';
 import { WeekdayHeader } from './MonthGrid.tsx';
-import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
 import { MonthPager } from './MonthPager.tsx';
+import { MonthSwitcher } from './MonthSwitcher.tsx';
+import { useMonthWindow } from './useMonthWindow.ts';
 import { SharedDaysOffCard } from './SharedDaysOffCard.tsx';
 import { DayCard } from './DayCard.tsx';
 import { useSharedRows } from './useSharedDays.ts';
@@ -49,9 +48,7 @@ export function CalendarScreen() {
   const notesByDay = useNotesByDate();
 
   const today = useMemo(() => todayIso(), []);
-  const months = useMemo(() => buildMonthWindow(periodOf(today)), [today]);
-  const [index, setIndex] = useState(MONTH_RANGE);
-  const visible = months[index];
+  const { months, index, visible, setIndex, goTo, key: windowKey } = useMonthWindow(today);
 
   /**
    * День, на который сейчас смотрит карточка над календарём.
@@ -213,29 +210,10 @@ export function CalendarScreen() {
     >
       {trackRow}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.spacing.sm }}>
-        <IconButton
-          name="chevron-back"
-          label="Предыдущий месяц"
-          disabled={index === 0}
-          onPress={() => setIndex((value) => Math.max(0, value - 1))}
-        />
-        {/* Заголовок страницы — сам месяц: он меняется при листании и точнее
-            описывает то, что сейчас на экране, чем слово «Календарь». */}
-        <AppText
-          variant="title"
-          accessibilityRole="header"
-          accessibilityLiveRegion="polite"
-          style={{ flex: 1, textAlign: 'center' }}
-        >
-          {formatMonthTitle(visible.year, visible.month)}
-        </AppText>
-        <IconButton
-          name="chevron-forward"
-          label="Следующий месяц"
-          disabled={index === months.length - 1}
-          onPress={() => setIndex((value) => Math.min(months.length - 1, value + 1))}
-        />
+      {/* Шапка страницы — сам месяц: он меняется при листании и точнее
+          описывает то, что сейчас на экране, чем слово «Календарь». */}
+      <View style={{ marginBottom: theme.spacing.sm }}>
+        <MonthSwitcher period={visible.period} onChange={goTo} />
       </View>
 
       <AlarmPermissionNotice />
@@ -261,6 +239,7 @@ export function CalendarScreen() {
       <View style={{ marginHorizontal: -theme.spacing.lg }}>
         <WeekdayHeader width={width} />
         <MonthPager
+          key={windowKey}
           months={months}
           index={index}
           onIndexChange={setIndex}
