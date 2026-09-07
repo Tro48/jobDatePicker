@@ -43,6 +43,11 @@ beforeEach(() => {
   useAppStore.setState({ activeTrackId: id });
 });
 
+/**
+ * Клетка календаря ищется по запятой после даты: строка «как ляжет» начинается
+ * с того же дня, и без запятой запрос находил их обе — в дни, когда раскладка
+ * стартовала с сегодняшнего числа, тест падал на ровном месте.
+ */
 test('день перед началом нового графика назван прямо, с часами', async () => {
   const view = await renderPicker();
 
@@ -51,7 +56,7 @@ test('день перед началом нового графика назва�
     fireEvent.press(view.getByText(/Действует с:/));
   });
   await act(async () => {
-    fireEvent.press(view.getByLabelText(/^2 сентября/));
+    fireEvent.press(view.getByLabelText(/^2 сентября,/));
   });
 
   // Прямым текстом: какой день, какой график и сколько часов он принесёт.
@@ -78,7 +83,7 @@ test('выходной перед началом не поднимает шум�
   });
   // 7 сентября — понедельник; накануне воскресенье, у пятидневки выходной.
   await act(async () => {
-    fireEvent.press(view.getByLabelText(/^7 сентября/));
+    fireEvent.press(view.getByLabelText(/^7 сентября,/));
   });
 
   expect(view.queryByText(/останется на графике/)).toBeNull();
