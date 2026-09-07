@@ -40,9 +40,10 @@ test('правка озвучивается, а противоречивое в�
     date: '2026-09-03',
     shiftTypeId: 'extra',
     workedMinutesOverride: 240,
-    note: 'вышел за Сергея',
   });
-  const spoken = describeDay(resolveDay(context, '2026-09-03'));
+  // Заметка живёт отдельно от графика и приходит в озвучку параметром: клетка
+  // читается целиком, вместе с тем, что человек про этот день написал.
+  const spoken = describeDay(resolveDay(context, '2026-09-03'), { note: 'вышел за Сергея' });
 
   assert.equal(
     spoken,

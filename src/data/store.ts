@@ -5,6 +5,7 @@ import {
   MAIN_TRACK_NAME,
   migrateAlarm,
   migrateCustomSchedules,
+  migrateNotes,
   migratePayments,
   migrateShiftTypes,
   migrateTracks,
@@ -15,12 +16,15 @@ import { DEFAULT_SHIFT_TYPES, sanitizeShiftType, shiftTypeUsage } from '@/domain
 import { DEFAULT_PAYMENT_RULES } from '@/domain/payday.ts';
 import { clampSnoozeMinutes, restartOnce } from '@/domain/alarm.ts';
 import type { Alarm } from '@/domain/alarm.ts';
+import { normalizeNoteText } from '@/domain/notes.ts';
+import type { SharedOverride } from '@/domain/share.ts';
 import { addDays } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import { LATEST_RELEASE_ID } from '@/domain/releaseNotes.ts';
 import type { ReleaseManifest } from '@/domain/release.ts';
 import type {
   CustomSchedule,
+  DayNote,
   DayOverride,
   PaymentRecord,
   PaymentRule,
@@ -37,7 +41,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -160,6 +164,15 @@ export interface AppState {
   sharedGroups: SharedGroup[];
   /** Список будильников. Порядок — как их завёл пользователь. */
   alarms: Alarm[];
+  /**
+   * Заметки к дням — все разом, а не внутри дорожек.
+   *
+   * Заметка про день, а не про работу: «забрать посылку» не принадлежит ни
+   * основному графику, ни складу, и переключение вкладки её прятать не должно.
+   * Общий список, сгруппированный по дням, из такого хранения собирается одной
+   * группировкой по дате.
+   */
+  notes: DayNote[];
   payments: PaymentRecord[];
   /**
    * До какой записи «что нового» человек уже дочитал. null — не видел ничего:
@@ -190,7 +203,7 @@ export interface AppActions {
   /**
    * Удаление своей смены. Встроенная не удаляется, и занятая графиком — тоже:
    * без неё график перестанет раскладываться. Ручные правки на удалённую смену
-   * теряют смену, но сохраняют заметку и часы.
+   * теряют смену, но сохраняют часы.
    */
   removeShiftType: (id: string) => void;
   /** Заводит собранный график и возвращает его id — список выбора сразу встаёт на него. */
@@ -256,10 +269,17 @@ export interface AppActions {
   setAlarmEnabled: (id: string, enabled: boolean) => void;
   /** Гасит разом несколько будильников — так выключаются отзвонившие разовые. */
   disableAlarms: (ids: string[]) => void;
+  /**
+   * Заводит заметку на день и возвращает её id. Пустой текст не сохраняется:
+   * заметка без текста — это ничего.
+   */
+  addNote: (note: Pick<DayNote, 'date' | 'text' | 'remindAt'>) => string | null;
+  updateNote: (id: string, patch: Partial<Pick<DayNote, 'text' | 'remindAt'>>) => void;
+  removeNote: (id: string) => void;
   /** Дальше — правки активной дорожки: чужой отпуск не должен попадать в мою сводку. */
   setOverride: (override: DayOverride) => void;
   /** Ставит одинаковую правку на несколько дней подряд: отпуск, больничный. */
-  setOverrideRange: (startDate: IsoDate, days: number, shiftTypeId: string, note?: string) => void;
+  setOverrideRange: (startDate: IsoDate, days: number, shiftTypeId: string) => void;
   clearOverride: (date: IsoDate) => void;
   /** Убирает правки на отрезке дат включительно — снятие отпуска целиком. */
   clearOverrideRange: (startDate: IsoDate, days: number) => void;
@@ -286,7 +306,8 @@ export interface IncomingTrack {
   shiftTypes: ShiftType[];
   pattern: SchedulePattern;
   anchorDate: IsoDate;
-  overrides: DayOverride[];
+  /** Правки как они приехали: заметка внутри правки разбирается в свою запись. */
+  overrides: SharedOverride[];
   payments: Array<Omit<PaymentRecord, 'id' | 'trackId'>>;
 }
 
@@ -422,6 +443,7 @@ export const INITIAL_STATE: AppState = {
   sharedDaysOff: { enabled: false },
   sharedGroups: [],
   alarms: [],
+  notes: [],
   payments: [],
   // Новая установка «что нового» не видит: рассказывать про изменения тому,
   // кто только поставил приложение, нечего.
@@ -474,18 +496,16 @@ export const useAppStore = create<AppState & AppActions>()(
 
           return {
             shiftTypes: state.shiftTypes.filter((item) => item.id !== id),
-            // Правка остаётся жить без смены, если в ней были часы или
-            // заметка: день вернётся к графику, а написанное руками не пропадёт.
+            // Правка остаётся жить без смены, если в ней были часы: день
+            // вернётся к графику, а отработанное руками не пропадёт. Заметки
+            // дня к смене не привязаны и не страдают вовсе.
             tracks: state.tracks.map((track) => ({
               ...track,
               overrides: Object.fromEntries(
                 Object.entries(track.overrides).flatMap(([date, override]) => {
                   if (override.shiftTypeId !== id) return [[date, override]];
                   const { shiftTypeId, ...rest } = override;
-                  const empty =
-                    rest.workedMinutesOverride === undefined &&
-                    (rest.note === undefined || rest.note.length === 0);
-                  return empty ? [] : [[date, rest]];
+                  return rest.workedMinutesOverride === undefined ? [] : [[date, rest]];
                 }),
               ),
             })),
@@ -602,15 +622,45 @@ export const useAppStore = create<AppState & AppActions>()(
           // сослаться, у пришедшего графика нет. Историей чужой график не
           // делится — приезжает то, по чему человек работает сейчас.
           schedules: [{ presetId: `shared-${id}`, pattern, anchorDate, startsOn: anchorDate }],
-          overrides: Object.fromEntries(overrides.map((override) => [override.date, override])),
+          // Заметка приезжает внутри правки — формат обмена старше, чем
+          // отдельная заметка. Здесь она разбирается обратно: правка остаётся
+          // только там, где есть смена или часы.
+          overrides: Object.fromEntries(
+            overrides
+              .map(({ note, ...rest }) => rest)
+              .filter(
+                (override) =>
+                  override.shiftTypeId !== undefined ||
+                  override.workedMinutesOverride !== undefined,
+              )
+              .map((override) => [override.date, override]),
+          ),
           payrollRules: DEFAULT_PAYMENT_RULES,
         };
+
+        const incomingNotes: DayNote[] = overrides.flatMap((override) => {
+          const text = normalizeNoteText(override.note ?? '');
+          return text.length === 0
+            ? []
+            : [
+                {
+                  id: createId(),
+                  date: override.date,
+                  text,
+                  // Напоминания в коде графика нет: время звонка — дело того
+                  // телефона, на котором заметку завели.
+                  remindAt: null,
+                  createdAt: Date.now(),
+                },
+              ];
+        });
 
         set((state) => ({
           // Смены дописываются, а не заменяют свои: у принимающего свой
           // справочник, и терять его из-за чужого графика нельзя.
           shiftTypes: [...state.shiftTypes, ...shiftTypes],
           tracks: [...state.tracks, track],
+          notes: [...state.notes, ...incomingNotes],
           payments: [
             ...state.payments,
             ...payments.map((payment) => ({ ...payment, id: createId(), trackId: id })),
@@ -685,16 +735,44 @@ export const useAppStore = create<AppState & AppActions>()(
         }));
       },
 
+      addNote: ({ date, text, remindAt }) => {
+        const clean = normalizeNoteText(text);
+        // Пустую заметку не заводим: список дня наполнился бы записями, у
+        // которых нечего показать и незачем открывать.
+        if (clean.length === 0) return null;
+
+        const id = createId();
+        set((state) => ({
+          notes: [...state.notes, { id, date, text: clean, remindAt, createdAt: Date.now() }],
+        }));
+        return id;
+      },
+
+      updateNote: (id, patch) =>
+        set((state) => ({
+          notes: state.notes.map((note) =>
+            note.id === id
+              ? {
+                  ...note,
+                  ...patch,
+                  // Текст чинится в одном месте, как и при заведении: пустой
+                  // здесь не отбрасывается — экран не даёт сохранить такой.
+                  text: patch.text === undefined ? note.text : normalizeNoteText(patch.text),
+                }
+              : note,
+          ),
+        })),
+
+      removeNote: (id) => set((state) => ({ notes: state.notes.filter((note) => note.id !== id) })),
+
       setOverride: (override) =>
         set((state) =>
           patchActiveTrack(state, (track) => {
-            // Правка, в которой не осталось ни смены, ни часов, ни заметки, — это
-            // отсутствие правки. Без этой ветки стёртая заметка оставляла бы за
+            // Правка, в которой не осталось ни смены, ни часов, — это
+            // отсутствие правки. Без этой ветки стёртые часы оставляли бы за
             // собой пустую запись, и день до конца жизни числился бы тронутым.
             const empty =
-              override.shiftTypeId === undefined &&
-              override.workedMinutesOverride === undefined &&
-              (override.note === undefined || override.note.length === 0);
+              override.shiftTypeId === undefined && override.workedMinutesOverride === undefined;
 
             if (empty) {
               const { [override.date]: removed, ...rest } = track.overrides;
@@ -704,13 +782,13 @@ export const useAppStore = create<AppState & AppActions>()(
           }),
         ),
 
-      setOverrideRange: (startDate, days, shiftTypeId, note) =>
+      setOverrideRange: (startDate, days, shiftTypeId) =>
         set((state) =>
           patchActiveTrack(state, (track) => {
             const overrides = { ...track.overrides };
             for (let offset = 0; offset < days; offset += 1) {
               const date = addDays(startDate, offset);
-              overrides[date] = { date, shiftTypeId, note };
+              overrides[date] = { date, shiftTypeId };
             }
             return { ...track, overrides };
           }),
@@ -775,6 +853,7 @@ export const useAppStore = create<AppState & AppActions>()(
         sharedDaysOff: state.sharedDaysOff,
         sharedGroups: state.sharedGroups,
         alarms: state.alarms,
+        notes: state.notes,
         payments: state.payments,
         lastSeenReleaseId: state.lastSeenReleaseId,
         buildCheck: state.buildCheck,
@@ -820,6 +899,13 @@ export const useAppStore = create<AppState & AppActions>()(
  *
  * В версии 15 добавилось состояние слота поддержки: покупка и скрытая карточка
  * доната. У всех, кто обновляется, ничего не куплено и ничего не скрыто.
+ *
+ * В версии 16 график дорожки стал историей периодов, а не одним графиком.
+ *
+ * В версии 17 заметка перестала быть полем правки дня: заметок к одному дню
+ * может быть несколько, у каждой своё напоминание, и лежат они общим списком —
+ * не внутри дорожки. Заметки всех дорожек переезжают туда, правки без смены и
+ * часов при этом исчезают: тронутым день делала не заметка.
  */
 export function migrateState(persisted: PersistedSnapshot, _version: number): AppState {
   // Плоские поля прошлых схем разбираются по дорожкам и дальше не едут: без
@@ -849,6 +935,10 @@ export function migrateState(persisted: PersistedSnapshot, _version: number): Ap
     ? persisted.alarms.map((alarm) => migrateAlarm(alarm, tracks))
     : [];
 
+  // Заметки собираются из того же снимка, что и дорожки: до версии 17 они
+  // лежали внутри правок, и прочитать их надо до того, как правки почищены.
+  const notes = migrateNotes(persisted);
+
   return {
     ...INITIAL_STATE,
     ...rest,
@@ -857,6 +947,7 @@ export function migrateState(persisted: PersistedSnapshot, _version: number): Ap
     // Числа выплат уехали в дорожки: в общих настройках денег их больше нет.
     payroll: { ...DEFAULT_PAYROLL, ...payroll },
     alarms,
+    notes,
     shiftTypes,
     customSchedules,
     // Обновление со старой схемы — это человек, который только что получил

@@ -1,12 +1,12 @@
 import { render, screen } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { DayCell, HOLIDAY_ICON } from './DayCell.tsx';
+import { DayCell, HOLIDAY_ICON, NOTE_ICON, PAYMENT_ICON } from './DayCell.tsx';
 import { resolveDay } from '@/domain/engine.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '@/domain/shifts.ts';
 import { SCHEDULE_PRESETS } from '@/domain/presets.ts';
 import { RU_HOLIDAYS } from '@/domain/holidays.ts';
-import { lightPalette, ThemeProvider } from '@/theme';
+import { FOCUS_RING_WIDTH, lightPalette, ThemeProvider } from '@/theme';
 
 /**
  * Клетка календаря: что она говорит скринридеру и чем помечает расхождение с
@@ -52,6 +52,9 @@ interface CellOptions {
   highlighting?: boolean;
   dimmed?: boolean;
   sharedWith?: string;
+  isSelected?: boolean;
+  note?: string;
+  hasPayment?: boolean;
   context?: ScheduleContext;
 }
 
@@ -64,6 +67,9 @@ function renderCell({
   highlighting = false,
   dimmed = false,
   sharedWith,
+  isSelected = false,
+  note,
+  hasPayment = false,
   context = contextFor(),
 }: CellOptions = {}) {
   return render(
@@ -79,7 +85,9 @@ function renderCell({
         highlighting={highlighting}
         dimmed={dimmed}
         sharedWith={sharedWith}
-        isSelected={false}
+        note={note}
+        hasPayment={hasPayment}
+        isSelected={isSelected}
         onPress={() => {}}
       />,
     ),
@@ -99,6 +107,29 @@ function iconNames(tree: unknown): string[] {
 
     const element = node as { type?: string; props?: { name?: string }; children?: unknown };
     if (element.type === 'Ionicons' && element.props?.name) found.push(element.props.name);
+    walk(element.children);
+  };
+
+  walk(tree);
+  return found;
+}
+
+/** Толщина рамок в дереве: у клетки она одна, и меняться от состояния не должна. */
+function borderWidths(tree: unknown): number[] {
+  const found: number[] = [];
+
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object' || node === null) return;
+
+    const element = node as { props?: { style?: unknown }; children?: unknown };
+    for (const style of [element.props?.style].flat()) {
+      const width = (style as { borderWidth?: number } | undefined)?.borderWidth;
+      if (width !== undefined) found.push(width);
+    }
     walk(element.children);
   };
 
@@ -335,4 +366,51 @@ test('день без графика рамкой не обводится: он 
   });
 
   expect(borderColors(before.toJSON())).not.toContain(lightPalette.border);
+});
+
+test('заметка и выплата помечены каждая своим значком, а не одной точкой', async () => {
+  const view = await renderCell({ note: 'Забрать посылку', hasPayment: true });
+  const icons = iconNames(view.toJSON());
+
+  expect(icons).toContain(NOTE_ICON);
+  expect(icons).toContain(PAYMENT_ICON);
+});
+
+test('заметка и выплата озвучиваются словами: значок скринридеру не виден', async () => {
+  await renderCell({ note: 'Забрать посылку', hasPayment: true });
+
+  const label = screen.getByRole('button').props.accessibilityLabel as string;
+
+  // Заметка читается своим текстом: «есть заметка» заставило бы открыть день,
+  // чтобы узнать, о чём она.
+  expect(label).toContain('Забрать посылку');
+  expect(label).toContain('есть выплата');
+});
+
+test('без заметки и выплаты лишних значков в клетке нет', async () => {
+  const view = await renderCell();
+  const icons = iconNames(view.toJSON());
+
+  expect(icons).not.toContain(NOTE_ICON);
+  expect(icons).not.toContain(PAYMENT_ICON);
+});
+
+/**
+ * Толщина рамки одна и та же в любом состоянии.
+ *
+ * Абсолютные координаты значков в углах считаются от внутреннего края рамки:
+ * стоило ей потолстеть при выборе, и заметка с выплатой уезжали внутрь клетки
+ * на каждое нажатие по дню.
+ */
+test('рамка обычной клетки той же толщины, что и у выбранной', async () => {
+  const view = await renderCell({ note: 'Забрать посылку', hasPayment: true });
+
+  expect(borderWidths(view.toJSON())).toEqual([FOCUS_RING_WIDTH]);
+});
+
+test('выбранная клетка рамкой не толстеет, а только меняет цвет', async () => {
+  const view = await renderCell({ isSelected: true, note: 'Забрать посылку', hasPayment: true });
+
+  expect(borderWidths(view.toJSON())).toEqual([FOCUS_RING_WIDTH]);
+  expect(borderColors(view.toJSON())).toContain(lightPalette.accent);
 });

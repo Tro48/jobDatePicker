@@ -208,9 +208,9 @@ export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay
     scheduleOn(context.schedules, date)?.shiftStarts?.[shiftTypeId],
   );
 
-  // Правка, которая ничего не меняет по существу, — это заметка, а не
-  // изменённый день. Иначе одна подпись «вышел за Сергея» зажигала бы точку в
-  // клетке и попадала в счёт правок за месяц.
+  // Правка, которая ничего не меняет по существу, изменённым днём его не
+  // делает. Заметок это больше не касается вовсе: они живут отдельно от правок
+  // и точку в клетке не зажигают.
   const changed =
     override !== undefined &&
     (override.shiftTypeId !== undefined || override.workedMinutesOverride !== undefined);
@@ -228,7 +228,6 @@ export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay
     source: changed ? 'override' : plannedId === null ? 'none' : 'schedule',
     workedMinutes: override?.workedMinutesOverride ?? shiftDurationMinutes(shiftType),
     plannedMinutes: plannedType ? shiftDurationMinutes(plannedType) : 0,
-    note: override?.note,
     // Название праздника едет вместе с днём: и клетка календаря, и карточка
     // дня, и озвучка берут его отсюда, а не спрашивают календарь заново.
     ...holidayNameOf(context, date),
@@ -443,9 +442,9 @@ export function findOverrideRun(
   date: IsoDate,
 ): OverrideRun | null {
   const current = overrides.get(date);
-  // Правка без смены — это заметка или часы, отпуском она не бывает. Без этой
-  // проверки два соседних дня с заметками склеились бы в «отрезок» из двух
-  // undefined.
+  // Правка без смены — это одни часы, отпуском она не бывает. Без этой
+  // проверки два соседних дня с правлеными часами склеились бы в «отрезок»
+  // из двух undefined.
   if (!current?.shiftTypeId) return null;
 
   const sameType = (candidate: IsoDate): boolean =>

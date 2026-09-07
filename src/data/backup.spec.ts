@@ -25,7 +25,8 @@ function fillStore(): void {
     rateMultiplier: 1.2,
   });
   store.addTrack({ name: 'Основная', own: true, presetId: '2-2-day', anchorDate: '2026-09-01' });
-  useAppStore.getState().setOverride({ date: '2026-09-10', note: 'за Сергея' });
+  useAppStore.getState().setOverride({ date: '2026-09-10', workedMinutesOverride: 300 });
+  useAppStore.getState().addNote({ date: '2026-09-10', text: 'за Сергея', remindAt: '09:00' });
   useAppStore.getState().addPayment({
     trackId: useAppStore.getState().tracks[0].id,
     kind: 'salary',
@@ -52,7 +53,8 @@ test('копия и восстановление возвращают состо
   expect(after.tracks).toEqual(before.tracks);
   expect(after.shiftTypes).toEqual(before.shiftTypes);
   expect(after.payments).toEqual(before.payments);
-  expect(activeTrack(after)?.overrides['2026-09-10']?.note).toBe('за Сергея');
+  expect(after.notes).toEqual(before.notes);
+  expect(activeTrack(after)?.overrides['2026-09-10']?.workedMinutesOverride).toBe(300);
 });
 
 test('в сводке видно, что внутри файла, — до замены', () => {
@@ -64,6 +66,7 @@ test('в сводке видно, что внутри файла, — до за�
 
   expect(parsed.summary.tracks).toBe(1);
   expect(parsed.summary.overrides).toBe(1);
+  expect(parsed.summary.notes).toBe(1);
   expect(parsed.summary.payments).toBe(1);
   expect(parsed.summary.schema).toBe(SCHEMA_VERSION);
 });
@@ -111,7 +114,9 @@ test('копия со старой схемы проходит через ту �
   const restored = stateFromBackup(parsed.backup);
   expect(restored.appearance).toBe('dark');
   expect(restored.tracks).toHaveLength(1);
-  expect(restored.tracks[0].overrides['2026-09-05'].note).toBe('за Сергея');
+  // Заметка старой копии переезжает в общий список, а пустая правка исчезает.
+  expect(restored.notes.map((note) => note.text)).toEqual(['за Сергея']);
+  expect(restored.tracks[0].overrides['2026-09-05']).toBeUndefined();
   // Единственный график старой копии становится первым периодом истории.
   expect(restored.tracks[0].schedules).toHaveLength(1);
   expect(restored.tracks[0].schedules[0].startsOn).toBe('2026-09-01');

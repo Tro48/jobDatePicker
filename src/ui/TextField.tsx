@@ -30,6 +30,13 @@ export interface TextFieldProps {
    * каждую букву слишком дорого, а поле должно хранить ровно то, что набрали.
    */
   onBlur?: () => void;
+  /**
+   * Высота поля, когда в нём пусто. По умолчанию — зона нажатия в 48 dp.
+   *
+   * Задаётся там, где поле заводят под абзац текста, а не под строку: пустое
+   * поле в одну строку не показывает, что писать в него можно много.
+   */
+  minHeight?: number;
 }
 
 export function TextField({
@@ -43,6 +50,7 @@ export function TextField({
   multiline = false,
   maxLength,
   onBlur,
+  minHeight,
 }: TextFieldProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
@@ -82,7 +90,7 @@ export function TextField({
         multiline={multiline}
         maxLength={maxLength}
         style={{
-          minHeight: theme.minTouchTarget,
+          minHeight: minHeight ?? theme.minTouchTarget,
           paddingHorizontal: theme.spacing.md,
           paddingVertical: theme.spacing.sm,
           borderRadius: theme.radius.md,

@@ -3,9 +3,11 @@ import { activeTrack, alarmTrack, summaryTrack, useAppStore } from './store.ts';
 import { RU_HOLIDAYS } from '@/domain/holidays.ts';
 import type { HolidayCalendar } from '@/domain/holidays.ts';
 import { indexShiftTypes } from '@/domain/shifts.ts';
+import { notesByDate, notesOn } from '@/domain/notes.ts';
+import type { IsoDate } from '@/domain/date.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import type { AlarmTrackContext } from '@/domain/alarm.ts';
-import type { ScheduleTrack, ShiftType } from '@/domain/types.ts';
+import type { DayNote, ScheduleTrack, ShiftType } from '@/domain/types.ts';
 
 /**
  * Мост между хранилищем и доменом: собирает ScheduleContext, который принимают
@@ -25,8 +27,8 @@ export function buildScheduleContext(
   // Правки на удалённый тип смены отбрасываются здесь, а не в домене.
   // resolveDay намеренно падает на неизвестном id, а календарь разворачивает
   // через него весь месяц — одна битая запись уронила бы экран целиком.
-  // Правка без смены (заметка или часы) проходит всегда: смену для такого дня
-  // даёт сам график.
+  // Правка без смены (одни часы) проходит всегда: смену для такого дня даёт
+  // сам график.
   const usable = Object.entries(track.overrides).filter(
     ([, override]) => override.shiftTypeId === undefined || index.has(override.shiftTypeId),
   );
@@ -49,6 +51,28 @@ export function buildScheduleContext(
 export function useHolidayCalendar(): HolidayCalendar | null {
   const enabled = useAppStore((state) => state.holidays.enabled);
   return enabled ? RU_HOLIDAYS : null;
+}
+
+/**
+ * Заметки одного дня, в порядке появления.
+ *
+ * Дорожки у заметок нет: список дня один и тот же, на чей бы календарь человек
+ * ни смотрел.
+ */
+export function useDayNotes(date: IsoDate): DayNote[] {
+  const notes = useAppStore((state) => state.notes);
+  return useMemo(() => notesOn(notes, date), [notes, date]);
+}
+
+/**
+ * Заметки по датам — одной картой на весь календарь.
+ *
+ * Клеток на экране больше сорока, и спрашивать список по каждой значит сорок
+ * два прохода по всем заметкам приложения на каждую перерисовку сетки.
+ */
+export function useNotesByDate(): Map<IsoDate, DayNote[]> {
+  const notes = useAppStore((state) => state.notes);
+  return useMemo(() => notesByDate(notes), [notes]);
 }
 
 /** Дорожка, на которую сейчас смотрит приложение. */

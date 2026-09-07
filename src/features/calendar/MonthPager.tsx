@@ -4,6 +4,7 @@ import { monthGridRows } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import type { MonthRef } from '@/domain/months.ts';
+import type { DayNote } from '@/domain/types.ts';
 import { HorizontalPager } from '@/ui';
 import { MonthGrid } from './MonthGrid.tsx';
 import { gridHeight } from './gridMetrics.ts';
@@ -19,6 +20,10 @@ export interface MonthPagerProps {
   highlighted?: Set<IsoDate>;
   /** Чьи это совпадения: имя человека или группы. */
   highlightName?: string;
+  /** Заметки по датам: одна карта на все страницы пейджера. */
+  notes?: Map<IsoDate, DayNote[]>;
+  /** Дни с записанными выплатами. */
+  paymentDates?: Set<IsoDate>;
   onSelectDay: (date: IsoDate) => void;
   width: number;
 }
@@ -41,6 +46,8 @@ export function MonthPager({
   selectedDate,
   highlighted,
   highlightName,
+  notes,
+  paymentDates,
   onSelectDay,
   width,
 }: MonthPagerProps) {
@@ -113,6 +120,8 @@ export function MonthPager({
           selectedDate={selectedDate}
           highlighted={highlighted}
           highlightName={highlightName}
+          notes={notes}
+          paymentDates={paymentDates}
           width={width}
           onSelectDay={onSelectDay}
         />
@@ -126,6 +135,8 @@ export function MonthPager({
       selectedDate,
       highlighted,
       highlightName,
+      notes,
+      paymentDates,
       width,
       fontScale,
       onSelectDay,

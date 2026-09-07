@@ -2,9 +2,11 @@ import { scheduleUsesKnownShifts } from '../domain/engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes, sanitizeShiftType } from '../domain/shifts.ts';
 import type { Alarm, AlarmRepeat } from '../domain/alarm.ts';
 import { sanitizeCustomSchedule } from '../domain/customSchedules.ts';
+import { normalizeNoteText, sanitizeNote } from '../domain/notes.ts';
 import type {
   ActiveSchedule,
   CustomSchedule,
+  DayNote,
   DayOverride,
   PaymentRecord,
   PaymentRule,
@@ -227,13 +229,22 @@ export function migrateSchedules(
     .sort((a, b) => a.startsOn.localeCompare(b.startsOn));
 }
 
-/** Дорожка из снимка: до версии 16 график был один и лежал в поле schedule. */
-type LegacyTrack = ScheduleTrack & { schedule?: ActiveSchedule | null };
+/**
+ * Дорожка из снимка: до версии 16 график был один и лежал в поле schedule, а до
+ * версии 17 заметка дня лежала внутри правки.
+ */
+type LegacyTrack = ScheduleTrack & {
+  schedule?: ActiveSchedule | null;
+  overrides?: Record<IsoDate, LegacyOverride>;
+};
+
+/** Правка из снимка: до версии 17 она держала ещё и заметку дня. */
+type LegacyOverride = DayOverride & { note?: string };
 
 /** Состояние до версии 9: график и правки лежали в корне, поодиночке. */
 export interface LegacyFlatState {
   schedule?: ActiveSchedule | null;
-  overrides?: Record<IsoDate, DayOverride>;
+  overrides?: Record<IsoDate, LegacyOverride>;
   tracks?: LegacyTrack[];
   /** До версии 10 числа выплат были общими и лежали в настройках денег. */
   payroll?: { rules?: PaymentRule[] };
@@ -266,7 +277,7 @@ export function migrateTracks(
   const clean = (track: LegacyTrack): ScheduleTrack => ({
     ...track,
     schedules: migrateSchedules(track.schedules, track.schedule, shiftTypes),
-    overrides: track.overrides ?? {},
+    overrides: stripNotes(track.overrides),
     payrollRules: track.payrollRules ?? rules,
   });
 
@@ -277,8 +288,82 @@ export function migrateTracks(
   if (schedules.length === 0 && Object.keys(overrides).length === 0) return [];
 
   return [
-    { id: 'main', name: MAIN_TRACK_NAME, own: true, schedules, overrides, payrollRules: rules },
+    {
+      id: LEGACY_TRACK_ID,
+      name: MAIN_TRACK_NAME,
+      own: true,
+      schedules,
+      overrides: stripNotes(overrides),
+      payrollRules: rules,
+    },
   ];
+}
+
+/** Имя единственной дорожки из плоского снимка. */
+const LEGACY_TRACK_ID = 'main';
+
+/**
+ * Правки без заметок: с версии 17 заметка — своя сущность.
+ *
+ * Правка, в которой кроме заметки ничего не было, исчезает целиком: без неё
+ * день перестаёт числиться тронутым, а сама заметка уже переехала в общий
+ * список.
+ */
+function stripNotes(
+  overrides: Record<IsoDate, LegacyOverride> | undefined,
+): Record<IsoDate, DayOverride> {
+  const result: Record<IsoDate, DayOverride> = {};
+  for (const [date, { note, ...rest }] of Object.entries(overrides ?? {})) {
+    if (rest.shiftTypeId === undefined && rest.workedMinutesOverride === undefined) continue;
+    result[date as IsoDate] = rest;
+  }
+  return result;
+}
+
+/**
+ * Заметки из снимка любой версии.
+ *
+ * До версии 17 заметка была полем правки дня и жила внутри дорожки: у одного
+ * дня она была одна, а у двух работ — по своей. Теперь заметки общие для дня и
+ * лежат отдельным списком, поэтому переезжают заметки всех дорожек разом; id
+ * собирается из дорожки и даты, чтобы две заметки на одно число не слиплись.
+ *
+ * Время создания у переехавших нулевое: когда их написали, снимок не хранил. В
+ * списке дня они от этого встают первыми, в порядке дорожек — ровно так же,
+ * как их видели до обновления.
+ */
+export function migrateNotes(persisted: LegacyFlatState & { notes?: unknown }): DayNote[] {
+  const saved = Array.isArray(persisted.notes)
+    ? persisted.notes.map(sanitizeNote).filter((note): note is DayNote => note !== null)
+    : [];
+
+  const legacy: DayNote[] = [];
+  const fromOverrides = (
+    trackId: string,
+    overrides: Record<IsoDate, LegacyOverride> = {},
+  ): void => {
+    for (const [date, override] of Object.entries(overrides)) {
+      const text = normalizeNoteText(override.note ?? '');
+      if (text.length === 0) continue;
+      legacy.push({
+        id: `note-${trackId}-${date}`,
+        date: date as IsoDate,
+        text,
+        remindAt: null,
+        createdAt: 0,
+      });
+    }
+  };
+
+  if (Array.isArray(persisted.tracks)) {
+    for (const track of persisted.tracks) fromOverrides(track.id, track.overrides);
+  } else {
+    fromOverrides(LEGACY_TRACK_ID, persisted.overrides);
+  }
+
+  // Уже переехавшие заметки идут первыми: на следующем запуске в правках
+  // заметок не останется вовсе, и список перестанет расти.
+  return [...saved, ...legacy.filter((note) => !saved.some((item) => item.id === note.id))];
 }
 
 /**

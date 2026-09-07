@@ -1,9 +1,10 @@
+import type { ComponentProps } from 'react';
 import { View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ShiftTypeTotals } from '@/domain/summary.ts';
 import { AppText } from '@/ui';
 import { typography, useTheme, useShiftColors } from '@/theme';
-import { HOLIDAY_ICON, HOLIDAY_ICON_SIZE } from './DayCell.tsx';
+import { HOLIDAY_ICON, MARKER_ICON_SIZE, NOTE_ICON, PAYMENT_ICON } from './DayCell.tsx';
 
 /** Высота обозначения: буква-маркер плюс её отступы сверху и снизу. */
 const ITEM_HEIGHT = typography.badge.lineHeight + 4;
@@ -24,6 +25,8 @@ export function Legend({
   totals,
   colorTokens,
   hasHolidays = false,
+  hasNotes = false,
+  hasPayments = false,
   shared,
   reserveShared = false,
 }: {
@@ -31,6 +34,10 @@ export function Legend({
   colorTokens: Record<string, string>;
   /** В месяце есть праздники: объяснить значок в углу клетки больше негде. */
   hasHolidays?: boolean;
+  /** В месяце есть заметки: у них свой значок в нижнем углу клетки. */
+  hasNotes?: boolean;
+  /** В месяце записаны выплаты: значок в другом нижнем углу. */
+  hasPayments?: boolean;
   /**
    * Чьи общие выходные сейчас выделены на календаре. Не задано — никого не
    * выделяют, и объяснять нечего.
@@ -63,7 +70,9 @@ export function Legend({
             colorToken={colorTokens[item.shiftTypeId] ?? ''}
           />
         ))}
-        {hasHolidays ? <HolidayLegendItem /> : null}
+        {hasHolidays ? <IconLegendItem icon={HOLIDAY_ICON} text="праздник" /> : null}
+        {hasNotes ? <IconLegendItem icon={NOTE_ICON} text="заметка" /> : null}
+        {hasPayments ? <IconLegendItem icon={PAYMENT_ICON} text="выплата" /> : null}
       </View>
 
       {/* Выделение — своей строкой под обозначениями, а не в общем ряду с
@@ -138,25 +147,36 @@ function SharedLegendItem({ shared }: { shared: SharedHighlight }) {
   );
 }
 
-/** Значок праздника: ровно тот же, что в углу клетки, и подпись к нему. */
-function HolidayLegendItem() {
+/**
+ * Значок из угла клетки и подпись к нему: праздник, заметка, выплата.
+ *
+ * Значок сам по себе смысла не передаёт — рядом всегда стоит слово, и его же
+ * читает скринридер вместо картинки.
+ */
+function IconLegendItem({
+  icon,
+  text,
+}: {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  text: string;
+}) {
   const theme = useTheme();
 
   return (
     <View
       accessibilityRole="text"
-      accessibilityLabel="Значок в углу клетки — праздник"
+      accessibilityLabel={`Значок в углу клетки — ${text}`}
       style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs }}
     >
       <Ionicons
-        name={HOLIDAY_ICON}
-        size={HOLIDAY_ICON_SIZE}
+        name={icon}
+        size={MARKER_ICON_SIZE}
         color={theme.colors.text}
         importantForAccessibility="no"
         style={{ marginHorizontal: 4 }}
       />
       <AppText variant="caption" tone="muted" importantForAccessibility="no">
-        праздник
+        {text}
       </AppText>
     </View>
   );

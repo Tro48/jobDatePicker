@@ -143,7 +143,7 @@ function confirmRestore(summary: BackupSummary, apply: () => void): void {
     'Заменить все данные?',
     [
       `Копия от ${made}.`,
-      `Внутри: графиков ${summary.tracks}, смен ${summary.shiftTypes}, ручных правок ${summary.overrides}, выплат ${summary.payments}, будильников ${summary.alarms}.`,
+      `Внутри: графиков ${summary.tracks}, смен ${summary.shiftTypes}, ручных правок ${summary.overrides}, заметок ${summary.notes}, выплат ${summary.payments}, будильников ${summary.alarms}.`,
       '',
       'Всё, что сейчас в приложении, будет удалено. Отменить это нельзя.',
     ].join('\n'),

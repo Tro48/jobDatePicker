@@ -40,6 +40,7 @@ export function ShareTrackScreen() {
   const tracks = useAppStore((state) => state.tracks);
   const shiftTypes = useAppStore((state) => state.shiftTypes);
   const allPayments = useAppStore((state) => state.payments);
+  const notes = useAppStore((state) => state.notes);
   const active = useAppStore(activeTrack);
 
   const track = tracks.find((item) => item.id === params.track) ?? active;
@@ -64,13 +65,16 @@ export function ShareTrackScreen() {
         pattern: current.pattern,
         anchorDate: current.anchorDate,
         overrides: Object.values(track.overrides),
+        // Заметки общие для всех графиков: дорожки у них нет. Поэтому и
+        // переключатель говорит прямо — уедут все, а не только «рабочие».
+        notes,
         payments: allPayments
           .filter((payment) => payment.trackId === track.id)
           .map(({ id, trackId, ...rest }) => rest),
       },
       options,
     );
-  }, [track, current, shiftTypes, allPayments, options]);
+  }, [track, current, shiftTypes, notes, allPayments, options]);
 
   const payload = useMemo(() => (share ? encodeTrack(share) : null), [share]);
   const qrFits = payload !== null && fitsInQr(payload);
@@ -125,7 +129,7 @@ export function ShareTrackScreen() {
               легко переслать дальше. */}
           <Toggle
             label="Отдать заметки к дням"
-            help="Заметки — личный текст вроде «вышел за Сергея». По умолчанию не уезжают."
+            help="Заметки — личный текст вроде «вышел за Сергея», и они общие для всех графиков: уедут все, а не только про эту работу. Напоминания не уезжают. По умолчанию не уезжает ничего."
             value={options.notes}
             onValueChange={(notes) => setOptions((current) => ({ ...current, notes }))}
           />

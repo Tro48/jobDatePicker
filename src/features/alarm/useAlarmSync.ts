@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { expiredOnceAlarmIds, planAlarms } from '@/domain/alarm.ts';
+import { expiredOnceAlarmIds, mergeOccurrences, planAlarms } from '@/domain/alarm.ts';
 import type { AlarmOccurrence } from '@/domain/alarm.ts';
+import { noteReminders } from '@/domain/notes.ts';
 import { useAlarmTracks } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import {
@@ -60,6 +61,7 @@ function samePermissions(a: AlarmPermissions, b: AlarmPermissions): boolean {
 export function useAlarmSync(): AlarmSyncState {
   const tracks = useAlarmTracks();
   const alarms = useAppStore((state) => state.alarms);
+  const notes = useAppStore((state) => state.notes);
   const disableAlarms = useAppStore((state) => state.disableAlarms);
 
   const [permissions, setPermissions] = useState<AlarmPermissions>(() =>
@@ -77,10 +79,20 @@ export function useAlarmSync(): AlarmSyncState {
     disableAlarms(expiredOnceAlarmIds(alarms, new Date(plannedAt)));
   }, [alarms, plannedAt, disableAlarms]);
 
-  const occurrences = useMemo(
-    () => planAlarms(alarms, tracks, new Date(plannedAt)),
-    [alarms, tracks, plannedAt],
-  );
+  /**
+   * Что должно зазвонить: будильники и напоминания заметок в одном расписании.
+   *
+   * Будильники считаются без своего потолка, а место делится один раз, уже на
+   * общем списке: иначе десяток будильников с недельным запасом занял бы все
+   * пятьдесят мест в AlarmManager, и напоминание на завтра не встало бы вовсе.
+   */
+  const occurrences = useMemo(() => {
+    const now = new Date(plannedAt);
+    return mergeOccurrences([
+      planAlarms(alarms, tracks, now, Number.POSITIVE_INFINITY),
+      noteReminders(notes, now),
+    ]);
+  }, [alarms, tracks, notes, plannedAt]);
 
   /** Ровно то, что уйдёт в систему. Считается отдельно — по нему же сверяемся. */
   const request = useMemo<NativeAlarm[]>(

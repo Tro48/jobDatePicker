@@ -5,6 +5,8 @@ import type { IsoDate } from '@/domain/date.ts';
 import { countedDay, resolveDay } from '@/domain/engine.ts';
 import type { ScheduleContext } from '@/domain/engine.ts';
 import { WEEKDAYS_SHORT, formatMonthTitle } from '@/domain/format.ts';
+import { noteLine } from '@/domain/notes.ts';
+import type { DayNote } from '@/domain/types.ts';
 import { AppText } from '@/ui';
 import { useTheme } from '@/theme';
 import { DayCell } from './DayCell.tsx';
@@ -23,6 +25,10 @@ export interface MonthGridProps {
   highlighted?: Set<IsoDate>;
   /** Чьи совпадения выделены: имя уходит в озвучку каждой выделенной клетки. */
   highlightName?: string;
+  /** Заметки по датам: клетка помечается значком, озвучка читает текст. */
+  notes?: Map<IsoDate, DayNote[]>;
+  /** Дни, в которые записаны выплаты: у них свой значок в клетке. */
+  paymentDates?: Set<IsoDate>;
   width: number;
   onSelectDay: (date: IsoDate) => void;
 }
@@ -35,6 +41,8 @@ function MonthGridView({
   selectedDate,
   highlighted,
   highlightName,
+  notes,
+  paymentDates,
   width,
   onSelectDay,
 }: MonthGridProps) {
@@ -48,9 +56,16 @@ function MonthGridView({
     // чтобы было видно, как смены переходят через границу месяца.
     return monthGridDates(year, month).map((cell) => {
       const resolved = resolveDay(context, cell.date);
-      return { ...cell, resolved, counted: countedDay(resolved) };
+      return {
+        ...cell,
+        resolved,
+        counted: countedDay(resolved),
+        // Заметки склеиваются здесь, а не в клетке: строка попадает в её
+        // мемоизацию, и новый массив на каждый рендер перерисовывал бы сетку.
+        note: noteLine(notes?.get(cell.date) ?? []),
+      };
     });
-  }, [year, month, context]);
+  }, [year, month, context, notes]);
 
   return (
     <View style={{ width, alignItems: 'center' }}>
@@ -76,6 +91,8 @@ function MonthGridView({
             highlighting={highlighted !== undefined}
             dimmed={highlighted !== undefined && !highlighted.has(cell.date)}
             sharedWith={highlightName}
+            note={cell.note}
+            hasPayment={paymentDates?.has(cell.date) ?? false}
             isSelected={cell.date === selectedDate}
             onPress={onSelectDay}
           />

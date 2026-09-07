@@ -19,7 +19,7 @@ import {
   formatTimeRange,
   parseHoursToMinutes,
 } from '@/domain/format.ts';
-import { useScheduleContext } from '@/data/selectors.ts';
+import { useDayNotes, useScheduleContext } from '@/data/selectors.ts';
 import { activeTrack, useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, Select, Sheet, TextField, useSheetScroll } from '@/ui';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
@@ -47,14 +47,17 @@ export function DayScreen() {
   const setOverride = useAppStore((state) => state.setOverride);
   const clearOverride = useAppStore((state) => state.clearOverride);
 
+  // Заметки живут своим списком и правятся на своём экране: здесь нужен только
+  // их счёт — сколько их у этого дня.
+  const notes = useDayNotes(date);
+
   /**
-   * Черновики полей. В хранилище они уходят по уходу фокуса, а не на каждую
+   * Черновик поля часов. В хранилище он уходит по уходу фокуса, а не на каждую
    * букву: одна нажатая клавиша иначе пересобирает контекст графика,
    * перерисовывает календарь под шторкой и заново ставит все будильники в
    * системе. null — «поле не трогали», показывается сохранённое значение.
    */
   const [hoursText, setHoursText] = useState<string | null>(null);
-  const [noteText, setNoteText] = useState<string | null>(null);
 
   // Шторку закрывают и смахиванием — тогда поле не успевает потерять фокус, и
   // набранное пропало бы. Ref держит последнюю версию замыкания и заполняется
@@ -131,52 +134,38 @@ export function DayScreen() {
     setHoursText(text);
   };
 
-  const editNote = (text: string) => {
-    pending.current = true;
-    setNoteText(text);
-  };
-
-  /** Черновики набраны заново — то, что было в полях, больше не нужно. */
+  /** Черновик набран заново — то, что было в поле, больше не нужно. */
   const dropDrafts = () => {
     pending.current = false;
     setHoursText(null);
-    setNoteText(null);
   };
 
   const applyShiftType = (value: string) => {
     // Часы сбрасываются вместе со сменой: у новой смены своя штатная
-    // длительность. Заметка переживает смену — это разные вещи.
+    // длительность. Заметки дня к смене не привязаны и не страдают.
     dropDrafts();
-    setOverride({
-      date,
-      shiftTypeId: value === FOLLOW_SCHEDULE ? undefined : value,
-      note: override?.note,
-    });
+    setOverride({ date, shiftTypeId: value === FOLLOW_SCHEDULE ? undefined : value });
   };
 
   /**
-   * Дописать черновики в хранилище. Смена в правке не проставляется: заметка и
-   * часы сами по себе день от графика не отвязывают, иначе сдвиг даты первой
-   * смены переставал бы такие дни трогать.
+   * Дописать черновик в хранилище. Смена в правке не проставляется: одни часы
+   * день от графика не отвязывают, иначе сдвиг даты первой смены переставал бы
+   * такие дни трогать.
    */
   const commitDrafts = () => {
     if (!pending.current) return;
 
     const minutes = hoursText === null ? undefined : parseHoursToMinutes(hoursText);
-    const note = noteText?.trim();
-
     // Мусор в поле часов не сохраняется: поле вернётся к сохранённому значению.
     const nextMinutes = minutes ?? override?.workedMinutesOverride;
-    const nextNote = note === undefined ? override?.note : note.length > 0 ? note : undefined;
 
     dropDrafts();
 
-    if (nextMinutes === override?.workedMinutesOverride && nextNote === override?.note) return;
+    if (nextMinutes === override?.workedMinutesOverride) return;
     setOverride({
       date,
       shiftTypeId: override?.shiftTypeId,
       workedMinutesOverride: nextMinutes,
-      note: nextNote,
     });
   };
 
@@ -210,7 +199,7 @@ export function DayScreen() {
 
         <Card title="Смена">
           {/* Выпадающий список, а не десять строк подряд: справочник смен
-              растянул карточку дня на два экрана, и часы с заметкой уезжали
+              растянул карточку дня на два экрана, и часы с выплатой уезжали
               под сгиб. */}
           <Select
             label="Смена в этот день"
@@ -270,14 +259,15 @@ export function DayScreen() {
 
         <DayAlarmSection date={date} />
 
-        <Card title="Заметка">
-          <TextField
-            label="Заметка к дню"
-            value={noteText ?? override?.note ?? ''}
-            onChangeText={editNote}
-            onBlur={commitDrafts}
-            placeholder="Например: вышел за Сергея"
-            multiline
+        {/* Заметки правятся не здесь: их бывает несколько, у каждой своё
+            напоминание, и в карточке дня они занимали бы больше места, чем
+            смена и часы вместе. Отсюда только вход в их список — тот же, что с
+            карточки дня над календарём. */}
+        <Card title="Заметки">
+          <Button
+            title={notes.length > 0 ? `Заметки: ${notes.length}` : 'Добавить заметку'}
+            accessibilityHint="Список заметок этого дня"
+            onPress={() => push({ pathname: '/notes/[date]', params: { date } })}
           />
         </Card>
 
@@ -288,7 +278,7 @@ export function DayScreen() {
             <Button
               title="Вернуть по графику"
               variant="danger"
-              accessibilityHint="Удаляет правку этого дня целиком, вместе с заметкой"
+              accessibilityHint="Удаляет правку этого дня целиком: смену и часы"
               onPress={() => {
                 dropDrafts();
                 clearOverride(date);
