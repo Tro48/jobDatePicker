@@ -74,6 +74,18 @@ export function buildMonthReportHtml(input: MonthReportInput): string {
     )
     .join('');
 
+  // Месяц закрыт — план и факт совпали, и дробить числа незачем. Незакрытый
+  // печатают, чтобы свериться по ходу: там надо видеть и отработанное, и то,
+  // что графиком ещё осталось. Ровно как на экране сводки — двум местам,
+  // которые печатают одно и то же, расходиться нельзя.
+  const monthClosed = summary.elapsedWorkedDays === summary.workedDays;
+  const workedHours = monthClosed
+    ? formatTotalHours(summary.workedMinutes)
+    : `${formatTotalHours(summary.elapsedWorkedMinutes)} из ${formatTotalHours(summary.workedMinutes)}`;
+  const workedShifts = monthClosed
+    ? pluralize(summary.workedDays, SHIFT_FORMS)
+    : `${summary.elapsedWorkedDays} из ${pluralize(summary.workedDays, SHIFT_FORMS)}`;
+
   return `<!doctype html>
 <html lang="ru">
 <head>
@@ -93,8 +105,8 @@ export function buildMonthReportHtml(input: MonthReportInput): string {
   <h2>Итого за месяц</h2>
   <table class="totals">
     <tbody>
-      <tr><td>Отработано</td><td></td><td>${formatTotalHours(summary.workedMinutes)}</td></tr>
-      <tr><td>Смен</td><td></td><td>${pluralize(summary.workedDays, SHIFT_FORMS)}</td></tr>
+      <tr><td>Отработано</td><td></td><td>${workedHours}</td></tr>
+      <tr><td>Смен</td><td></td><td>${workedShifts}</td></tr>
       <tr><td>Выходных</td><td></td><td>${summary.restDays}</td></tr>
       <tr><td>Отклонение от графика</td><td></td><td>${formatOvertimeTotal(summary.overtimeMinutes)}</td></tr>
       ${byShift}
@@ -103,7 +115,11 @@ export function buildMonthReportHtml(input: MonthReportInput): string {
     </tbody>
   </table>
 
-  <p class="foot">Смены · график и часы, посчитанные приложением. Отклонение считается от смены, которую на этот день ставил график.</p>
+  <p class="foot">Смены · график и часы, посчитанные приложением. Отклонение считается от смены, которую на этот день ставил график.${
+    monthClosed
+      ? ''
+      : ' Месяц ещё идёт: «отработано» — то, что уже позади, второе число — весь месяц по графику. Строки по типам смен — тоже за весь месяц.'
+  }</p>
 </body>
 </html>`;
 }

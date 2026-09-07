@@ -29,6 +29,15 @@ function contextFor(): ScheduleContext {
   };
 }
 
+/** График, который начнётся только в октябре: в сентябре смен ещё нет. */
+function contextFromOctober(): ScheduleContext {
+  const context = contextFor();
+  return {
+    ...context,
+    schedules: [{ ...context.schedules[0], anchorDate: '2026-10-01', startsOn: '2026-10-01' }],
+  };
+}
+
 /** Тема нужна всегда: без неё компонент не знает ни цветов, ни отступов. */
 function withTheme(node: ReactElement) {
   return <ThemeProvider>{node}</ThemeProvider>;
@@ -36,6 +45,7 @@ function withTheme(node: ReactElement) {
 
 interface CellOptions {
   date?: string;
+  inMonth?: boolean;
   isToday?: boolean;
   isWorked?: boolean;
   counted?: boolean;
@@ -47,6 +57,7 @@ interface CellOptions {
 
 function renderCell({
   date = '2026-09-01',
+  inMonth = true,
   isToday = false,
   isWorked = false,
   counted = true,
@@ -61,7 +72,7 @@ function renderCell({
         day={resolveDay(context, date)}
         size={48}
         height={48}
-        inMonth
+        inMonth={inMonth}
         counted={counted}
         isToday={isToday}
         isWorked={isWorked}
@@ -88,6 +99,29 @@ function iconNames(tree: unknown): string[] {
 
     const element = node as { type?: string; props?: { name?: string }; children?: unknown };
     if (element.type === 'Ionicons' && element.props?.name) found.push(element.props.name);
+    walk(element.children);
+  };
+
+  walk(tree);
+  return found;
+}
+
+/** Цвета рамок в дереве: у клетки она одна, и по ней видно, обведена ли она. */
+function borderColors(tree: unknown): string[] {
+  const found: string[] = [];
+
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object' || node === null) return;
+
+    const element = node as { props?: { style?: unknown }; children?: unknown };
+    for (const style of [element.props?.style].flat()) {
+      const color = (style as { borderColor?: string } | undefined)?.borderColor;
+      if (color) found.push(color);
+    }
     walk(element.children);
   };
 
@@ -246,15 +280,59 @@ test('праздник помечен значком и назван слова�
   expect(iconNames(plain.toJSON())).toEqual([]);
 });
 
-test('день до первой смены не залит и назван словами', async () => {
-  const before = await renderCell({ date: '2026-09-01', counted: false });
-  const after = await renderCell({ date: '2026-09-01' });
+test('будний день без графика — базовый календарь: свой цвет, без буквы смены', async () => {
+  // 1 сентября 2026 года — вторник, а график начинается только в октябре.
+  const before = await renderCell({
+    date: '2026-09-01',
+    counted: false,
+    context: contextFromOctober(),
+  });
 
   const label = before.getByRole('button').props.accessibilityLabel;
-  expect(label).toContain('до первой смены');
-  // «Отработана» такая смена не бывает: её не было.
+  expect(label).toContain('будний день');
+  expect(label).toContain('графика ещё нет');
+  // Ни смены, ни «выходного» из заглушки: работы в этот день не было вовсе.
+  expect(label).not.toContain('выходной');
   expect(label).not.toContain('отработан');
-  // Заливки нет: цвет клетки — фон страницы, а не цвет смены.
-  expect(backgroundColors(before.toJSON())).toContain(lightPalette.background);
-  expect(backgroundColors(after.toJSON())).not.toContain(lightPalette.background);
+
+  // Цвет свой, базовый — не фон страницы и не цвет смены.
+  const fills = backgroundColors(before.toJSON());
+  expect(fills).toContain(lightPalette.baseWeekday.surface);
+  expect(fills).not.toContain(lightPalette.background);
+  // Содержимое клетки скрыто от озвучки — ищем с учётом скрытого.
+  expect(before.queryByText('В', { includeHiddenElements: true })).toBeNull();
+});
+
+test('выходной без графика остаётся выходным: цвет и буква те же', async () => {
+  // 5 сентября 2026 года — суббота.
+  const weekend = await renderCell({
+    date: '2026-09-05',
+    counted: false,
+    context: contextFromOctober(),
+  });
+
+  expect(weekend.getByRole('button').props.accessibilityLabel).toContain('выходной');
+  expect(backgroundColors(weekend.toJSON())).toContain(lightPalette.shifts['shift.off'].surface);
+  expect(weekend.getByText('В', { includeHiddenElements: true })).toBeTruthy();
+});
+
+test('день соседнего месяца обведён рамкой: заливки у него нет', async () => {
+  const outside = await renderCell({ date: '2026-09-01', inMonth: false });
+  const inside = await renderCell({ date: '2026-09-01' });
+
+  // Без рамки такая клетка — просто текст на фоне страницы: в тёмной теме она
+  // сливалась с ним целиком.
+  expect(borderColors(outside.toJSON())).toContain(lightPalette.border);
+  // Залитой клетке рамка не нужна: её видно по заливке.
+  expect(borderColors(inside.toJSON())).not.toContain(lightPalette.border);
+});
+
+test('день без графика рамкой не обводится: он свой, а не из чужого месяца', async () => {
+  const before = await renderCell({
+    date: '2026-09-01',
+    counted: false,
+    context: contextFromOctober(),
+  });
+
+  expect(borderColors(before.toJSON())).not.toContain(lightPalette.border);
 });

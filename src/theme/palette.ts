@@ -40,49 +40,64 @@ export interface Palette {
    * остаётся на букве-маркере, а совпавшие выходные — всегда нерабочие дни.
    */
   highlight: ColorPair;
+  /**
+   * Будний день базового календаря: месяцы, на которые графика ещё нет.
+   *
+   * Своя пара, а не цвет смены: смены человек тогда не работал, и красить эти
+   * дни «рабочим днём» значило бы приписать ему выходы, которых не было.
+   * Выходные базового календаря берут обычный цвет выходного из справочника —
+   * суббота остаётся субботой и без графика.
+   *
+   * Оттенок тёплый, а не серо-синий: от холодного выходного он отличается
+   * тоном, а не яркостью, которой в этом углу палитры уже не осталось. Одного
+   * тона мало — у выходного есть ещё и буква-маркер, а у буднего её нет.
+   */
+  baseWeekday: ColorPair;
   shifts: Record<string, ColorPair>;
 }
 
 export const lightPalette: Palette = {
   background: '#FFFFFF',
-  surface: '#F4F5F7',
+  surface: '#E9ECF1',
   surfaceElevated: '#FFFFFF',
   text: '#14161A',
-  textMuted: '#5A6270',
-  border: '#8A93A0',
+  textMuted: '#4F5765',
+  border: '#79828F',
   accent: '#1D4ED8',
   onAccent: '#FFFFFF',
   positive: '#14532D',
   focus: '#1D4ED8',
   danger: '#B42318',
   highlight: { surface: '#FBCFE8', on: '#831843' },
+  baseWeekday: { surface: '#E9E3DA', on: '#3E3830' },
   shifts: {
-    'shift.day': { surface: '#DBEAFE', on: '#1E3A8A' },
-    'shift.night': { surface: '#EDE4FB', on: '#4C1D95' },
-    'shift.day24': { surface: '#E0E7FF', on: '#312E81' },
-    'shift.regular': { surface: '#DCFCE7', on: '#14532D' },
-    'shift.short': { surface: '#CCFBF1', on: '#134E4A' },
-    'shift.extra': { surface: '#FFEDD5', on: '#7C2D12' },
-    'shift.vacation': { surface: '#FEF3C7', on: '#78350F' },
-    'shift.sick': { surface: '#FEE2E2', on: '#7F1D1D' },
-    'shift.sleep': { surface: '#E2E8F0', on: '#334155' },
-    'shift.off': { surface: '#F8FAFC', on: '#475569' },
+    'shift.day': { surface: '#C3DAFD', on: '#1E3A8A' },
+    'shift.night': { surface: '#DDD0F7', on: '#4C1D95' },
+    'shift.day24': { surface: '#CBD6FC', on: '#312E81' },
+    'shift.regular': { surface: '#B2ECC7', on: '#14532D' },
+    'shift.short': { surface: '#A2E9D9', on: '#134E4A' },
+    'shift.extra': { surface: '#FFD3A3', on: '#7C2D12' },
+    'shift.vacation': { surface: '#FAE188', on: '#78350F' },
+    'shift.sick': { surface: '#FCCBCB', on: '#7F1D1D' },
+    'shift.sleep': { surface: '#D3DBE6', on: '#334155' },
+    'shift.off': { surface: '#E4EAF2', on: '#475569' },
   },
 };
 
 export const darkPalette: Palette = {
   background: '#0F1115',
-  surface: '#171A20',
-  surfaceElevated: '#1E222A',
+  surface: '#1B1F27',
+  surfaceElevated: '#242A33',
   text: '#E8EAED',
-  textMuted: '#A0A8B4',
-  border: '#69727F',
+  textMuted: '#A6AEBA',
+  border: '#79838F',
   accent: '#93B4FF',
   onAccent: '#0F1115',
   positive: '#86EFAC',
   focus: '#93B4FF',
   danger: '#FF9A92',
   highlight: { surface: '#6D1E45', on: '#FBCFE8' },
+  baseWeekday: { surface: '#2A2722', on: '#C3BCB1' },
   shifts: {
     'shift.day': { surface: '#1E3A5F', on: '#BFDBFE' },
     'shift.night': { surface: '#3B2A5C', on: '#DDD6FE' },
@@ -92,8 +107,8 @@ export const darkPalette: Palette = {
     'shift.extra': { surface: '#4A2B12', on: '#FED7AA' },
     'shift.vacation': { surface: '#4A3410', on: '#FDE68A' },
     'shift.sick': { surface: '#4C1D1D', on: '#FECACA' },
-    'shift.sleep': { surface: '#262B33', on: '#CBD5E1' },
-    'shift.off': { surface: '#14171C', on: '#9AA3AF' },
+    'shift.sleep': { surface: '#343B47', on: '#CBD5E1' },
+    'shift.off': { surface: '#272D38', on: '#A9B2BE' },
   },
 };
 

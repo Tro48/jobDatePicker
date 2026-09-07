@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { ScrollView, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { formatDayShort } from '@/domain/format.ts';
 import { describePattern } from '@/domain/customSchedules.ts';
@@ -122,31 +122,28 @@ export function ShareTrackScreen() {
               легко переслать дальше. */}
           <Toggle
             label="Отдать заметки к дням"
-            hint="Личные подписи вроде «вышел за Сергея»"
+            help="Заметки — личный текст вроде «вышел за Сергея». По умолчанию не уезжают."
             value={options.notes}
             onValueChange={(notes) => setOptions((current) => ({ ...current, notes }))}
           />
           <Toggle
             label="Отдать историю выплат"
-            hint="Это суммы зарплат. В QR-код они не попадут в любом случае — только в файл"
+            help="Это суммы зарплат. В QR-код они не попадут в любом случае — только в файл."
             value={options.payments}
             onValueChange={(payments) => setOptions((current) => ({ ...current, payments }))}
           />
         </Card>
 
-        <Card title="QR-код">
+        <Card
+          title="QR-код"
+          help="Наведи на код камеру другого телефона: подойдёт и обычная камера Android, и кнопка «Сканировать QR» в настройках приложения."
+        >
           {qrFits ? (
-            <View style={{ gap: theme.spacing.md }}>
-              <QrCode
-                value={trackShareUrl(share)}
-                size={qrSize}
-                label={`QR-код с графиком «${track.name}». Наведи на него камеру другого телефона.`}
-              />
-              <AppText variant="body" tone="muted">
-                Наведи на код камеру другого телефона: подойдёт и обычная камера Android, и кнопка
-                «Сканировать QR» в настройках приложения.
-              </AppText>
-            </View>
+            <QrCode
+              value={trackShareUrl(share)}
+              size={qrSize}
+              label={`QR-код с графиком «${track.name}». Наведи на него камеру другого телефона.`}
+            />
           ) : (
             <AppText variant="body">
               Правок слишком много для QR-кода — столько данных в него не влезет так, чтобы код
@@ -155,11 +152,10 @@ export function ShareTrackScreen() {
           )}
         </Card>
 
-        <Card title="Файл">
-          <AppText variant="body" tone="muted">
-            Файл уходит куда угодно — в мессенджер, на почту, в облако. На другом телефоне его
-            открывают через «Настройки → Данные → Загрузить из файла».
-          </AppText>
+        <Card
+          title="Файл"
+          help="Файл уходит куда угодно — в мессенджер, на почту, в облако. На другом телефоне его открывают через «Настройки → Данные → Загрузить из файла»."
+        >
           <Button title="Отправить файлом" variant="primary" onPress={() => void saveFile()} />
           {status ? (
             <AppText variant="body" color={theme.colors.danger}>

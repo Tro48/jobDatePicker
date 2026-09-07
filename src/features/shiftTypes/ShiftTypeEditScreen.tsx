@@ -141,7 +141,7 @@ export function ShiftTypeEditScreen() {
             onChangeText={(badge) => patch({ badge })}
             placeholder={draft.name.slice(0, 1).toUpperCase() || 'В'}
             maxLength={MAX_BADGE_LENGTH}
-            hint="Одна-три буквы. По ней день читается, даже когда цвет не различить"
+            help="Одна-три буквы. По ней день читается в календаре, даже когда цвет не различить."
           />
           <ColorChoice
             value={draft.colorToken}
@@ -174,7 +174,7 @@ export function ShiftTypeEditScreen() {
           {!isWork && !builtin ? (
             <Toggle
               label="Ставится сразу на несколько дней"
-              hint="Как отпуск: карточка дня спросит, сколько дней подряд заполнить"
+              help="Как отпуск: карточка дня спросит, сколько дней подряд заполнить, и проставит их разом."
               value={draft.multiDay === true}
               onValueChange={(multiDay) => patch({ multiDay: multiDay ? true : undefined })}
             />

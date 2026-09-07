@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeDay, describeScheduleStart } from '../describe.ts';
+import { describeBaseDay, describeDay, describeScheduleStart } from '../describe.ts';
 import { resolveDay } from '../engine.ts';
 import type { ScheduleContext } from '../engine.ts';
 import { DEFAULT_SHIFT_TYPES, indexShiftTypes } from '../shifts.ts';
@@ -77,4 +77,16 @@ test('месяц до первой смены и месяц с ней подпи
   assert.equal(describeScheduleStart('2026-10', '2026-09-02'), null);
   // Первое число — месяц и так считается целиком.
   assert.equal(describeScheduleStart('2026-09', '2026-09-01'), null);
+});
+
+test('день без графика описывается по календарю, а не по заглушке-выходному', () => {
+  // 1 сентября 2026 года — вторник, 5 сентября — суббота.
+  assert.equal(describeBaseDay('2026-09-01'), '1 сентября, вторник, будний день, графика ещё нет');
+  assert.equal(describeBaseDay('2026-09-05'), '5 сентября, суббота, выходной, графика ещё нет');
+  assert.match(describeBaseDay('2026-09-01', { isToday: true }), /сегодня/);
+  // У праздника своё название, и спорить с ним словом «будний» незачем.
+  assert.equal(
+    describeBaseDay('2026-01-01', { holiday: 'Новогодние каникулы' }),
+    '1 января, четверг, новогодние каникулы, графика ещё нет',
+  );
 });

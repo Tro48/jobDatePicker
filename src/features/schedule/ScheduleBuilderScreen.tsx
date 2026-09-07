@@ -151,7 +151,6 @@ export function ScheduleBuilderScreen() {
             onChangeText={setName}
             placeholder="Мой график"
             maxLength={MAX_SCHEDULE_NAME_LENGTH}
-            hint="Так график будет подписан в списке выбора"
           />
         </Card>
 

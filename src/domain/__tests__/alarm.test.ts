@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clampSnoozeMinutes,
+  defaultWakeTime,
   describeRepeat,
   describeTime,
   expiredOnceAlarmIds,
@@ -14,6 +15,7 @@ import {
   parseSnoozeMinutes,
   planAlarms,
   restartOnce,
+  shiftWakeGroups,
 } from '../alarm.ts';
 import type { Alarm, AlarmTrackContext } from '../alarm.ts';
 import type { ScheduleContext } from '../engine.ts';
@@ -429,4 +431,44 @@ test('карточка называет графики, только когда 
     describeRepeat({ ...base, repeat: { kind: 'schedule', tracks: [] } }, many),
     'Ни один график не выбран',
   );
+});
+
+/** Смены графика в том виде, в каком их отдаёт справочник. */
+function typesOf(...ids: string[]) {
+  return ids.map((id) => DEFAULT_SHIFT_TYPES.find((type) => type.id === id)!);
+}
+
+test('5/2 с сокращённой пятницей — один подъём: обе смены начинаются в девять', () => {
+  const groups = shiftWakeGroups(typesOf('work8', 'work7', 'off'));
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].start, '09:00');
+  // В группе обе смены: время подъёма надо записать каждой, иначе пятница
+  // зазвонит по общему времени будильника.
+  assert.deepEqual(groups[0].shiftTypeIds, ['work8', 'work7']);
+  assert.equal(groups[0].label, 'Рабочий день · Сокращённый день');
+});
+
+test('день с ночью — два подъёма, утренний первым', () => {
+  const groups = shiftWakeGroups(typesOf('night12', 'day12', 'sleep', 'off'));
+
+  assert.deepEqual(
+    groups.map((group) => [group.start, group.shiftTypeIds]),
+    [
+      ['08:00', ['day12']],
+      ['20:00', ['night12']],
+    ],
+  );
+});
+
+test('выходные и отсыпные в подъёмы не попадают', () => {
+  assert.deepEqual(shiftWakeGroups(typesOf('off', 'sleep', 'vacation', 'sick')), []);
+});
+
+test('подъём по умолчанию — за час до смены, через полночь тоже', () => {
+  assert.equal(defaultWakeTime('09:00'), '08:00');
+  assert.equal(defaultWakeTime('20:00'), '19:00');
+  // Смена в 00:30: подъём накануне вечером, а не отрицательное время.
+  assert.equal(defaultWakeTime('00:30'), '23:30');
+  assert.equal(defaultWakeTime(undefined), '07:00');
 });

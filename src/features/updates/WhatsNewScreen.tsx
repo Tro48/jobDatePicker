@@ -1,19 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatDayShort } from '@/domain/format.ts';
-import { RELEASE_NOTES, unseenReleases } from '@/domain/releaseNotes.ts';
+import { RELEASE_NOTES } from '@/domain/releaseNotes.ts';
 import type { ReleaseNote } from '@/domain/releaseNotes.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card, Sheet, useSheetScroll } from '@/ui';
 import { useTheme } from '@/theme';
 
 /**
- * Что изменилось в последних выпусках.
+ * Что делает свежее обновление.
+ *
+ * Ровно одна запись — последняя. Раньше сюда сваливалось всё непрочитанное, а
+ * при повторном открытии и вся история целиком: человек, обновившийся через
+ * три выпуска, читал простыню, где давно приехавшее стояло вперемешку с новым.
+ * Вопрос у шторки один — «что изменилось сейчас», и ответ на него один.
  *
  * Открывается только по нажатию на полоску календаря: само по себе окно
- * поверх экрана не вылезает никогда. Прочитанным список считается по факту
+ * поверх экрана не вылезает никогда. Прочитанным выпуск считается по факту
  * открытия — человек его увидел, второй раз звать незачем.
  */
 export function WhatsNewScreen() {
@@ -21,23 +26,13 @@ export function WhatsNewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scroll = useSheetScroll();
-  const lastSeenReleaseId = useAppStore((state) => state.lastSeenReleaseId);
   const markReleasesSeen = useAppStore((state) => state.markReleasesSeen);
 
-  /**
-   * Снимок непрочитанного на момент открытия. Без него отметка «прочитано»
-   * ниже вычистила бы список в том же кадре — человек увидел бы, как текст
-   * исчезает у него на глазах.
-   *
-   * Всё прочитано (открыли повторно) — показываем историю целиком: пустая
-   * шторка «Что нового» выглядит как поломка.
-   */
-  const [notes] = useState(() => {
-    const unseen = unseenReleases(lastSeenReleaseId);
-    return unseen.length > 0 ? unseen : RELEASE_NOTES;
-  });
+  // Снимка непрочитанного здесь больше нет: запись всегда одна и та же, и
+  // отметка «прочитано» ниже её не вычищает.
+  const latest = RELEASE_NOTES[0] ?? null;
 
-  // Прочитанным список считается по факту открытия: человек его увидел.
+  // Прочитанным выпуск считается по факту открытия: человек его увидел.
   useEffect(() => {
     markReleasesSeen();
   }, [markReleasesSeen]);
@@ -53,9 +48,7 @@ export function WhatsNewScreen() {
           paddingBottom: insets.bottom + theme.spacing.xxl,
         }}
       >
-        {notes.map((note) => (
-          <NoteCard key={note.id} note={note} />
-        ))}
+        {latest ? <NoteCard note={latest} /> : null}
 
         <Button title="Понятно" variant="primary" onPress={() => router.back()} />
       </ScrollView>

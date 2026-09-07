@@ -3,6 +3,7 @@ export { Button } from './Button.tsx';
 export { Card } from './Card.tsx';
 export { ChoiceGroup } from './ChoiceGroup.tsx';
 export { Fab } from './Fab.tsx';
+export { HelpButton } from './HelpButton.tsx';
 export { HorizontalPager } from './HorizontalPager.tsx';
 export { IconButton } from './IconButton.tsx';
 export { Placeholder } from './Placeholder.tsx';

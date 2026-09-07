@@ -54,11 +54,10 @@ export function MonthExportCard({
   };
 
   return (
-    <Card title="Поделиться месяцем">
-      <AppText variant="body" tone="muted">
-        PDF с сеткой месяца, часами по дням, отклонением от графика и суммами — тем, по чему сверяют
-        табель.
-      </AppText>
+    <Card
+      title="Поделиться месяцем"
+      help="PDF с сеткой месяца, часами по дням, отклонением от графика и суммами — тем, по чему сверяют табель. Прошлые месяцы тоже."
+    >
       <Button
         title={busy ? 'Собираем…' : `Выгрузить ${title.toLowerCase()}`}
         variant="primary"

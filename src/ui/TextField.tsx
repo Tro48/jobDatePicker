@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import type { KeyboardTypeOptions } from 'react-native';
 import { AppText } from './AppText.tsx';
+import { HelpButton } from './HelpButton.tsx';
 import { useSheetReveal } from './Sheet.tsx';
 import { useTheme } from '@/theme';
 
@@ -11,6 +12,11 @@ export interface TextFieldProps {
   onChangeText: (value: string) => void;
   placeholder?: string;
   hint?: string;
+  /**
+   * Пояснение под знаком вопроса рядом с подписью: зачем поле и что будет с
+   * набранным. На экране его не видно, пока не спросят.
+   */
+  help?: string;
   keyboardType?: KeyboardTypeOptions;
   multiline?: boolean;
   /**
@@ -32,6 +38,7 @@ export function TextField({
   onChangeText,
   placeholder,
   hint,
+  help,
   keyboardType = 'default',
   multiline = false,
   maxLength,
@@ -48,13 +55,16 @@ export function TextField({
     <View style={{ gap: theme.spacing.xs }}>
       {/* Подпись выводится текстом, а не только placeholder: placeholder
           исчезает при вводе, и поле остаётся без доступного имени. */}
-      <AppText variant="label" tone="muted">
-        {label}
-      </AppText>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs }}>
+        <AppText variant="label" tone="muted" style={{ flex: 1 }}>
+          {label}
+        </AppText>
+        {help ? <HelpButton title={label} text={help} /> : null}
+      </View>
       <TextInput
         ref={input}
         accessibilityLabel={label}
-        accessibilityHint={hint}
+        accessibilityHint={[hint, help].filter(Boolean).join('. ') || undefined}
         value={value}
         onChangeText={onChangeText}
         onFocus={() => {

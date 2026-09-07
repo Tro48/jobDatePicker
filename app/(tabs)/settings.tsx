@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import { AppText, Button, Card, ChoiceGroup, Screen, Toggle } from '@/ui';
-import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
+import { useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
 import { DataActions } from '@/features/backup/DataActions.tsx';
 import { AboutSection } from '@/features/settings/AboutSection.tsx';
@@ -21,11 +21,6 @@ export default function SettingsScreen() {
   const setAppearance = useAppStore((state) => state.setAppearance);
   const tracks = useAppStore((state) => state.tracks);
   const shiftTypeCount = useAppStore((state) => state.shiftTypes.length);
-  const overrideCount = tracks.reduce(
-    (total, track) => total + Object.keys(track.overrides).length,
-    0,
-  );
-  const paymentCount = useAppStore((state) => state.payments.length);
   const own = tracks.filter((track) => track.own);
   const others = tracks.filter((track) => !track.own);
   const holidays = useAppStore((state) => state.holidays);
@@ -43,9 +38,6 @@ export default function SettingsScreen() {
           value={appearance}
           onChange={setAppearance}
         />
-        <AppText variant="caption" tone="muted">
-          Сейчас применена {theme.scheme === 'dark' ? 'тёмная' : 'светлая'} тема.
-        </AppText>
       </Card>
 
       {/* Смены живут в настройках, а не в календаре: их правят один раз при
@@ -58,7 +50,7 @@ export default function SettingsScreen() {
         />
         <Toggle
           label="Отмечать праздники"
-          hint="Российский производственный календарь: праздник помечается значком в клетке. В графике по дням недели он ещё и делает день нерабочим — на сменные графики не влияет"
+          help="Российский производственный календарь: праздник помечается значком в клетке. В графике по дням недели он ещё и делает день нерабочим — на сменные графики не влияет."
           value={holidays.enabled}
           onValueChange={(enabled) => setHolidays({ enabled })}
         />
@@ -70,13 +62,11 @@ export default function SettingsScreen() {
         <Card title="Общие выходные">
           <Toggle
             label="Показывать на календаре"
-            hint={`Блок со списком дней, когда свободны и ты, и ${others.map((track) => track.name).join(', ')}`}
+            hint={`Свободны и ты, и ${others.map((track) => track.name).join(', ')}`}
+            help="Под календарём появится список дней, когда свободны все. Нажатие на строку выделяет эти дни в сетке, остальные при этом гаснут. Отсыпной после ночной за общий выходной не считается."
             value={shared.enabled}
             onValueChange={(enabled) => setSharedDaysOff({ enabled })}
           />
-          <AppText variant="caption" tone="muted">
-            Выделить чьи-то дни на календаре можно прямо в списке: остальные при этом гаснут.
-          </AppText>
 
           {/* Группы отвечают на вопрос, который по одному человеку не задать:
               когда свободны все разом. */}
@@ -131,23 +121,10 @@ export default function SettingsScreen() {
       <UpdateCard />
 
       <Card title="Данные">
-        <View style={{ gap: theme.spacing.xs }}>
-          <AppText variant="body" tone="muted">
-            Версия схемы хранилища: {SCHEMA_VERSION}
-          </AppText>
-          <AppText variant="body" tone="muted">
-            Типов смен: {shiftTypeCount}
-          </AppText>
-          <AppText variant="body" tone="muted">
-            Ручных правок: {overrideCount}
-          </AppText>
-          <AppText variant="body" tone="muted">
-            Внесённых выплат: {paymentCount}
-          </AppText>
-        </View>
-
         {/* Копия и обмен живут здесь же, а не отдельной карточкой: это всё
-            про одни и те же данные, о которых карточка и рассказывает. */}
+            про одни и те же данные. Счётчиков — правок, выплат, типов смен и
+            версии схемы — здесь больше нет: делать по ним было нечего, а
+            место они занимали над кнопками, ради которых сюда и заходят. */}
         <DataActions />
 
         <AboutSection />

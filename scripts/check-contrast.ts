@@ -29,6 +29,22 @@ export function contrastRatio(foreground: string, background: string): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
+/**
+ * Насколько заливка обязана отличаться от фона страницы, чтобы клетка вообще
+ * читалась как клетка.
+ *
+ * Порог не из WCAG: там для нетекстовых элементов 3:1, но это про границы и
+ * иконки, несущие смысл в одиночку. Смысл дня несёт буква-маркер, а заливка —
+ * это форма, по которой глаз находит сетку. По 3:1 светлая тема превратилась
+ * бы в набор кричащих плашек. 1.2:1 — это край, за которым заливка перестаёт
+ * быть видна вовсе: с 1.05:1 выходные и дни соседних месяцев сливались с фоном
+ * в обеих темах.
+ */
+const FILL_VISIBLE = 1.2;
+
+/** То же для панелей: карточка на странице должна быть видна как карточка. */
+const SURFACE_VISIBLE = 1.12;
+
 interface Check {
   label: string;
   foreground: string;
@@ -136,6 +152,33 @@ function checksFor(palette: Palette): Check[] {
     },
   ];
 
+  checks.push({
+    label: 'панель на фоне',
+    foreground: palette.surface,
+    background: palette.background,
+    minimum: SURFACE_VISIBLE,
+  });
+
+  // Базовый календарь: месяц без графика — это тоже клетки с числами.
+  checks.push({
+    label: 'будний день без графика: подпись на заливке',
+    foreground: palette.baseWeekday.on,
+    background: palette.baseWeekday.surface,
+    minimum: 4.5,
+  });
+  checks.push({
+    label: 'будний день без графика: заливка на фоне',
+    foreground: palette.baseWeekday.surface,
+    background: palette.background,
+    minimum: FILL_VISIBLE,
+  });
+  checks.push({
+    label: 'будний день без графика: кольцо фокуса на заливке',
+    foreground: palette.focus,
+    background: palette.baseWeekday.surface,
+    minimum: 3,
+  });
+
   // Выделенный день: та же обвязка, что и у любой заливки смены, — на нём
   // стоит подпись, точка отклонения и может лежать кольцо фокуса.
   checks.push({
@@ -143,6 +186,12 @@ function checksFor(palette: Palette): Check[] {
     foreground: palette.highlight.on,
     background: palette.highlight.surface,
     minimum: 4.5,
+  });
+  checks.push({
+    label: 'выделенный день: заливка на фоне',
+    foreground: palette.highlight.surface,
+    background: palette.background,
+    minimum: FILL_VISIBLE,
   });
   checks.push({
     label: 'выделенный день: кольцо фокуса на заливке',
@@ -167,6 +216,12 @@ function checksFor(palette: Palette): Check[] {
     // буква-маркер живут на ней, значит и порог она проходит отдельно.
     const faded = fadedShiftPair(pair, palette.surface);
 
+    checks.push({
+      label: `${token}: заливка на фоне`,
+      foreground: pair.surface,
+      background: palette.background,
+      minimum: FILL_VISIBLE,
+    });
     checks.push({
       label: `${token}: подпись на заливке`,
       foreground: pair.on,
