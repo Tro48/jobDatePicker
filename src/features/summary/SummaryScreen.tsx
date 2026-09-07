@@ -10,7 +10,7 @@ import { TrackTabs } from '@/features/calendar/TrackTabs.tsx';
 import { MONTH_RANGE, buildMonthWindow } from '@/domain/months.ts';
 import type { MonthRef } from '@/domain/months.ts';
 import { periodOf } from '@/domain/payday.ts';
-import { useActiveTrack, useScheduleContext, useScheduleContexts } from '@/data/selectors.ts';
+import { useScheduleContexts, useSummaryTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { AppText, Button, Card, HorizontalPager, IconButton } from '@/ui';
@@ -29,10 +29,13 @@ export function SummaryScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
-  const activeContext = useScheduleContext();
-  const track = useActiveTrack();
+  // Сводка живёт только на своих работах: у графика близкого человека часы и
+  // деньги не считаются, и вкладка с ним экран не переключает.
+  const track = useSummaryTrack();
   const tracks = useAppStore((state) => state.tracks);
   const contexts = useScheduleContexts();
+  const ownTracks = useMemo(() => tracks.filter((item) => item.own), [tracks]);
+  const activeContext = track ? (contexts.get(track.id) ?? null) : null;
   const payroll = useAppStore((state) => state.payroll);
   const allPayments = useAppStore((state) => state.payments);
 
@@ -98,11 +101,11 @@ export function SummaryScreen() {
    * приходится складывать в уме.
    */
   const combined = useMemo(() => {
-    const own = tracks.filter((item) => item.own && contexts.has(item.id));
-    if (own.length < 2) return null;
+    const counted = ownTracks.filter((item) => contexts.has(item.id));
+    if (counted.length < 2) return null;
 
     return combineTotals(
-      own.map((item) =>
+      counted.map((item) =>
         buildMonthSummary(
           contexts.get(item.id) as ScheduleContext,
           current.period,
@@ -111,7 +114,7 @@ export function SummaryScreen() {
         ),
       ),
     );
-  }, [tracks, contexts, allPayments, current.period, today]);
+  }, [ownTracks, contexts, allPayments, current.period, today]);
   /**
    * Намеренно не зависит от индекса: страница считает свой месяц по item, и
    * листание не должно её пересобирать. Меняется она только вместе с данными —
@@ -139,11 +142,11 @@ export function SummaryScreen() {
           onOpenYear={() =>
             push({ pathname: '/summary/year', params: { year: String(item.year) } })
           }
-          trackName={tracks.length > 1 ? shown.name : undefined}
+          trackName={ownTracks.length > 1 ? shown.name : undefined}
         />
       );
     },
-    [active, background, current.period, payroll, today, width, push, tracks.length],
+    [active, background, current.period, payroll, today, width, push, ownTracks.length],
   );
 
   const padding = {
@@ -152,7 +155,11 @@ export function SummaryScreen() {
     paddingBottom: theme.spacing.xxl,
   };
 
-  if (!context) {
+  // Считать нечего: своей работы нет вовсе или у неё ещё не выбран график.
+  // Случаи разные, а объяснение в обоих одно — карточкой на пустом экране.
+  if (!track || !context) {
+    const foreignOnly = !track && tracks.length > 0;
+
     return (
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.colors.background }}
@@ -165,16 +172,32 @@ export function SummaryScreen() {
         >
           Сводка
         </AppText>
-        <Card title="График не выбран">
-          <AppText variant="body" tone="muted">
-            Считать часы не по чему. Выбери график — сводка появится сама.
-          </AppText>
-          <Button
-            title="Выбрать график"
-            variant="primary"
-            onPress={() => push('/settings/schedule')}
-          />
-        </Card>
+        {foreignOnly ? (
+          <Card title="Только по своим графикам">
+            <AppText variant="body" tone="muted">
+              График близкого человека показывает общие выходные, а часы и деньги по нему не
+              считаются. Отметь график своим — сводка появится сама.
+            </AppText>
+            <Button
+              title="Настроить график"
+              variant="primary"
+              onPress={() =>
+                push({ pathname: '/settings/schedule', params: { track: tracks[0].id } })
+              }
+            />
+          </Card>
+        ) : (
+          <Card title="График не выбран">
+            <AppText variant="body" tone="muted">
+              Считать часы не по чему. Выбери график — сводка появится сама.
+            </AppText>
+            <Button
+              title="Выбрать график"
+              variant="primary"
+              onPress={() => push('/settings/schedule')}
+            />
+          </Card>
+        )}
       </ScrollView>
     );
   }
@@ -212,9 +235,11 @@ export function SummaryScreen() {
         />
       </View>
 
-      {tracks.length > 1 ? (
+      {/* Вкладки — только свои работы: переключать сводку на чужой график
+          некуда, там нечего показывать. */}
+      {ownTracks.length > 1 ? (
         <View style={{ paddingHorizontal: theme.spacing.lg }}>
-          <TrackTabs tracks={tracks} activeTrackId={track?.id ?? null} />
+          <TrackTabs tracks={ownTracks} activeTrackId={track.id} />
         </View>
       ) : null}
 

@@ -3,7 +3,7 @@ import { View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { todayIso } from '@/domain/date.ts';
 import { YEAR_RANGE, buildYearWindow } from '@/domain/months.ts';
-import { useActiveTrack } from '@/data/selectors.ts';
+import { useSummaryTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, HorizontalPager, IconButton, Sheet } from '@/ui';
 import { useTheme } from '@/theme';
@@ -26,8 +26,9 @@ export function YearMoneyScreen() {
   const params = useLocalSearchParams<{ year?: string }>();
 
   // Экран открывается из сводки конкретной работы и про неё же и говорит:
-  // складывать деньги двух работодателей в одну годовую таблицу нельзя.
-  const track = useActiveTrack();
+  // складывать деньги двух работодателей в одну годовую таблицу нельзя. Работа
+  // берётся та же, что в сводке, — чужой график денег не считает.
+  const track = useSummaryTrack();
   const allPayments = useAppStore((state) => state.payments);
   const payroll = useAppStore((state) => state.payroll);
 
