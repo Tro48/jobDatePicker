@@ -110,6 +110,22 @@ function DayCellView({
   const outlined = focused || isSelected || (isToday && !plain);
 
   /**
+   * Рамка клетки. Фокус и выбор перекрывают всё, сегодняшний день обводится
+   * цветом своей подписи, а у дня без заливки рамка — единственное, чем он
+   * вообще виден: соседний месяц и дни до первой смены заливки не имеют и без
+   * неё сливались с фоном страницы, особенно в тёмной теме.
+   */
+  const borderColor = focused
+    ? theme.colors.focus
+    : isSelected
+      ? theme.colors.accent
+      : isToday && !plain
+        ? colors.on
+        : plain
+          ? theme.colors.border
+          : 'transparent';
+
+  /**
    * Отклонение факта от графика. В клетке от него остаётся только цветная
    * точка: часы в углу — это третье число на сорока шести пунктах, и они
    * спорят с самим числом дня. Сколько именно вышло — говорит карточка дня и
@@ -141,13 +157,7 @@ function DayCellView({
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: outlined ? theme.focusRingWidth : 1,
-        borderColor: focused
-          ? theme.colors.focus
-          : isSelected
-            ? theme.colors.accent
-            : isToday && !plain
-              ? colors.on
-              : 'transparent',
+        borderColor,
       }}
     >
       {/* Содержимое скрыто от озвучки: клетка уже прочитана целиком по accessibilityLabel. */}

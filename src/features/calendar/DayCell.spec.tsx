@@ -36,6 +36,7 @@ function withTheme(node: ReactElement) {
 
 interface CellOptions {
   date?: string;
+  inMonth?: boolean;
   isToday?: boolean;
   isWorked?: boolean;
   counted?: boolean;
@@ -47,6 +48,7 @@ interface CellOptions {
 
 function renderCell({
   date = '2026-09-01',
+  inMonth = true,
   isToday = false,
   isWorked = false,
   counted = true,
@@ -61,7 +63,7 @@ function renderCell({
         day={resolveDay(context, date)}
         size={48}
         height={48}
-        inMonth
+        inMonth={inMonth}
         counted={counted}
         isToday={isToday}
         isWorked={isWorked}
@@ -88,6 +90,29 @@ function iconNames(tree: unknown): string[] {
 
     const element = node as { type?: string; props?: { name?: string }; children?: unknown };
     if (element.type === 'Ionicons' && element.props?.name) found.push(element.props.name);
+    walk(element.children);
+  };
+
+  walk(tree);
+  return found;
+}
+
+/** Цвета рамок в дереве: у клетки она одна, и по ней видно, обведена ли она. */
+function borderColors(tree: unknown): string[] {
+  const found: string[] = [];
+
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object' || node === null) return;
+
+    const element = node as { props?: { style?: unknown }; children?: unknown };
+    for (const style of [element.props?.style].flat()) {
+      const color = (style as { borderColor?: string } | undefined)?.borderColor;
+      if (color) found.push(color);
+    }
     walk(element.children);
   };
 
@@ -257,4 +282,21 @@ test('день до первой смены не залит и назван сл
   // Заливки нет: цвет клетки — фон страницы, а не цвет смены.
   expect(backgroundColors(before.toJSON())).toContain(lightPalette.background);
   expect(backgroundColors(after.toJSON())).not.toContain(lightPalette.background);
+});
+
+test('день соседнего месяца обведён рамкой: заливки у него нет', async () => {
+  const outside = await renderCell({ date: '2026-09-01', inMonth: false });
+  const inside = await renderCell({ date: '2026-09-01' });
+
+  // Без рамки такая клетка — просто текст на фоне страницы: в тёмной теме она
+  // сливалась с ним целиком.
+  expect(borderColors(outside.toJSON())).toContain(lightPalette.border);
+  // Залитой клетке рамка не нужна: её видно по заливке.
+  expect(borderColors(inside.toJSON())).not.toContain(lightPalette.border);
+});
+
+test('день до первой смены тоже обведён: заливки у него нет по той же причине', async () => {
+  const before = await renderCell({ date: '2026-09-01', counted: false });
+
+  expect(borderColors(before.toJSON())).toContain(lightPalette.border);
 });
