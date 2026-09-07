@@ -285,6 +285,7 @@ test('день до первого графика не идёт в счёт, а 
   assert.equal(countedDay(empty), false);
   assert.equal(empty.workedMinutes, 0);
   assert.equal(empty.plannedMinutes, 0);
+  // Смены у такого дня нет вовсе: раскладку назад график не разворачивает.
   assert.equal(empty.shiftType.kind, 'rest');
 
   context.overrides.set('2026-09-14', { date: '2026-09-14', shiftTypeId: 'day12' });

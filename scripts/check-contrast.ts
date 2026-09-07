@@ -159,6 +159,26 @@ function checksFor(palette: Palette): Check[] {
     minimum: SURFACE_VISIBLE,
   });
 
+  // Базовый календарь: месяц без графика — это тоже клетки с числами.
+  checks.push({
+    label: 'будний день без графика: подпись на заливке',
+    foreground: palette.baseWeekday.on,
+    background: palette.baseWeekday.surface,
+    minimum: 4.5,
+  });
+  checks.push({
+    label: 'будний день без графика: заливка на фоне',
+    foreground: palette.baseWeekday.surface,
+    background: palette.background,
+    minimum: FILL_VISIBLE,
+  });
+  checks.push({
+    label: 'будний день без графика: кольцо фокуса на заливке',
+    foreground: palette.focus,
+    background: palette.baseWeekday.surface,
+    minimum: 3,
+  });
+
   // Выделенный день: та же обвязка, что и у любой заливки смены, — на нём
   // стоит подпись, точка отклонения и может лежать кольцо фокуса.
   checks.push({

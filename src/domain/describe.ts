@@ -1,4 +1,5 @@
 import { overtimeMinutes, shiftDurationMinutes } from './engine.ts';
+import { weekday } from './date.ts';
 import type { IsoDate } from './date.ts';
 import {
   formatDayShort,
@@ -28,6 +29,37 @@ export function describeScheduleStart(period: Period, startsAt: IsoDate): string
     return `Считается с ${formatDayShort(startsAt)} — дня первой смены.`;
   }
   return null;
+}
+
+/**
+ * День, на который графика ещё нет: базовый календарь.
+ *
+ * Отдельно от describeDay, потому что смены у такого дня нет — есть только
+ * день недели. Заглушка-выходной, которой его заполняет движок, здесь не
+ * озвучивается: сказать про вторник «выходной» значило бы соврать.
+ */
+export function describeBaseDay(
+  date: IsoDate,
+  options: { isToday?: boolean; holiday?: string } = {},
+): string {
+  const parts: string[] = [formatDayShort(date), formatWeekdayName(date)];
+
+  if (options.isToday) parts.push('сегодня');
+
+  // Праздник говорит о дне больше, чем «будний» или «выходной»: 1 января —
+  // четверг, но называть его будним днём значит спорить с календарём. Заодно
+  // это снимает вопрос про рабочие субботы по переносу: у них своё название.
+  if (options.holiday) parts.push(options.holiday.toLowerCase());
+  else parts.push(isWeekend(date) ? 'выходной' : 'будний день');
+
+  parts.push('графика ещё нет');
+
+  return parts.join(', ');
+}
+
+/** Суббота или воскресенье: базовый календарь красит их как выходные. */
+export function isWeekend(date: IsoDate): boolean {
+  return weekday(date) >= 6;
 }
 
 /**

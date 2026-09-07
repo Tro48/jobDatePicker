@@ -40,6 +40,19 @@ export interface Palette {
    * остаётся на букве-маркере, а совпавшие выходные — всегда нерабочие дни.
    */
   highlight: ColorPair;
+  /**
+   * Будний день базового календаря: месяцы, на которые графика ещё нет.
+   *
+   * Своя пара, а не цвет смены: смены человек тогда не работал, и красить эти
+   * дни «рабочим днём» значило бы приписать ему выходы, которых не было.
+   * Выходные базового календаря берут обычный цвет выходного из справочника —
+   * суббота остаётся субботой и без графика.
+   *
+   * Оттенок тёплый, а не серо-синий: от холодного выходного он отличается
+   * тоном, а не яркостью, которой в этом углу палитры уже не осталось. Одного
+   * тона мало — у выходного есть ещё и буква-маркер, а у буднего её нет.
+   */
+  baseWeekday: ColorPair;
   shifts: Record<string, ColorPair>;
 }
 
@@ -56,6 +69,7 @@ export const lightPalette: Palette = {
   focus: '#1D4ED8',
   danger: '#B42318',
   highlight: { surface: '#FBCFE8', on: '#831843' },
+  baseWeekday: { surface: '#E9E3DA', on: '#3E3830' },
   shifts: {
     'shift.day': { surface: '#C3DAFD', on: '#1E3A8A' },
     'shift.night': { surface: '#DDD0F7', on: '#4C1D95' },
@@ -83,6 +97,7 @@ export const darkPalette: Palette = {
   focus: '#93B4FF',
   danger: '#FF9A92',
   highlight: { surface: '#6D1E45', on: '#FBCFE8' },
+  baseWeekday: { surface: '#2A2722', on: '#C3BCB1' },
   shifts: {
     'shift.day': { surface: '#1E3A5F', on: '#BFDBFE' },
     'shift.night': { surface: '#3B2A5C', on: '#DDD6FE' },

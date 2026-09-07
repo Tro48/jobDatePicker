@@ -189,8 +189,9 @@ function dominantShiftId(
 export function resolveDay(context: ScheduleContext, date: IsoDate): ResolvedDay {
   const override = context.overrides.get(date);
   const plannedId = plannedShiftId(context, date);
-  // День раньше первого графика: смены нет. Правка сильнее — вышел за коллегу
-  // накануне первого выхода, и это факт, а не продолжение шаблона назад.
+  // День раньше первого графика: смены нет, и календарь рисует его базовым —
+  // будни и выходные, без раскладки. Правка сильнее: вышел за коллегу накануне
+  // первого выхода, и это факт, а не продолжение шаблона назад.
   const shiftTypeId = override?.shiftTypeId ?? plannedId ?? restStubId(context);
   const shiftType = context.shiftTypes.get(shiftTypeId);
 

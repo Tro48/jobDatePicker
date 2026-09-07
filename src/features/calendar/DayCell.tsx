@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { describeDay } from '@/domain/describe.ts';
+import { describeBaseDay, describeDay, isWeekend } from '@/domain/describe.ts';
 import { overtimeMinutes } from '@/domain/engine.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import type { ResolvedDay } from '@/domain/types.ts';
@@ -84,9 +84,20 @@ function DayCellView({
   const shiftColors = useShiftColors(day.shiftType.colorToken, { faded: isWorked || dimmed });
   const [focused, setFocused] = useState(false);
 
-  // День вне месяца и день до первой смены выглядят одинаково: и тот и другой
-  // показаны как контекст, а не как своя смена.
-  const plain = !inMonth || !counted;
+  /**
+   * Клетка без заливки — только дни соседних месяцев: они здесь как контекст,
+   * чтобы было видно, как смены переходят через границу.
+   */
+  const plain = !inMonth;
+
+  /**
+   * День, на который графика ещё нет, — базовый календарь: будни одним
+   * нейтральным цветом, выходные обычным цветом выходного. Раскладку смен
+   * назад график не разворачивает: человек в эти месяцы здесь не работал, и
+   * рисовать ему смены значило бы приписать выходы, которых не было.
+   */
+  const base = inMonth && !counted;
+  const weekend = isWeekend(day.date);
 
   // Выделен — значит, выделение вообще включено и этот день в списке.
   const highlighted = !dimmed && !plain && highlighting;
@@ -104,7 +115,11 @@ function DayCellView({
     ? { surface: theme.colors.background, on: theme.colors.textMuted }
     : highlighted
       ? theme.colors.highlight
-      : shiftColors;
+      : // Выходной базового календаря красится тем же, чем и выходной по
+        // графику: заглушка-выходной как раз им и заполнена.
+        base && !weekend
+        ? theme.colors.baseWeekday
+        : shiftColors;
 
   const dayNumber = Number(day.date.slice(8, 10));
   const outlined = focused || isSelected || (isToday && !plain);
@@ -140,10 +155,10 @@ function DayCellView({
         !inMonth
           ? `${describeDay(day, { isWorked })}, соседний месяц`
           : counted
-            ? describeDay(day, { isToday, isWorked, isShared: highlighted, sharedWith })
-            : // Отработанной такая смена не называется: её не было. Причину
-              // клетка говорит словами — по одной бледной заливке её не понять.
-              `${describeDay(day, { isToday })}, до первой смены`
+            ? describeDay(day, { isToday, isShared: highlighted, isWorked, sharedWith })
+            : // Смены здесь нет вовсе: озвучивается день недели, а не заглушка
+              // из справочника. Заливка сама по себе этого не скажет.
+              describeBaseDay(day.date, { isToday, holiday: day.holiday })
       }
       accessibilityState={{ selected: isSelected }}
       onPress={() => onPress(day.date)}
@@ -180,7 +195,10 @@ function DayCellView({
           numberOfLines={1}
           maxFontSizeMultiplier={CELL_FONT_SCALE_CAP}
         >
-          {day.shiftType.badge}
+          {/* У буднего дня без графика смены нет — писать в клетку нечего.
+              Выходной базового календаря букву оставляет: суббота остаётся
+              выходным и до устройства на работу. */}
+          {base && !weekend ? '' : day.shiftType.badge}
         </AppText>
       </View>
 
