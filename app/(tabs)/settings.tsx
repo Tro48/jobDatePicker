@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import { AppText, Button, Card, ChoiceGroup, Screen, Toggle } from '@/ui';
-import { SCHEMA_VERSION, useAppStore } from '@/data/store.ts';
+import { useAppStore } from '@/data/store.ts';
 import type { ThemePreference } from '@/data/store.ts';
 import { DataActions } from '@/features/backup/DataActions.tsx';
 import { AboutSection } from '@/features/settings/AboutSection.tsx';
@@ -21,11 +21,6 @@ export default function SettingsScreen() {
   const setAppearance = useAppStore((state) => state.setAppearance);
   const tracks = useAppStore((state) => state.tracks);
   const shiftTypeCount = useAppStore((state) => state.shiftTypes.length);
-  const overrideCount = tracks.reduce(
-    (total, track) => total + Object.keys(track.overrides).length,
-    0,
-  );
-  const paymentCount = useAppStore((state) => state.payments.length);
   const own = tracks.filter((track) => track.own);
   const others = tracks.filter((track) => !track.own);
   const holidays = useAppStore((state) => state.holidays);
@@ -126,23 +121,10 @@ export default function SettingsScreen() {
       <UpdateCard />
 
       <Card title="Данные">
-        <View style={{ gap: theme.spacing.xs }}>
-          <AppText variant="body" tone="muted">
-            Версия схемы хранилища: {SCHEMA_VERSION}
-          </AppText>
-          <AppText variant="body" tone="muted">
-            Типов смен: {shiftTypeCount}
-          </AppText>
-          <AppText variant="body" tone="muted">
-            Ручных правок: {overrideCount}
-          </AppText>
-          <AppText variant="body" tone="muted">
-            Внесённых выплат: {paymentCount}
-          </AppText>
-        </View>
-
         {/* Копия и обмен живут здесь же, а не отдельной карточкой: это всё
-            про одни и те же данные, о которых карточка и рассказывает. */}
+            про одни и те же данные. Счётчиков — правок, выплат, типов смен и
+            версии схемы — здесь больше нет: делать по ним было нечего, а
+            место они занимали над кнопками, ради которых сюда и заходят. */}
         <DataActions />
 
         <AboutSection />
