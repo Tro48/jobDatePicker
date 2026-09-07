@@ -1,19 +1,21 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { formatMinutesAsTime, parseTimeToMinutes, todayIso } from '@/domain/date.ts';
+import { todayIso } from '@/domain/date.ts';
 import type { IsoDate, Weekday } from '@/domain/date.ts';
 import { resolveDay, upcomingShiftTypeIds } from '@/domain/engine.ts';
 import { formatDayLong } from '@/domain/format.ts';
 import {
   MAX_SNOOZE_MINUTES,
+  defaultWakeTime,
   hasAnyTrigger,
   isPastOnce,
   newAlarmDraft,
   nextDateForTime,
   parseSnoozeMinutes,
+  shiftWakeGroups,
 } from '@/domain/alarm.ts';
-import type { Alarm, AlarmRepeat } from '@/domain/alarm.ts';
+import type { Alarm, AlarmRepeat, ShiftWakeGroup } from '@/domain/alarm.ts';
 import type { ShiftType } from '@/domain/types.ts';
 import { useAlarmTrack, useScheduleContext } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
@@ -42,20 +44,11 @@ const REPEAT_CHOICES: Array<{ value: RepeatKind; label: string; hint: string }> 
   { value: 'schedule', label: 'По графику', hint: 'Только в рабочие дни выбранного графика' },
 ];
 
-/** Час до начала смены — то, что обычно и ставят. Дальше правится руками. */
-const DEFAULT_LEAD_MINUTES = 60;
-
 const EVERY_DAY: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
 
 function toDraft(alarm: Alarm): AlarmDraft {
   const { label, time, enabled, repeat, soundUri, vibrate, snoozeMinutes } = alarm;
   return { label, time, enabled, repeat, soundUri, vibrate, snoozeMinutes };
-}
-
-/** Время подъёма по умолчанию для смены: за час до её начала. */
-function defaultTimeFor(shiftType: ShiftType): string {
-  if (!shiftType.time) return '07:00';
-  return formatMinutesAsTime(parseTimeToMinutes(shiftType.time.start) - DEFAULT_LEAD_MINUTES);
 }
 
 /**
@@ -103,7 +96,7 @@ export function AlarmEditScreen() {
     const work = shiftType?.kind === 'work' ? shiftType : null;
     return {
       ...fresh,
-      time: work ? defaultTimeFor(work) : fresh.time,
+      time: work ? defaultWakeTime(work.time?.start) : fresh.time,
       label: work ? work.name : fresh.label,
       repeat: { kind: 'once', date },
     };
@@ -121,11 +114,12 @@ export function AlarmEditScreen() {
   const today = useMemo(() => todayIso(), []);
 
   /**
-   * Рабочие смены каждого графика. Спрашивать их у пользователя незачем — они
-   * заданы самим графиком; нужны только затем, чтобы у чередующихся дневных и
-   * ночных было по своему времени подъёма.
+   * Во сколько вставать по каждому графику. Спрашивать это у пользователя
+   * приходится только там, где смены начинаются в разное время: сокращённая
+   * пятница начинается тогда же, когда обычный день, и отдельного подъёма ей
+   * не нужно, а ночная после дневной — нужен.
    */
-  const shiftsByTrack = useMemo(() => {
+  const groupsByTrack = useMemo(() => {
     const index = new Map(shiftTypes.map((type) => [type.id, type]));
     return new Map(
       tracks.map((track) => [
@@ -134,9 +128,11 @@ export function AlarmEditScreen() {
         // что начнутся позже. Вся история давала бы смены оставленных работ —
         // после перевода с пятидневки на 2/2 человек получал четыре поля
         // времени подъёма вместо одного.
-        upcomingShiftTypeIds(track.schedules, today)
-          .map((id) => index.get(id))
-          .filter((type): type is ShiftType => Boolean(type?.time) && type?.kind === 'work'),
+        shiftWakeGroups(
+          upcomingShiftTypeIds(track.schedules, today)
+            .map((id) => index.get(id))
+            .filter((type): type is ShiftType => Boolean(type)),
+        ),
       ]),
     );
   }, [tracks, shiftTypes, today]);
@@ -148,15 +144,20 @@ export function AlarmEditScreen() {
   const usable = tracks.filter((track) => track.schedules.length > 0);
 
   /**
-   * Спрашивать время по сменам стоит там, где смен больше одной. Считается по
-   * каждому графику отдельно: на складе может быть одна смена, а на основной
-   * работе — дневная с ночной.
+   * Спрашивать время отдельно стоит там, где смены начинаются в разное время.
+   * Считается по каждому графику: на складе может быть один подъём, а на
+   * основной работе — дневной и ночной.
    */
-  const perShiftTimes = (trackId: string): boolean => (shiftsByTrack.get(trackId)?.length ?? 0) > 1;
+  const perShiftTimes = (trackId: string): boolean => (groupsByTrack.get(trackId)?.length ?? 0) > 1;
 
-  /** Время смены: заданное пользователем или час до её начала. */
-  const timeFor = (trackId: string, type: ShiftType): string =>
-    picked.find((item) => item.trackId === trackId)?.times[type.id] ?? defaultTimeFor(type);
+  /** Время подъёма группы: заданное пользователем или час до начала смены. */
+  const timeFor = (trackId: string, group: ShiftWakeGroup): string => {
+    const times = picked.find((item) => item.trackId === trackId)?.times ?? {};
+    // Внутри группы время у всех смен одно: берём первое записанное, иначе
+    // после правки справочника поле показывало бы старое значение.
+    const stored = group.shiftTypeIds.map((id) => times[id]).find(Boolean);
+    return stored ?? defaultWakeTime(group.start);
+  };
 
   const padding = { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl };
 
@@ -222,17 +223,20 @@ export function AlarmEditScreen() {
       };
     });
 
-  const setShiftTime = (trackId: string, shiftTypeId: string, time: string): void =>
+  /**
+   * Время подъёма пишется всем сменам группы разом: в будильник оно уходит по
+   * типу смены, а человек задал его один раз на «начало в девять».
+   */
+  const setGroupTime = (trackId: string, group: ShiftWakeGroup, time: string): void =>
     setDraft((current) => {
       if (current.repeat.kind !== 'schedule') return current;
+      const forGroup = Object.fromEntries(group.shiftTypeIds.map((id) => [id, time]));
       return {
         ...current,
         repeat: {
           kind: 'schedule',
           tracks: current.repeat.tracks.map((item) =>
-            item.trackId === trackId
-              ? { ...item, times: { ...item.times, [shiftTypeId]: time } }
-              : item,
+            item.trackId === trackId ? { ...item, times: { ...item.times, ...forGroup } } : item,
           ),
         },
       };
@@ -250,12 +254,14 @@ export function AlarmEditScreen() {
               kind: 'schedule',
               tracks: base.repeat.tracks.map((item) => ({
                 trackId: item.trackId,
+                // Один подъём на весь график — времён по сменам нет вовсе:
+                // такой будильник звонит по общему времени, и лишняя запись
+                // только разошлась бы с тем, что показано на экране.
                 times: perShiftTimes(item.trackId)
                   ? Object.fromEntries(
-                      (shiftsByTrack.get(item.trackId) ?? []).map((type) => [
-                        type.id,
-                        timeFor(item.trackId, type),
-                      ]),
+                      (groupsByTrack.get(item.trackId) ?? []).flatMap((group) =>
+                        group.shiftTypeIds.map((id) => [id, timeFor(item.trackId, group)]),
+                      ),
                     )
                   : {},
               })),
@@ -294,16 +300,16 @@ export function AlarmEditScreen() {
             if (!perShiftTimes(item.trackId)) return null;
             const track = tracks.find((candidate) => candidate.id === item.trackId);
 
-            return (shiftsByTrack.get(item.trackId) ?? []).map((type) => (
+            return (groupsByTrack.get(item.trackId) ?? []).map((group) => (
               <TimeSelect
-                key={`${item.trackId}:${type.id}`}
-                label={tracks.length > 1 && track ? `${track.name} · ${type.name}` : type.name}
-                value={timeFor(item.trackId, type)}
-                onChange={(time) => setShiftTime(item.trackId, type.id, time)}
+                key={`${item.trackId}:${group.start}`}
+                label={tracks.length > 1 && track ? `${track.name} · ${group.label}` : group.label}
+                value={timeFor(item.trackId, group)}
+                onChange={(time) => setGroupTime(item.trackId, group, time)}
                 hint={
-                  type.time && timeFor(item.trackId, type) >= type.time.start
-                    ? `Начало смены в ${type.time.start} — звонок придётся уже на смену`
-                    : `Начало смены в ${type.time?.start ?? ''}`
+                  timeFor(item.trackId, group) >= group.start
+                    ? `Начало смены в ${group.start} — звонок придётся уже на смену`
+                    : `Начало смены в ${group.start}`
                 }
               />
             ));

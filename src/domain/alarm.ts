@@ -1,8 +1,16 @@
-import { addDays, localDateTimeToMillis, toIsoDateLocal, weekday } from './date.ts';
+import {
+  addDays,
+  formatMinutesAsTime,
+  localDateTimeToMillis,
+  parseTimeToMinutes,
+  toIsoDateLocal,
+  weekday,
+} from './date.ts';
 import type { IsoDate, Weekday } from './date.ts';
 import { resolveDay } from './engine.ts';
 import type { ScheduleContext } from './engine.ts';
 import { WEEKDAYS_SHORT, formatDayLong, formatDayShort } from './format.ts';
+import type { ShiftType } from './types.ts';
 
 /**
  * Как повторяется будильник.
@@ -51,6 +59,70 @@ export interface Alarm {
   vibrate: boolean;
   snoozeMinutes: number;
 }
+
+/**
+ * Смены, которым хватит одного времени подъёма: они начинаются в один и тот же
+ * час.
+ *
+ * Вопрос будильника — не «какие смены бывают в графике», а «во сколько
+ * вставать». На 5/2 с сокращённой пятницей смен две, но обе начинаются в
+ * девять, и спрашивать время дважды значит заставлять человека дважды набрать
+ * одно и то же — а потом гадать, почему в пятницу будильник звонит по-другому.
+ * Там же, где день чередуется с ночью, времени и правда два: 08:00 и 20:00
+ * начинаются в разное время суток, и подъём у них разный.
+ *
+ * Группа хранит все свои id: время уходит в будильник по типу смены, и
+ * записать его надо каждому — иначе смена без записи зазвонит по общему
+ * времени будильника.
+ */
+export interface ShiftWakeGroup {
+  /** Начало смен группы, «ЧЧ:ММ». */
+  start: string;
+  shiftTypeIds: string[];
+  /** Подпись поля времени: названия смен группы через точку. */
+  label: string;
+}
+
+/**
+ * Рабочие смены, сгруппированные по началу. Порядок — по времени суток: утро
+ * идёт раньше вечера, и список не переставляется от правки справочника.
+ */
+export function shiftWakeGroups(types: ShiftType[]): ShiftWakeGroup[] {
+  const byStart = new Map<string, ShiftType[]>();
+
+  for (const type of types) {
+    if (type.kind !== 'work' || !type.time) continue;
+    const group = byStart.get(type.time.start);
+    if (group) group.push(type);
+    else byStart.set(type.time.start, [type]);
+  }
+
+  return [...byStart.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([start, group]) => ({
+      start,
+      shiftTypeIds: group.map((type) => type.id),
+      label: group.map((type) => type.name).join(' · '),
+    }));
+}
+
+/** Час до начала смены — то, что обычно и ставят. Дальше правится руками. */
+export const DEFAULT_LEAD_MINUTES = 60;
+
+/**
+ * Время подъёма по умолчанию: за час до начала смены.
+ *
+ * Смена в 00:30 даёт 23:30 предыдущего дня, а не отрицательное время: сутки
+ * замыкаются. Само срабатывание планировщик всё равно считает от дня смены —
+ * подъём «23:30» на ночную это подъём накануне, и так его человек и правит.
+ */
+export function defaultWakeTime(start: string | undefined): string {
+  if (!start) return '07:00';
+  const minutes = parseTimeToMinutes(start) - DEFAULT_LEAD_MINUTES;
+  return formatMinutesAsTime((minutes + DAY_MINUTES) % DAY_MINUTES);
+}
+
+const DAY_MINUTES = 24 * 60;
 
 /** Отсрочки нет: на экране звонка не будет кнопки «Отложить». */
 export const SNOOZE_OFF = 0;
