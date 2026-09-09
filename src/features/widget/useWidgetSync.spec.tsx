@@ -50,3 +50,28 @@ test('отпуск, поставленный в календаре, попада
   expect(mockWrite.mock.calls.length).toBeGreaterThan(beforeCalls);
   expect(last).toContain('Отпуск');
 });
+
+test('свой цвет смены уезжает в виджет: на экране он и календарь рядом', async () => {
+  const id = useAppStore.getState().addTrack({
+    name: 'Основная',
+    own: true,
+    presetId: '2-2-day',
+    anchorDate: '2026-09-01',
+  });
+  useAppStore.setState({ activeTrackId: id });
+
+  await act(async () => {
+    render(
+      <ThemeProvider>
+        <WidgetSyncProvider>{null}</WidgetSyncProvider>
+      </ThemeProvider>,
+    );
+  });
+
+  await act(async () => {
+    useAppStore.getState().setThemeColor('light', 'shift.day.surface', '#FFE066');
+  });
+
+  const last = mockWrite.mock.calls.at(-1)?.[0] as string;
+  expect(last).toContain('#FFE066');
+});

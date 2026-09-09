@@ -21,6 +21,8 @@ import type { SharedOverride } from '@/domain/share.ts';
 import { addDays } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import { LATEST_RELEASE_ID } from '@/domain/releaseNotes.ts';
+import { sanitizeThemeColors } from '@/theme/slots.ts';
+import type { SchemeName, ThemeColorOverrides } from '@/theme/slots.ts';
 import type { ReleaseManifest } from '@/domain/release.ts';
 import type {
   CustomSchedule,
@@ -41,7 +43,7 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -122,6 +124,14 @@ export interface SharedGroup {
 export interface AppState {
   appearance: ThemePreference;
   /**
+   * Цвета, заданные человеком поверх палитры приложения, — по набору на тему.
+   *
+   * Поправки, а не готовая палитра: см. src/theme/slots.ts. Светлая и тёмная
+   * правятся отдельно — цвет, читаемый на белом фоне, на чёрном не читается, и
+   * общий набор означал бы, что одна из тем всегда испорчена.
+   */
+  themeColors: ThemeColorOverrides;
+  /**
    * Отслеживаемые графики. Пусто — ни одного не заведено, экраны показывают
    * «График не выбран». Второй появляется под вторую работу или под график
    * близкого человека.
@@ -193,6 +203,18 @@ export type PersistedSnapshot = Partial<AppState> & LegacyFlatState;
 
 export interface AppActions {
   setAppearance: (value: ThemePreference) => void;
+  /**
+   * Задаёт свой цвет одному слоту палитры. Неправильный цвет не сохраняется:
+   * поле правят по букве, и «#12» — это середина набора, а не значение.
+   */
+  setThemeColor: (scheme: SchemeName, slotId: string, hex: string) => void;
+  /** Возвращает слоту цвет из палитры приложения. */
+  resetThemeColor: (scheme: SchemeName, slotId: string) => void;
+  /**
+   * Сброс всех своих цветов. Без темы — обе сразу: это выход из оформления, в
+   * котором уже ничего не видно, и выбирать в нём тему человеку нечем.
+   */
+  resetThemeColors: (scheme?: SchemeName) => void;
   /** Заводит свой тип смены и возвращает его id — редактор открывается сразу по нему. */
   addShiftType: (draft: ShiftTypeDraft) => string;
   /**
@@ -433,6 +455,7 @@ const DEFAULT_PAYROLL: PayrollSettings = {
 
 export const INITIAL_STATE: AppState = {
   appearance: 'system',
+  themeColors: { light: {}, dark: {} },
   tracks: [],
   activeTrackId: null,
   shiftTypes: DEFAULT_SHIFT_TYPES,
@@ -466,6 +489,30 @@ export const useAppStore = create<AppState & AppActions>()(
       ...INITIAL_STATE,
 
       setAppearance: (appearance) => set({ appearance }),
+
+      setThemeColor: (scheme, slotId, hex) =>
+        set((state) => {
+          // Через тот же санитайз, что и чтение из файла копии: в стили
+          // должно уходить только «#RRGGBB», и проверка этому одна.
+          const clean = sanitizeThemeColors({
+            ...state.themeColors,
+            [scheme]: { ...state.themeColors[scheme], [slotId]: hex },
+          });
+          return { themeColors: clean };
+        }),
+
+      resetThemeColor: (scheme, slotId) =>
+        set((state) => {
+          const { [slotId]: _removed, ...rest } = state.themeColors[scheme];
+          return { themeColors: { ...state.themeColors, [scheme]: rest } };
+        }),
+
+      resetThemeColors: (scheme) =>
+        set((state) =>
+          scheme
+            ? { themeColors: { ...state.themeColors, [scheme]: {} } }
+            : { themeColors: { light: {}, dark: {} } },
+        ),
 
       addShiftType: (draft) => {
         const id = createId();
@@ -844,6 +891,7 @@ export const useAppStore = create<AppState & AppActions>()(
       /** В хранилище уходят данные пользователя, включая правленый справочник смен. */
       partialize: (state): PersistedState => ({
         appearance: state.appearance,
+        themeColors: state.themeColors,
         shiftTypes: state.shiftTypes,
         customSchedules: state.customSchedules,
         holidays: state.holidays,
@@ -901,6 +949,9 @@ export const useAppStore = create<AppState & AppActions>()(
  * доната. У всех, кто обновляется, ничего не куплено и ничего не скрыто.
  *
  * В версии 16 график дорожки стал историей периодов, а не одним графиком.
+ *
+ * В версии 18 появились свои цвета оформления. В снимке прошлых версий их
+ * нет — палитра остаётся ровно той, что в коде.
  *
  * В версии 17 заметка перестала быть полем правки дня: заметок к одному дню
  * может быть несколько, у каждой своё напоминание, и лежат они общим списком —
@@ -960,6 +1011,9 @@ export function migrateState(persisted: PersistedSnapshot, _version: number): Ap
     sharedDaysOff: { ...INITIAL_STATE.sharedDaysOff, ...persisted.sharedDaysOff },
     holidays: { ...INITIAL_STATE.holidays, ...persisted.holidays },
     support: { ...INITIAL_STATE.support, ...persisted.support },
+    // Цвета чистятся при чтении, а не при показе: снимок мог прийти из файла
+    // копии, сделанного чужой рукой, и оттуда в стиль ушло бы что угодно.
+    themeColors: sanitizeThemeColors(persisted.themeColors),
     // Участники, чьи дорожки удалили, из групп выбрасываются: иначе группа
     // навсегда осталась бы без совпадений и объяснить это было бы нечем.
     sharedGroups: (persisted.sharedGroups ?? []).map((group) => ({

@@ -563,3 +563,72 @@ describe('свои графики', () => {
     });
   });
 });
+
+describe('свои цвета оформления', () => {
+  beforeEach(() => {
+    useAppStore.setState(INITIAL_STATE);
+  });
+
+  test('цвет ложится на свою тему и снимается по одному', () => {
+    const store = useAppStore.getState();
+    store.setThemeColor('light', 'accent', '#7c2d12');
+    store.setThemeColor('light', 'background', '#FFFDF5');
+    store.setThemeColor('dark', 'accent', '#FDBA74');
+
+    // Код приводится к одному виду при записи: в стилях не должно быть двух
+    // написаний одного цвета.
+    expect(useAppStore.getState().themeColors).toEqual({
+      light: { accent: '#7C2D12', background: '#FFFDF5' },
+      dark: { accent: '#FDBA74' },
+    });
+
+    useAppStore.getState().resetThemeColor('light', 'accent');
+    expect(useAppStore.getState().themeColors.light).toEqual({ background: '#FFFDF5' });
+
+    useAppStore.getState().resetThemeColors('light');
+    expect(useAppStore.getState().themeColors).toEqual({
+      light: {},
+      dark: { accent: '#FDBA74' },
+    });
+
+    useAppStore.getState().resetThemeColors();
+    expect(useAppStore.getState().themeColors).toEqual({ light: {}, dark: {} });
+  });
+
+  test('в палитру не попадает то, что не цвет', () => {
+    const store = useAppStore.getState();
+    store.setThemeColor('light', 'accent', 'red');
+    store.setThemeColor('light', 'background', '#12');
+    store.setThemeColor('light', 'shift.moon.on', '#FFFFFF');
+
+    expect(useAppStore.getState().themeColors.light).toEqual({});
+  });
+
+  test('цвета переживают перезапуск, а мусор из чужого файла — нет', () => {
+    useAppStore.getState().setThemeColor('dark', 'background', '#101010');
+
+    const snapshot = JSON.parse(
+      JSON.stringify({ themeColors: useAppStore.getState().themeColors }),
+    ) as PersistedSnapshot;
+    expect(migrateState(snapshot, SCHEMA_VERSION).themeColors).toEqual({
+      light: {},
+      dark: { background: '#101010' },
+    });
+
+    // Снимок из прошлой версии цветов не знает вовсе — палитра остаётся той,
+    // что в коде.
+    expect(migrateState({} as PersistedSnapshot, 17).themeColors).toEqual({
+      light: {},
+      dark: {},
+    });
+
+    // Чужой файл: в стиль ушло бы что угодно, если бы не чистка при чтении.
+    const dirty = {
+      themeColors: { light: { text: 'red; position:absolute', accent: '#abc' }, dark: 'нет' },
+    } as unknown as PersistedSnapshot;
+    expect(migrateState(dirty, SCHEMA_VERSION).themeColors).toEqual({
+      light: { accent: '#AABBCC' },
+      dark: {},
+    });
+  });
+});

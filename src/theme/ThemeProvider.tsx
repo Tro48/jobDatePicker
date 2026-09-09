@@ -4,11 +4,13 @@ import { useColorScheme } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkPalette, fadedShiftPair, lightPalette } from './palette.ts';
 import type { ColorPair, Palette } from './palette.ts';
+import { EMPTY_THEME_COLORS, applyOverrides } from './slots.ts';
+import type { PaletteOverrides, SchemeName } from './slots.ts';
 import { FOCUS_RING_WIDTH, MIN_TOUCH_TARGET, radius, spacing, typography } from './typography.ts';
 import { useAppStore } from '@/data/store.ts';
 
 export interface Theme {
-  scheme: 'light' | 'dark';
+  scheme: SchemeName;
   colors: Palette;
   spacing: typeof spacing;
   radius: typeof radius;
@@ -17,10 +19,17 @@ export interface Theme {
   focusRingWidth: number;
 }
 
-function buildTheme(scheme: 'light' | 'dark'): Theme {
+/**
+ * Тема схемы с учётом цветов, заданных человеком.
+ *
+ * Поправки накладываются здесь, а не в палитре: палитра в коде — это то, с чем
+ * приложение ставится и что проверяет CI, и переписывать её значениями с
+ * телефона нельзя, иначе сброс оформления было бы неоткуда взять.
+ */
+export function buildTheme(scheme: SchemeName, overrides: PaletteOverrides = {}): Theme {
   return {
     scheme,
-    colors: scheme === 'dark' ? darkPalette : lightPalette,
+    colors: applyOverrides(scheme === 'dark' ? darkPalette : lightPalette, overrides),
     spacing,
     radius,
     typography,
@@ -34,11 +43,13 @@ const ThemeContext = createContext<Theme>(buildTheme('light'));
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemScheme = useColorScheme();
   const preference = useAppStore((state) => state.appearance);
+  const themeColors = useAppStore((state) => state.themeColors);
 
-  const scheme: 'light' | 'dark' =
+  const scheme: SchemeName =
     preference === 'system' ? (systemScheme === 'dark' ? 'dark' : 'light') : preference;
 
-  const theme = useMemo(() => buildTheme(scheme), [scheme]);
+  const overrides = (themeColors ?? EMPTY_THEME_COLORS)[scheme];
+  const theme = useMemo(() => buildTheme(scheme, overrides), [scheme, overrides]);
 
   // Фон под корневым View: иначе при листании за границу экрана видно белую
   // подложку системы, и в тёмной теме это бьёт по глазам.
