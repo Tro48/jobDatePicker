@@ -5,7 +5,7 @@
     "platforms": [
       "android"
     ],
-    "version": "0.1.16",
+    "version": "0.1.17",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "jobdatepicker",
@@ -15,7 +15,7 @@
     },
     "android": {
       "package": "com.andrey.jobdatepicker",
-      "versionCode": 8,
+      "versionCode": 9,
       "allowBackup": false,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
