@@ -2,6 +2,7 @@ export { AppText } from './AppText.tsx';
 export { Button } from './Button.tsx';
 export { Card } from './Card.tsx';
 export { ChoiceGroup } from './ChoiceGroup.tsx';
+export { ColorPicker } from './ColorPicker.tsx';
 export { Fab } from './Fab.tsx';
 export { HelpButton } from './HelpButton.tsx';
 export { HorizontalPager } from './HorizontalPager.tsx';

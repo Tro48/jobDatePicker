@@ -34,6 +34,11 @@ export function ColorChoice({ value, onChange, badge }: ColorChoiceProps) {
       <AppText variant="label" tone="muted">
         Цвет в календаре
       </AppText>
+      {/* Здесь оттенок выбирается, а не задаётся: сам цвет общий на все смены
+          этого оттенка, и правится он там, где видно последствия. */}
+      <AppText variant="caption" tone="muted">
+        Сами оттенки правятся в «Настройки → Оформление → Цвета».
+      </AppText>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
         {SHIFT_COLOR_TOKENS.map((token) => {
           const pair = theme.colors.shifts[token];

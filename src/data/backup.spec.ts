@@ -27,6 +27,7 @@ function fillStore(): void {
   store.addTrack({ name: 'Основная', own: true, presetId: '2-2-day', anchorDate: '2026-09-01' });
   useAppStore.getState().setOverride({ date: '2026-09-10', workedMinutesOverride: 300 });
   useAppStore.getState().addNote({ date: '2026-09-10', text: 'за Сергея', remindAt: '09:00' });
+  useAppStore.getState().setThemeColor('dark', 'accent', '#FDBA74');
   useAppStore.getState().addPayment({
     trackId: useAppStore.getState().tracks[0].id,
     kind: 'salary',
@@ -54,6 +55,9 @@ test('копия и восстановление возвращают состо
   expect(after.shiftTypes).toEqual(before.shiftTypes);
   expect(after.payments).toEqual(before.payments);
   expect(after.notes).toEqual(before.notes);
+  // Оформление — тоже данные человека: подбирать цвета заново на новом
+  // телефоне он не должен.
+  expect(after.themeColors).toEqual(before.themeColors);
   expect(activeTrack(after)?.overrides['2026-09-10']?.workedMinutesOverride).toBe(300);
 });
 

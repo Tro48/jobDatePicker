@@ -19,6 +19,7 @@ export default function SettingsScreen() {
   const push = useGuardedPush();
   const appearance = useAppStore((state) => state.appearance);
   const setAppearance = useAppStore((state) => state.setAppearance);
+  const themeColors = useAppStore((state) => state.themeColors);
   const tracks = useAppStore((state) => state.tracks);
   const shiftTypeCount = useAppStore((state) => state.shiftTypes.length);
   const own = tracks.filter((track) => track.own);
@@ -28,6 +29,8 @@ export default function SettingsScreen() {
   const shared = useAppStore((state) => state.sharedDaysOff);
   const setSharedDaysOff = useAppStore((state) => state.setSharedDaysOff);
   const groups = useAppStore((state) => state.sharedGroups);
+  const customColorCount =
+    Object.keys(themeColors.light).length + Object.keys(themeColors.dark).length;
 
   return (
     <Screen title="Настройки">
@@ -37,6 +40,17 @@ export default function SettingsScreen() {
           choices={THEME_CHOICES}
           value={appearance}
           onChange={setAppearance}
+        />
+        {/* Цвета — отдельным экраном: их четыре десятка, у каждого свой
+            образец и своя проверка контраста. */}
+        <Button
+          title="Цвета"
+          accessibilityHint={
+            customColorCount > 0
+              ? `Своих цветов: ${customColorCount}. Здесь задаётся фон, текст, акцент и цвета смен`
+              : 'Задать свой фон, текст, акцент и цвета смен — отдельно для светлой и тёмной темы'
+          }
+          onPress={() => push('/settings/theme-colors')}
         />
       </Card>
 
