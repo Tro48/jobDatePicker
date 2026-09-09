@@ -6,8 +6,18 @@ import type { WidgetColorLookup, WidgetSnapshot } from '@/domain/widget.ts';
 import { buildScheduleContext, useHolidayCalendar } from '@/data/selectors.ts';
 import { alarmTrack, useAppStore } from '@/data/store.ts';
 import { isWidgetModuleAvailable, writeWidgetSnapshot } from '@modules/shift-widget';
-import { applyOverrides, darkPalette, fadedShiftPair, lightPalette } from '@/theme';
-import type { Palette, ThemeColorOverrides } from '@/theme';
+import {
+  CUSTOM_PREFIX,
+  darkPalette,
+  fadedShiftPair,
+  lightPalette,
+  markerOn,
+  readableOn,
+} from '@/theme';
+import type { Palette } from '@/theme';
+import type { CustomTheme, ThemePreference } from '@/data/store.ts';
+import type { ShiftType } from '@/domain/types.ts';
+import type { WidgetAppearance } from '@/domain/widget.ts';
 
 /**
  * Цвета смены для обеих тем сразу — вместе с приглушённой заливкой.
@@ -15,18 +25,24 @@ import type { Palette, ThemeColorOverrides } from '@/theme';
  * Виджет получает готовые цвета, а не токены палитры: повторить палитру на
  * Kotlin значило бы разойтись с приложением на первой же правке цвета. По той
  * же причине здесь считается и приглушение отработанной смены — тем же
- * fadedShiftPair, что и в клетке календаря, — и по той же причине сюда
- * заведены цвета, заданные человеком: виджет и календарь на одном экране
- * обязаны показывать одну и ту же смену одинаково.
+ * fadedShiftPair, что и в клетке календаря.
+ *
+ * Своя тема отдаёт одну палитру на обе стороны: она не переключается по
+ * системе, и виджет обязан показывать ровно её, что бы ни стояло в ночном
+ * режиме телефона. Свой цвет смены идёт мимо палитры вовсе.
  */
-function lookupFor(colors: ThemeColorOverrides): WidgetColorLookup {
-  const light = applyOverrides(lightPalette, colors.light);
-  const dark = applyOverrides(darkPalette, colors.dark);
-  return (token) => ({ light: pairOf(light, token), dark: pairOf(dark, token) });
+function lookupFor(theme: CustomTheme | null): WidgetColorLookup {
+  const light = theme?.colors ?? lightPalette;
+  const dark = theme?.colors ?? darkPalette;
+  return (type) => ({ light: pairOf(light, type), dark: pairOf(dark, type) });
 }
 
-function pairOf(palette: Palette, token: string) {
-  const pair = palette.shifts[token] ?? { surface: palette.surface, on: palette.text };
+function pairOf(palette: Palette, type: ShiftType) {
+  const own = type.color;
+  const pair = own
+    ? { surface: own, on: markerOn(own) }
+    : (palette.shifts[type.colorToken] ?? { surface: palette.surface, on: palette.text });
+
   return { ...pair, faded: fadedShiftPair(pair, palette.surface).surface };
 }
 
@@ -50,10 +66,11 @@ export function useWidgetSync(): void {
   const shiftTypes = useAppStore((state) => state.shiftTypes);
   const trackCount = useAppStore((state) => state.tracks.length);
   const appearance = useAppStore((state) => state.appearance);
-  const themeColors = useAppStore((state) => state.themeColors);
+  const themes = useAppStore((state) => state.themes);
   const holidays = useHolidayCalendar();
 
-  const colorsOf = useMemo(() => lookupFor(themeColors), [themeColors]);
+  const custom = customTheme(appearance, themes);
+  const colorsOf = useMemo(() => lookupFor(custom), [custom]);
 
   // Метка возвращения в приложение: служит зависимостью пересборки, иначе
   // снимок, сделанный в январе, дожил бы в неизменном виде до апреля.
@@ -88,12 +105,34 @@ export function useWidgetSync(): void {
       trackName: trackCount > 1 ? (track?.name ?? '') : '',
       // Тема берётся из настроек приложения, а не из системы: виджет и
       // приложение на одном экране обязаны выглядеть одинаково.
-      appearance,
+      appearance: widgetAppearance(appearance, custom),
       colorsOf,
     });
 
     if (written.current && sameWidgetSnapshot(written.current, snapshot)) return;
     written.current = snapshot;
     writeWidgetSnapshot(JSON.stringify(snapshot));
-  }, [track, shiftTypes, trackCount, appearance, holidays, colorsOf, foregroundAt]);
+  }, [track, shiftTypes, trackCount, appearance, custom, holidays, colorsOf, foregroundAt]);
+}
+
+/** Выбранная своя тема или null, если показана встроенная. */
+function customTheme(appearance: ThemePreference, themes: CustomTheme[]): CustomTheme | null {
+  if (!appearance.startsWith(CUSTOM_PREFIX)) return null;
+  const id = appearance.slice(CUSTOM_PREFIX.length);
+  return themes.find((theme) => theme.id === id) ?? null;
+}
+
+/**
+ * Какой стороной виджету рисоваться.
+ *
+ * У своей темы стороны нет: она одна и та же днём и ночью. Виджету при этом
+ * нужно сказать, светлая она или тёмная, — иначе он выберет по системе и
+ * возьмёт не тот цвет текста поверх наших заливок.
+ */
+function widgetAppearance(
+  appearance: ThemePreference,
+  custom: CustomTheme | null,
+): WidgetAppearance {
+  if (custom) return readableOn(custom.colors.background) === '#FFFFFF' ? 'dark' : 'light';
+  return appearance === 'light' || appearance === 'dark' ? appearance : 'system';
 }

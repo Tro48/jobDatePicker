@@ -10,6 +10,7 @@ import { shiftDurationMinutes } from '@/domain/engine.ts';
 import { MAIN_TRACK_NAME } from './migrations.ts';
 import type { PersistedSnapshot } from './store.ts';
 import { LATEST_RELEASE_ID, unseenReleases } from '@/domain/releaseNotes.ts';
+import { darkPalette, lightPalette } from '@/theme';
 import type { ReleaseManifest } from '@/domain/release.ts';
 
 /**
@@ -564,71 +565,124 @@ describe('свои графики', () => {
   });
 });
 
-describe('свои цвета оформления', () => {
+describe('свои темы', () => {
   beforeEach(() => {
     useAppStore.setState(INITIAL_STATE);
   });
 
-  test('цвет ложится на свою тему и снимается по одному', () => {
-    const store = useAppStore.getState();
-    store.setThemeColor('light', 'accent', '#7c2d12');
-    store.setThemeColor('light', 'background', '#FFFDF5');
-    store.setThemeColor('dark', 'accent', '#FDBA74');
+  test('тема заводится копией палитры и красится по одному цвету', () => {
+    const id = useAppStore.getState().addTheme('Ночная смена', darkPalette);
+    const created = useAppStore.getState().themes.find((theme) => theme.id === id);
 
-    // Код приводится к одному виду при записи: в стилях не должно быть двух
-    // написаний одного цвета.
-    expect(useAppStore.getState().themeColors).toEqual({
-      light: { accent: '#7C2D12', background: '#FFFDF5' },
-      dark: { accent: '#FDBA74' },
-    });
+    assert(created);
+    expect(created.name).toBe('Ночная смена');
+    // Копия, а не ссылка: правка темы не должна доставать до палитры в коде.
+    expect(created.colors.background).toBe(darkPalette.background);
+    expect(created.colors.shifts).not.toBe(darkPalette.shifts);
 
-    useAppStore.getState().resetThemeColor('light', 'accent');
-    expect(useAppStore.getState().themeColors.light).toEqual({ background: '#FFFDF5' });
-
-    useAppStore.getState().resetThemeColors('light');
-    expect(useAppStore.getState().themeColors).toEqual({
-      light: {},
-      dark: { accent: '#FDBA74' },
-    });
-
-    useAppStore.getState().resetThemeColors();
-    expect(useAppStore.getState().themeColors).toEqual({ light: {}, dark: {} });
+    useAppStore.getState().setThemeColor(id, 'background', '#101010');
+    expect(themeById(id).colors.background).toBe('#101010');
+    expect(darkPalette.background).toBe('#0F1115');
   });
 
-  test('в палитру не попадает то, что не цвет', () => {
-    const store = useAppStore.getState();
-    store.setThemeColor('light', 'accent', 'red');
-    store.setThemeColor('light', 'background', '#12');
-    store.setThemeColor('light', 'shift.moon.on', '#FFFFFF');
-
-    expect(useAppStore.getState().themeColors.light).toEqual({});
+  test('тема без имени получает понятное', () => {
+    const id = useAppStore.getState().addTheme('   ', darkPalette);
+    expect(themeById(id).name).toBe('Своя тема');
   });
 
-  test('цвета переживают перезапуск, а мусор из чужого файла — нет', () => {
-    useAppStore.getState().setThemeColor('dark', 'background', '#101010');
+  test('тема снимается с той палитры, что ей дали', () => {
+    // Основу не спрашивают: экран передаёт ту тему, которую человек видит.
+    const painted = { ...lightPalette, background: '#FFFDF5' };
+    const id = useAppStore.getState().addTheme('Своя', painted);
+
+    expect(themeById(id).colors.background).toBe('#FFFDF5');
+    // И это копия: правка темы не должна доставать до палитры, с которой сняли.
+    useAppStore.getState().setThemeColor(id, 'background', '#101010');
+    expect(painted.background).toBe('#FFFDF5');
+  });
+
+  test('в тему не попадает то, что не цвет', () => {
+    const id = useAppStore.getState().addTheme('Своя', lightPalette);
+    const before = themeById(id).colors.accent;
+
+    useAppStore.getState().setThemeColor(id, 'accent', 'red');
+    useAppStore.getState().setThemeColor(id, 'accent', '#12');
+    useAppStore.getState().setThemeColor(id, 'shift.moon.surface', '#FFFFFF');
+
+    expect(themeById(id).colors.accent).toBe(before);
+  });
+
+  test('удалённая тема перестаёт показываться', () => {
+    const id = useAppStore.getState().addTheme('Своя', lightPalette);
+    useAppStore.getState().setAppearance(`custom:${id}`);
+
+    useAppStore.getState().removeTheme(id);
+
+    expect(useAppStore.getState().themes).toHaveLength(0);
+    // Иначе экран остался бы без палитры вовсе.
+    expect(useAppStore.getState().appearance).toBe('system');
+  });
+
+  test('удаление чужой темы выбор не трогает', () => {
+    const shown = useAppStore.getState().addTheme('Показанная', lightPalette);
+    const other = useAppStore.getState().addTheme('Другая', darkPalette);
+    useAppStore.getState().setAppearance(`custom:${shown}`);
+
+    useAppStore.getState().removeTheme(other);
+
+    expect(useAppStore.getState().appearance).toBe(`custom:${shown}`);
+  });
+
+  test('темы переживают перезапуск, а мусор из чужого файла — нет', () => {
+    const id = useAppStore.getState().addTheme('Своя', darkPalette);
+    useAppStore.getState().setThemeColor(id, 'background', '#101010');
 
     const snapshot = JSON.parse(
-      JSON.stringify({ themeColors: useAppStore.getState().themeColors }),
+      JSON.stringify({ themes: useAppStore.getState().themes }),
     ) as PersistedSnapshot;
-    expect(migrateState(snapshot, SCHEMA_VERSION).themeColors).toEqual({
-      light: {},
-      dark: { background: '#101010' },
-    });
+    const restored = migrateState(snapshot, SCHEMA_VERSION);
 
-    // Снимок из прошлой версии цветов не знает вовсе — палитра остаётся той,
-    // что в коде.
-    expect(migrateState({} as PersistedSnapshot, 17).themeColors).toEqual({
-      light: {},
-      dark: {},
-    });
+    expect(restored.themes[0].name).toBe('Своя');
+    expect(restored.themes[0].colors.background).toBe('#101010');
 
     // Чужой файл: в стиль ушло бы что угодно, если бы не чистка при чтении.
     const dirty = {
-      themeColors: { light: { text: 'red; position:absolute', accent: '#abc' }, dark: 'нет' },
+      themes: [{ id: 'x', name: 'Чужая', colors: { text: 'red; position:absolute' } }],
     } as unknown as PersistedSnapshot;
-    expect(migrateState(dirty, SCHEMA_VERSION).themeColors).toEqual({
-      light: { accent: '#AABBCC' },
-      dark: {},
-    });
+    expect(migrateState(dirty, SCHEMA_VERSION).themes[0].colors.text).toBe(lightPalette.text);
+  });
+
+  test('цвета версии 18 становятся темами, а не пропадают', () => {
+    // До версии 19 они лежали поправками к палитре и своего имени не имели.
+    const snapshot = {
+      themeColors: { light: { accent: '#7C2D12' }, dark: { background: '#101010' } },
+    } as unknown as PersistedSnapshot;
+
+    const restored = migrateState(snapshot, 18);
+
+    expect(restored.themes.map((theme) => theme.name)).toEqual(['Своя светлая', 'Своя тёмная']);
+
+    expect(restored.themes[0].colors.accent).toBe('#7C2D12');
+    expect(restored.themes[1].colors.background).toBe('#101010');
+    // Выбранной ни одна не становится: до этой версии они и так показывались
+    // поверх встроенной темы, которая выбрана в настройках.
+    expect(restored.appearance).toBe('system');
+  });
+
+  test('ссылка на исчезнувшую тему не оставляет экран без палитры', () => {
+    const snapshot = { appearance: 'custom:нет-такой' } as unknown as PersistedSnapshot;
+    expect(migrateState(snapshot, SCHEMA_VERSION).appearance).toBe('system');
   });
 });
+
+/** Тема по id: в тестах она нужна после каждого действия, свежая. */
+function themeById(id: string) {
+  const theme = useAppStore.getState().themes.find((item) => item.id === id);
+  assert(theme);
+  return theme;
+}
+
+/** Узкое место jest: expect не сужает тип, а без сужения дальше идут ошибки типов. */
+function assert(value: unknown): asserts value {
+  if (!value) throw new Error('Ожидалось значение, а его нет');
+}

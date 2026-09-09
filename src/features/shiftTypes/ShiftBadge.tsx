@@ -17,7 +17,7 @@ export interface ShiftBadgeProps {
  */
 export function ShiftBadge({ shiftType }: ShiftBadgeProps) {
   const theme = useTheme();
-  const colors = useShiftColors(shiftType.colorToken);
+  const colors = useShiftColors(shiftType);
 
   return (
     <View

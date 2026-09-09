@@ -158,3 +158,45 @@ test('смену, на которой стоит график, удалить н
   // Молча не сработавшая кнопка — худший из вариантов: причина названа текстом.
   expect(view.getByText(/Эту смену не удалить/)).toBeTruthy();
 });
+
+test('смене задаётся свой цвет, и он не зависит от темы', async () => {
+  const view = await renderScreen('day12');
+
+  await act(async () => {
+    fireEvent.press(view.getByLabelText('Задать свой цвет'));
+  });
+
+  // Квадрат оттенка появился прямо здесь, без перехода на другой экран.
+  const field = view.getByLabelText('Код цвета');
+  await act(async () => {
+    fireEvent.changeText(field, '#123456');
+  });
+  await act(async () => {
+    fireEvent(field, 'blur');
+  });
+  await act(async () => {
+    fireEvent.press(view.getByText('Сохранить смену'));
+  });
+
+  const saved = useAppStore.getState().shiftTypes.find((type) => type.id === 'day12');
+  expect(saved?.color).toBe('#123456');
+  // Оттенок палитры при этом остаётся записанным: по нему смена вернётся к
+  // теме, если свой цвет снимут.
+  expect(saved?.colorToken).toBe('shift.day');
+});
+
+test('свой цвет снимается, и смена снова красится темой', async () => {
+  useAppStore.getState().updateShiftType('day12', { color: '#123456' });
+  const view = await renderScreen('day12');
+
+  await act(async () => {
+    fireEvent.press(view.getByText('Вернуть оттенок темы'));
+  });
+  await act(async () => {
+    fireEvent.press(view.getByText('Сохранить смену'));
+  });
+
+  expect(
+    useAppStore.getState().shiftTypes.find((type) => type.id === 'day12')?.color,
+  ).toBeUndefined();
+});

@@ -24,7 +24,7 @@ export interface PatternCellProps {
  */
 export function PatternCell({ shiftType, label, brushName, size, onPress }: PatternCellProps) {
   const theme = useTheme();
-  const colors = useShiftColors(shiftType.colorToken);
+  const colors = useShiftColors(shiftType);
   const [focused, setFocused] = useState(false);
 
   return (

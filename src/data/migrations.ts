@@ -243,6 +243,11 @@ type LegacyOverride = DayOverride & { note?: string };
 
 /** Состояние до версии 9: график и правки лежали в корне, поодиночке. */
 export interface LegacyFlatState {
+  /**
+   * Свои цвета версии 18: поправки к светлой и тёмной палитре без имени.
+   * В версии 19 из каждого непустого набора получается тема.
+   */
+  themeColors?: unknown;
   schedule?: ActiveSchedule | null;
   overrides?: Record<IsoDate, LegacyOverride>;
   tracks?: LegacyTrack[];

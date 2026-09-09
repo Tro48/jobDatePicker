@@ -1,7 +1,7 @@
 import { act, render } from '@testing-library/react-native';
 import { WidgetSyncProvider } from './WidgetSyncProvider.tsx';
 import { INITIAL_STATE, useAppStore } from '@/data/store.ts';
-import { ThemeProvider } from '@/theme';
+import { ThemeProvider, darkPalette } from '@/theme';
 
 /**
  * Снимок для виджета обязан переписываться на каждую правку дня.
@@ -51,7 +51,7 @@ test('отпуск, поставленный в календаре, попада
   expect(last).toContain('Отпуск');
 });
 
-test('свой цвет смены уезжает в виджет: на экране он и календарь рядом', async () => {
+test('своя тема задаёт виджету сторону: он не следует за системой', async () => {
   const id = useAppStore.getState().addTrack({
     name: 'Основная',
     own: true,
@@ -69,9 +69,40 @@ test('свой цвет смены уезжает в виджет: на экра
   });
 
   await act(async () => {
-    useAppStore.getState().setThemeColor('light', 'shift.day.surface', '#FFE066');
+    const themeId = useAppStore.getState().addTheme('Ночная', darkPalette);
+    useAppStore.getState().setAppearance(`custom:${themeId}`);
   });
 
+  // Тема одна и та же днём и ночью — виджету надо сказать, какой стороной
+  // рисоваться, иначе он выберет по системе и возьмёт чужой цвет текста.
   const last = mockWrite.mock.calls.at(-1)?.[0] as string;
-  expect(last).toContain('#FFE066');
+  expect(last).toContain('"appearance":"dark"');
+  expect(last).toContain(darkPalette.shifts['shift.day'].surface);
+});
+
+test('свой цвет смены уезжает в виджет мимо палитры', async () => {
+  const id = useAppStore.getState().addTrack({
+    name: 'Основная',
+    own: true,
+    presetId: '2-2-day',
+    anchorDate: '2026-09-01',
+  });
+  useAppStore.setState({ activeTrackId: id });
+
+  await act(async () => {
+    render(
+      <ThemeProvider>
+        <WidgetSyncProvider>{null}</WidgetSyncProvider>
+      </ThemeProvider>,
+    );
+  });
+
+  await act(async () => {
+    useAppStore.getState().updateShiftType('day12', { color: '#123456' });
+  });
+
+  // Цвет смены не зависит от темы: в снимке он стоит и на светлой стороне, и
+  // на тёмной.
+  const last = mockWrite.mock.calls.at(-1)?.[0] as string;
+  expect(last.split('#123456').length - 1).toBeGreaterThanOrEqual(2);
 });

@@ -95,7 +95,7 @@ function RootStack() {
         <Stack.Screen name="settings/scan" options={sheet} />
         <Stack.Screen name="settings/payroll" options={sheet} />
         <Stack.Screen name="settings/group" options={sheet} />
-        <Stack.Screen name="settings/theme-colors" options={sheet} />
+        <Stack.Screen name="settings/theme" options={sheet} />
         <Stack.Screen name="settings/theme-color" options={sheet} />
       </Stack>
     </>

@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ShiftTypeTotals } from '@/domain/summary.ts';
 import { AppText } from '@/ui';
 import { typography, useTheme, useShiftColors } from '@/theme';
+import type { ShiftColorSource } from '@/theme';
 import { HOLIDAY_ICON, MARKER_ICON_SIZE, NOTE_ICON, PAYMENT_ICON } from './DayCell.tsx';
 
 /** Высота обозначения: буква-маркер плюс её отступы сверху и снизу. */
@@ -23,7 +24,7 @@ export interface SharedHighlight {
  */
 export function Legend({
   totals,
-  colorTokens,
+  colors,
   hasHolidays = false,
   hasNotes = false,
   hasPayments = false,
@@ -31,7 +32,8 @@ export function Legend({
   reserveShared = false,
 }: {
   totals: ShiftTypeTotals[];
-  colorTokens: Record<string, string>;
+  /** Откуда каждая смена берёт цвет: оттенок палитры или свой. */
+  colors: Record<string, ShiftColorSource>;
   /** В месяце есть праздники: объяснить значок в углу клетки больше негде. */
   hasHolidays?: boolean;
   /** В месяце есть заметки: у них свой значок в нижнем углу клетки. */
@@ -67,7 +69,7 @@ export function Legend({
             key={item.shiftTypeId}
             badge={item.badge}
             name={item.name}
-            colorToken={colorTokens[item.shiftTypeId] ?? ''}
+            color={colors[item.shiftTypeId] ?? { colorToken: '' }}
           />
         ))}
         {hasHolidays ? <IconLegendItem icon={HOLIDAY_ICON} text="праздник" /> : null}
@@ -185,14 +187,14 @@ function IconLegendItem({
 function LegendItem({
   badge,
   name,
-  colorToken,
+  color,
 }: {
   badge: string;
   name: string;
-  colorToken: string;
+  color: ShiftColorSource;
 }) {
   const theme = useTheme();
-  const colors = useShiftColors(colorToken);
+  const colors = useShiftColors(color);
 
   return (
     <View

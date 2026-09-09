@@ -132,10 +132,15 @@ export function CalendarScreen() {
   // Список совпадений показывается, только когда есть с кем совпадать.
   const sharedListVisible = shared.enabled && sharedRows.length > 0;
 
-  const colorTokens = useMemo(() => {
+  // Легенде нужен не токен, а то, откуда смена берёт цвет: у неё может стоять
+  // и свой, выбранный в редакторе смены.
+  const shiftColors = useMemo(() => {
     if (!context) return {};
     return Object.fromEntries(
-      [...context.shiftTypes.values()].map((type) => [type.id, type.colorToken]),
+      [...context.shiftTypes.values()].map((type) => [
+        type.id,
+        { colorToken: type.colorToken, ...(type.color ? { color: type.color } : {}) },
+      ]),
     );
   }, [context]);
 
@@ -262,7 +267,7 @@ export function CalendarScreen() {
               и на каждое нажатие в списке двигала весь экран вниз. */}
           <Legend
             totals={summary.byShiftType}
-            colorTokens={colorTokens}
+            colors={shiftColors}
             hasHolidays={monthHasHolidays}
             hasNotes={monthHas(notesByDay.keys(), visible.period)}
             hasPayments={monthHas(paymentDates, visible.period)}

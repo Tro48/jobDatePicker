@@ -1,4 +1,8 @@
 import { formatMinutesAsTime, parseTimeToMinutes } from './date.ts';
+// Разбор цвета — один на всё приложение: что считается цветом, не должно
+// расходиться между справочником смен и палитрой. Модуль чистый, без React,
+// поэтому доменный слой продолжает бежать в голом Node.
+import { normalizeHex } from '../theme/color.ts';
 import type { ScheduleTrack, ShiftType } from './types.ts';
 
 /**
@@ -267,6 +271,8 @@ export function sanitizeShiftType(raw: unknown): ShiftType | null {
     typeof value.badge === 'string' ? value.badge.trim().slice(0, MAX_BADGE_LENGTH) : '';
   const multiplier = Number(value.rateMultiplier);
 
+  const color = typeof value.color === 'string' ? normalizeHex(value.color) : null;
+
   // Необязательные поля дописываются, только когда они есть: смена уезжает в
   // резервную копию и в QR-код, и лишний ключ со значением undefined там
   // превращается либо в шум, либо в null.
@@ -279,6 +285,9 @@ export function sanitizeShiftType(raw: unknown): ShiftType | null {
     badge: badge.length > 0 ? badge : value.name.trim().slice(0, 1).toUpperCase(),
     kind: value.kind,
     colorToken: typeof value.colorToken === 'string' ? value.colorToken : FALLBACK_COLOR_TOKEN,
+    // Свой цвет попадает прямо в стиль: сюда доходят только шесть
+    // шестнадцатеричных цифр, что бы ни лежало в файле копии.
+    ...(color ? { color } : {}),
     ...(time ? { time } : {}),
     rateMultiplier:
       Number.isFinite(multiplier) && multiplier >= 0 && multiplier <= MAX_RATE_MULTIPLIER

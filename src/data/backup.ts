@@ -48,7 +48,7 @@ export function createBackup(state: AppState, now = new Date()): BackupFile {
     createdAt: now.toISOString(),
     state: {
       appearance: state.appearance,
-      themeColors: state.themeColors,
+      themes: state.themes,
       shiftTypes: state.shiftTypes,
       customSchedules: state.customSchedules,
       holidays: state.holidays,

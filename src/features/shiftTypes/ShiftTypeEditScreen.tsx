@@ -144,8 +144,13 @@ export function ShiftTypeEditScreen() {
             help="Одна-три буквы. По ней день читается в календаре, даже когда цвет не различить."
           />
           <ColorChoice
-            value={draft.colorToken}
-            onChange={(colorToken) => patch({ colorToken })}
+            colorToken={draft.colorToken}
+            color={draft.color}
+            // Свой цвет живёт в самой смене: снятый — это отсутствие поля, а
+            // не пустая строка, иначе он уехал бы в копию и в QR-код мусором.
+            onChange={({ colorToken, color }) =>
+              patch({ colorToken, ...(color ? { color } : { color: undefined }) })
+            }
             badge={draft.badge.trim() || draft.name.slice(0, 1).toUpperCase() || 'В'}
           />
         </Card>

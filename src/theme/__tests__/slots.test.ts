@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {
   COLOR_GROUPS,
   COLOR_SLOTS,
-  applyOverrides,
   findColorSlot,
-  sanitizeOverrides,
-  sanitizeThemeColors,
+  paintSlot,
+  paletteOf,
+  sanitizePalette,
   slotsOfGroup,
 } from '../slots.ts';
 import { darkPalette, lightPalette } from '../palette.ts';
@@ -15,7 +15,7 @@ import { contrastRatio } from '../color.ts';
 /** Цвета, которые считаются от заданных, а не спрашиваются отдельно. */
 const DERIVED = ['onAccent', 'focus'];
 
-test('каждый цвет палитры либо настраивается, либо выводится из настраиваемого', () => {
+test('каждый цвет темы либо настраивается, либо выводится из настраиваемого', () => {
   const ids = new Set(COLOR_SLOTS.map((slot) => slot.id));
 
   // Незакрытый цвет означал бы, что в приложении он есть, а на экране правки
@@ -30,25 +30,31 @@ test('каждый цвет палитры либо настраивается, 
     assert.ok(ids.has(`${key}.surface`), key);
     assert.ok(!ids.has(`${key}.on`), key);
   }
+});
+
+test('цвета смен в теме не настраиваются: они у самой смены', () => {
+  const ids = new Set(COLOR_SLOTS.map((slot) => slot.id));
 
   for (const token of Object.keys(lightPalette.shifts)) {
-    assert.ok(ids.has(`${token}.surface`), token);
+    assert.ok(!ids.has(`${token}.surface`), token);
     assert.ok(!ids.has(`${token}.on`), token);
   }
 });
 
-test('буква на заданной заливке подбирается и остаётся читаемой', () => {
+test('подпись на заданной заливке подбирается и остаётся читаемой', () => {
   for (const fill of ['#FFE066', '#101820', '#7C2D12', '#FFFFFF', '#000000', '#808080']) {
-    const painted = applyOverrides(lightPalette, { 'shift.day.surface': fill });
-    const pair = painted.shifts['shift.day'];
+    const painted = paintSlot(lightPalette, 'highlight.surface', fill);
 
-    assert.equal(pair.surface, fill, fill);
-    assert.ok(contrastRatio(pair.on, pair.surface) >= 4.5, `${fill} → ${pair.on}`);
+    assert.equal(painted.highlight.surface, fill, fill);
+    assert.ok(
+      contrastRatio(painted.highlight.on, painted.highlight.surface) >= 4.5,
+      `${fill} → ${painted.highlight.on}`,
+    );
   }
 });
 
 test('подпись и кольцо фокуса идут за акцентом', () => {
-  const painted = applyOverrides(lightPalette, { accent: '#0B3D91' });
+  const painted = paintSlot(lightPalette, 'accent', '#0B3D91');
 
   assert.equal(painted.focus, '#0B3D91');
   assert.equal(painted.onAccent, '#FFFFFF');
@@ -56,12 +62,21 @@ test('подпись и кольцо фокуса идут за акцентом
 });
 
 test('нетронутые цвета остаются такими, как в коде', () => {
-  // Пары палитры подобраны руками и проверены скриптом контраста: пока человек
-  // заливку не тронул, считать подпись за него незачем.
-  const painted = applyOverrides(lightPalette, { accent: '#0B3D91' });
+  const painted = paintSlot(lightPalette, 'accent', '#0B3D91');
 
   assert.deepEqual(painted.shifts['shift.day'], lightPalette.shifts['shift.day']);
-  assert.deepEqual(painted.highlight, lightPalette.highlight);
+  assert.deepEqual(painted.baseWeekday, lightPalette.baseWeekday);
+});
+
+test('палитра темы — копия, а исходная остаётся нетронутой', () => {
+  const copy = paletteOf('dark');
+  const painted = paintSlot(copy, 'background', '#101010');
+
+  assert.equal(painted.background, '#101010');
+  assert.equal(copy.background, darkPalette.background);
+  assert.equal(darkPalette.background, '#0F1115');
+  // Смены тоже копируются: правка одной темы не должна доставать до другой.
+  assert.notEqual(copy.shifts, darkPalette.shifts);
 });
 
 test('слоты не повторяются и разложены по разделам', () => {
@@ -73,55 +88,60 @@ test('слоты не повторяются и разложены по разд
 
 test('слот читает и пишет тот цвет, за который отвечает', () => {
   for (const slot of COLOR_SLOTS) {
-    const painted = applyOverrides(lightPalette, { [slot.id]: '#123456' });
+    const painted = paintSlot(lightPalette, slot.id, '#123456');
     assert.equal(slot.read(painted), '#123456', slot.id);
     // Исходная палитра не тронута: она общая на всё приложение.
     assert.notEqual(slot.read(lightPalette), '#123456', slot.id);
   }
 });
 
-test('поправки одной темы не задевают другую', () => {
-  const painted = applyOverrides(lightPalette, { background: '#000000' });
-  assert.equal(painted.background, '#000000');
-  assert.equal(darkPalette.background, '#0F1115');
-  assert.equal(lightPalette.background, '#FFFFFF');
+test('незнакомый слот и негодный цвет ничего не меняют', () => {
+  // Первое бывает после отката приложения на прошлую версию, второе — пока
+  // код набирают по букве.
+  assert.equal(paintSlot(lightPalette, 'shift.moon.surface', '#FFFFFF'), lightPalette);
+  assert.equal(paintSlot(lightPalette, 'accent', '#12'), lightPalette);
+  assert.equal(paintSlot(lightPalette, 'accent', 'red'), lightPalette);
 });
 
-test('без поправок возвращается та же палитра, а не копия', () => {
-  assert.equal(applyOverrides(lightPalette, {}), lightPalette);
-  // Незнакомый слот — тоже «нечего менять»: так бывает после отката приложения
-  // на прошлую версию.
-  assert.equal(applyOverrides(lightPalette, { 'shift.moon.surface': '#FFFFFF' }), lightPalette);
-});
-
-test('в палитру попадает только шестнадцатеричный цвет', () => {
-  const clean = sanitizeOverrides({
+test('в палитру темы попадает только шестнадцатеричный цвет', () => {
+  const clean = sanitizePalette({
     accent: '#abc',
-    background: 'red',
+    background: 'red; position:absolute',
     text: 'rgb(0,0,0)',
-    'shift.day.surface': '#112233',
-    'shift.night.surface': 42,
-    // Цвета буквы больше нет среди настраиваемых: он считается.
-    'shift.day.on': '#FFFFFF',
-    'shift.moon.surface': '#FFFFFF',
+    shifts: { 'shift.day': { surface: '#112233' }, 'shift.night': { surface: 42 } },
   });
 
-  assert.deepEqual(clean, { accent: '#AABBCC', 'shift.day.surface': '#112233' });
+  assert.equal(clean.accent, '#AABBCC');
+  assert.equal(clean.shifts['shift.day'].surface, '#112233');
+  // Всё, что цветом не является, берётся из палитры-основы: тема с дырой
+  // вместо фона уронила бы каждый экран.
+  assert.equal(clean.background, lightPalette.background);
+  assert.equal(clean.text, lightPalette.text);
+  assert.equal(clean.shifts['shift.night'].surface, lightPalette.shifts['shift.night'].surface);
 });
 
-test('мусор вместо набора цветов даёт пустые темы', () => {
+test('мусор вместо палитры даёт палитру-основу целиком', () => {
   for (const value of [null, undefined, 'тема', 7, []]) {
-    assert.deepEqual(sanitizeThemeColors(value), { light: {}, dark: {} });
+    assert.deepEqual(sanitizePalette(value, 'dark'), paletteOf('dark'));
   }
+});
 
-  assert.deepEqual(sanitizeThemeColors({ light: { accent: '#000' }, dark: null }), {
-    light: { accent: '#000000' },
-    dark: {},
-  });
+test('выводимые цвета читаются как есть, а негодные берутся из основы', () => {
+  // Их посчитали при записи цвета — здесь навязывать расчёт заново значило бы
+  // затирать пары палитры, подобранные руками.
+  const clean = sanitizePalette({ accent: '#0B3D91', onAccent: '#FFFFFF', focus: '#0B3D91' });
+  assert.equal(clean.onAccent, '#FFFFFF');
+  assert.equal(clean.focus, '#0B3D91');
+
+  const dirty = sanitizePalette({ onAccent: 'white', focus: null });
+  assert.equal(dirty.onAccent, lightPalette.onAccent);
+  assert.equal(dirty.focus, lightPalette.focus);
 });
 
 test('слот ищется по имени, несуществующий не находится', () => {
   assert.equal(findColorSlot('accent')?.id, 'accent');
-  assert.equal(findColorSlot('shift.day.surface')?.id, 'shift.day.surface');
+  assert.equal(findColorSlot('highlight.surface')?.id, 'highlight.surface');
   assert.equal(findColorSlot('нет такого'), null);
+  // Цвет смены слотом не является: его правят в редакторе смены.
+  assert.equal(findColorSlot('shift.day.surface'), null);
 });

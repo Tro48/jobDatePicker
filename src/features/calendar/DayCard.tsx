@@ -60,7 +60,7 @@ export function DayCard({
   onNotes,
 }: DayCardProps) {
   const theme = useTheme();
-  const colors = useShiftColors(day.shiftType.colorToken);
+  const colors = useShiftColors(day.shiftType);
   const time = day.shiftType.time;
   const planned = shiftDurationMinutes(day.shiftType);
   const overtime = overtimeMinutes(day);

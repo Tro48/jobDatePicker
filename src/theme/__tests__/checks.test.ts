@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { paletteChecks, runCheck } from '../checks.ts';
 import { lightPalette, palettes } from '../palette.ts';
 import type { Palette } from '../palette.ts';
-import { applyOverrides } from '../slots.ts';
+import { paintSlot } from '../slots.ts';
 
 test('палитра из кода проходит все пороги', () => {
   for (const [name, palette] of Object.entries(palettes)) {
@@ -43,7 +43,7 @@ test('жёлтая заливка с белой подписью не прохо
 test('на цвета, заданные человеком, порог не влияет: он только считается', () => {
   // Приложение такой цвет принимает и показывает — проверка здесь ради CI и
   // палитры из кода, а не ради запрета на телефоне.
-  const broken = applyOverrides(lightPalette, { textMuted: '#DDDDDD' });
+  const broken = paintSlot(lightPalette, 'textMuted', '#DDDDDD');
   const failed = paletteChecks(broken)
     .map((check) => runCheck(broken, check))
     .filter((result) => !result.passed);
