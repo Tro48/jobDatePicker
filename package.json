@@ -67,5 +67,13 @@
   },
   "overrides": {
     "react-dom": "19.2.3"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "expo",
+        "expo-router"
+      ]
+    }
   }
 }
