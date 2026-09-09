@@ -1,33 +1,21 @@
 /**
- * Какие цвета человек может задать сам и как они ложатся поверх палитры.
+ * Какие цвета человек может задать сам в своей теме.
  *
- * Хранится не готовая палитра, а поправки к ней: словарь «слот → цвет».
- * Так правка одного акцента не замораживает остальные семнадцать цветов в том
- * виде, в каком они были в момент правки, — новая версия приложения донесёт до
- * человека и обновлённый фон, и новую смену, которой на его телефоне ещё нет.
+ * Тема — это полная палитра со своим именем: она снимается копией со светлой
+ * или тёмной и дальше живёт сама. Слот здесь — адрес одного цвета в палитре, и
+ * из этого списка собираются и экран правки темы, и запись цвета: добавить
+ * цвет в палитру и забыть про экран так нельзя, это ловит тест.
  *
- * Слот — это адрес цвета в палитре, а не сам цвет. Из одного списка слотов
- * собираются и экран правки, и применение поправок, и проверки контраста:
- * добавить цвет в палитру и забыть про экран так нельзя.
- *
- * Слот заводится не на каждый цвет палитры. Всё, что выводится из заданного,
- * считается само (см. deriveColors): цвет буквы на заливке, подпись на акценте
- * и кольцо фокуса. Спрашивать их отдельно значило бы утроить список ради
- * вопросов, на которые есть один разумный ответ.
+ * Слот заводится не на каждый цвет. Всё, что выводится из заданного, считается
+ * само (см. paintSlot): цвет буквы на заливке, подпись на акценте и кольцо
+ * фокуса. Спрашивать их отдельно значило бы удвоить список ради вопросов, на
+ * которые есть один разумный ответ.
  */
 import { markerOn, normalizeHex, readableOn } from './color.ts';
-import { SHIFT_COLOR_NAMES, lightPalette } from './palette.ts';
+import { darkPalette, lightPalette } from './palette.ts';
 import type { ColorPair, Palette } from './palette.ts';
 
 export type SchemeName = 'light' | 'dark';
-
-/** Поправки к одной теме: «id слота → #RRGGBB». */
-export type PaletteOverrides = Record<string, string>;
-
-/** Свои цвета для обеих тем сразу. Тёмная и светлая правятся независимо. */
-export type ThemeColorOverrides = Record<SchemeName, PaletteOverrides>;
-
-export const EMPTY_THEME_COLORS: ThemeColorOverrides = { light: {}, dark: {} };
 
 /** Разделы экрана правки. Порядок здесь — порядок карточек на экране. */
 export const COLOR_GROUPS = [
@@ -45,11 +33,6 @@ export const COLOR_GROUPS = [
     id: 'days',
     title: 'Особые дни',
     hint: 'Выделенные общие выходные и дни месяцев, на которые графика ещё нет.',
-  },
-  {
-    id: 'shifts',
-    title: 'Цвета смен',
-    hint: 'Заливка клетки календаря и буква-маркер поверх неё — по паре на оттенок.',
   },
 ] as const;
 
@@ -108,26 +91,12 @@ function pairSlot(key: PairKey, group: ColorGroupId, name: string, hint: string)
   };
 }
 
-function shiftSlot(token: string): ColorSlot {
-  const name = SHIFT_COLOR_NAMES[token] ?? token;
-
-  return {
-    id: `${token}.surface`,
-    name,
-    hint: `Чем залита клетка календаря у смен этого оттенка. Буква-маркер поверх заливки подбирается сама.`,
-    group: 'shifts',
-    read: (palette) => palette.shifts[token].surface,
-    write: (palette, hex) => {
-      palette.shifts[token] = { surface: hex, on: markerOn(hex) };
-    },
-  };
-}
-
 /**
- * Все настраиваемые цвета в порядке показа.
+ * Все настраиваемые цвета темы в порядке показа.
  *
- * Список смен берётся из самой палитры, а не переписывается руками: цвет,
- * добавленный в палитру, обязан появиться на экране правки сам.
+ * Цветов смен здесь нет намеренно: смену красят в её собственном редакторе,
+ * где рядом стоит и её буква, и время, и надбавка. Спрашивать «каким сделать
+ * синий» в отрыве от смены, которая им покрашена, — это вопрос не о том.
  */
 export const COLOR_SLOTS: readonly ColorSlot[] = [
   soloSlot('background', 'base', 'Фон', 'Подложка всех экранов и календарной сетки.'),
@@ -166,7 +135,6 @@ export const COLOR_SLOTS: readonly ColorSlot[] = [
     'День без графика',
     'Будний день месяца, на который график ещё не заведён.',
   ),
-  ...Object.keys(lightPalette.shifts).map(shiftSlot),
 ];
 
 const SLOTS_BY_ID = new Map(COLOR_SLOTS.map((slot) => [slot.id, slot]));
@@ -185,78 +153,81 @@ function clonePalette(palette: Palette): Palette {
 }
 
 /**
- * Палитра с поправками человека.
+ * Палитра с заданным цветом одного слота.
  *
- * Пустой набор поправок возвращает ту же палитру, а не её копию: тема
- * пересобирается на каждое изменение хранилища, и лишний объект заставил бы
- * перерисоваться всё приложение.
+ * Возвращает копию: палитра темы лежит в хранилище, и править её на месте
+ * значило бы менять состояние мимо zustand — экраны об этом не узнают.
  *
- * Неизвестные слоты молча пропускаются: после отката на прошлую версию
- * приложения в хранилище остаются поправки к цветам, которых в нём ещё нет.
+ * Незнакомый слот и неправильный цвет молча ничего не меняют: первое бывает
+ * после отката приложения на прошлую версию, второе — пока код набирают по
+ * букве.
  */
-export function applyOverrides(base: Palette, overrides: PaletteOverrides): Palette {
-  const entries = Object.entries(overrides);
-  if (entries.length === 0) return base;
+export function paintSlot(palette: Palette, slotId: string, hex: string): Palette {
+  const slot = SLOTS_BY_ID.get(slotId);
+  const color = normalizeHex(hex);
+  if (!slot || !color) return palette;
 
-  const draft = clonePalette(base);
-  let touched = false;
+  const draft = clonePalette(palette);
+  slot.write(draft, color);
 
-  for (const [id, hex] of entries) {
-    const slot = SLOTS_BY_ID.get(id);
-    const color = normalizeHex(hex);
-    if (!slot || !color) continue;
-    slot.write(draft, color);
-    touched = true;
-  }
-
-  if (!touched) return base;
-
-  deriveColors(draft, overrides);
-  return draft;
-}
-
-/**
- * Цвета, которые считаются от заданных.
- *
- * Считаются только там, где человек что-то задал: нетронутая палитра остаётся
- * ровно такой, как в коде, — её пары подобраны руками и проверены скриптом
- * контраста, и заменять их расчётом было бы шагом назад.
- */
-function deriveColors(draft: Palette, overrides: PaletteOverrides): void {
-  if (overrides.accent !== undefined) {
+  if (slotId === 'accent') {
     // Подпись на кнопке и кольцо фокуса — не самостоятельные цвета, а
     // следствия акцента: кольцо обязано быть заметно на том же фоне, что и он.
     draft.onAccent = readableOn(draft.accent);
     draft.focus = draft.accent;
   }
+
+  return draft;
+}
+
+/** Палитра, с которой начинается новая тема. Копия, а не ссылка на код. */
+export function paletteOf(base: SchemeName): Palette {
+  return clonePalette(base === 'dark' ? darkPalette : lightPalette);
 }
 
 /**
- * Чистка того, что прочитано из хранилища или из файла копии.
+ * Чистка палитры, прочитанной из хранилища или из файла копии.
  *
  * Цвет из чужого файла попадает прямо в стили: значение вроде
  * «red; position:absolute» ничего не сломает только потому, что здесь остаются
- * ровно шесть шестнадцатеричных цифр.
+ * ровно шесть шестнадцатеричных цифр. Всё, чего в снимке не хватает или что
+ * цветом не является, берётся из палитры-основы: тема с дырой вместо фона
+ * уронила бы каждый экран.
+ *
+ * Читается форма палитры, а не список слотов, и ничего не выводится заново:
+ * цвет буквы на заливке посчитан при записи, а в палитрах из кода он подобран
+ * руками — пересчитать его здесь значило бы менять тему при каждом чтении.
  */
-export function sanitizeOverrides(value: unknown): PaletteOverrides {
-  if (typeof value !== 'object' || value === null) return {};
+export function sanitizePalette(value: unknown, base: SchemeName = 'light'): Palette {
+  const source = asObject(value);
+  const clean = paletteOf(base);
 
-  const clean: PaletteOverrides = {};
-  for (const [id, hex] of Object.entries(value)) {
-    if (typeof hex !== 'string' || !SLOTS_BY_ID.has(id)) continue;
-    const color = normalizeHex(hex);
-    if (color) clean[id] = color;
+  for (const [key, current] of Object.entries(clean)) {
+    if (typeof current !== 'string') continue;
+    const color = normalizeHex(String(source[key] ?? ''));
+    if (color) clean[key as SoloKey] = color;
   }
+
+  clean.highlight = cleanPair(source.highlight, clean.highlight);
+  clean.baseWeekday = cleanPair(source.baseWeekday, clean.baseWeekday);
+
+  const shifts = asObject(source.shifts);
+  for (const token of Object.keys(clean.shifts)) {
+    clean.shifts[token] = cleanPair(shifts[token], clean.shifts[token]);
+  }
+
   return clean;
 }
 
-export function sanitizeThemeColors(value: unknown): ThemeColorOverrides {
-  const source = (typeof value === 'object' && value !== null ? value : {}) as Record<
-    string,
-    unknown
-  >;
+function asObject(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+/** Пара «заливка + подпись»: каждый цвет по отдельности либо годен, либо из основы. */
+function cleanPair(value: unknown, fallback: ColorPair): ColorPair {
+  const source = asObject(value);
   return {
-    light: sanitizeOverrides(source.light),
-    dark: sanitizeOverrides(source.dark),
+    surface: normalizeHex(String(source.surface ?? '')) ?? fallback.surface,
+    on: normalizeHex(String(source.on ?? '')) ?? fallback.on,
   };
 }

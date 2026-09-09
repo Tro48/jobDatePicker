@@ -1,18 +1,18 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { ColorEditScreen } from './ColorEditScreen.tsx';
 import { INITIAL_STATE, useAppStore } from '@/data/store.ts';
-import { ThemeProvider, buildTheme, contrastRatio, lightPalette } from '@/theme';
+import { ThemeProvider, lightPalette } from '@/theme';
 
 /**
- * Правка одного цвета.
+ * Правка одного цвета темы.
  *
- * Проверяется то, ради чего экран написан: набранный цвет доезжает до
- * хранилища одной кнопкой, ползунок под пальцем в хранилище не пишет, а
- * неудачный цвет получает разбор с числами и всё равно сохраняется.
+ * Проверяется то, ради чего экран написан: набранный цвет доезжает до темы
+ * одной кнопкой, палец на квадрате оттенка в хранилище не пишет, а образец
+ * показывает будущий цвет до сохранения.
  */
 
 const mockBack = jest.fn();
-let mockParams: { slot?: string; scheme?: string } = {};
+let mockParams: { theme?: string; slot?: string } = {};
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack, push: jest.fn() }),
@@ -25,8 +25,13 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-function renderScreen(slot: string, scheme = 'light') {
-  mockParams = { slot, scheme };
+/** Тема, которую правят в тесте. Возвращает её id. */
+function seedTheme(): string {
+  return useAppStore.getState().addTheme('Своя', lightPalette);
+}
+
+function renderScreen(theme: string, slot: string) {
+  mockParams = { theme, slot };
   return render(
     <ThemeProvider>
       <ColorEditScreen />
@@ -44,49 +49,45 @@ async function type(view: Awaited<ReturnType<typeof render>>, hex: string) {
   });
 }
 
+/** Цвета темы после действия — свежие, а не из замыкания. */
+function colorsOf(id: string) {
+  const theme = useAppStore.getState().themes.find((item) => item.id === id);
+  if (!theme) throw new Error('Тема пропала');
+  return theme.colors;
+}
+
 beforeEach(() => {
   useAppStore.setState(INITIAL_STATE);
   mockBack.mockClear();
 });
 
 test('экран открывается на нынешнем цвете этого слота', async () => {
-  const view = await renderScreen('accent');
+  const id = seedTheme();
+  const view = await renderScreen(id, 'accent');
 
   expect(view.getByLabelText('Код цвета').props.value).toBe(lightPalette.accent);
 });
 
-test('набранный цвет уезжает в хранилище одной кнопкой', async () => {
-  const view = await renderScreen('accent');
+test('набранный цвет уезжает в тему одной кнопкой', async () => {
+  const id = seedTheme();
+  const view = await renderScreen(id, 'accent');
   await type(view, '#7C2D12');
 
-  // До нажатия в хранилище ничего нет: ползунок под пальцем не должен
+  // До нажатия тема не тронута: палец на квадрате оттенка не должен
   // перекрашивать приложение на каждое движение.
-  expect(useAppStore.getState().themeColors.light).toEqual({});
+  expect(colorsOf(id).accent).toBe(lightPalette.accent);
 
   await act(async () => {
     fireEvent.press(view.getByText('Сохранить'));
   });
 
-  expect(useAppStore.getState().themeColors.light).toEqual({ accent: '#7C2D12' });
+  expect(colorsOf(id).accent).toBe('#7C2D12');
   expect(mockBack).toHaveBeenCalled();
 });
 
-test('тёмная тема правится отдельно от светлой', async () => {
-  const view = await renderScreen('background', 'dark');
-  await type(view, '#101010');
-
-  await act(async () => {
-    fireEvent.press(view.getByText('Сохранить'));
-  });
-
-  expect(useAppStore.getState().themeColors).toEqual({
-    light: {},
-    dark: { background: '#101010' },
-  });
-});
-
 test('нечитаемый цвет сохраняется молча: экран не спорит с человеком', async () => {
-  const view = await renderScreen('shift.day.surface');
+  const id = seedTheme();
+  const view = await renderScreen(id, 'highlight.surface');
   await type(view, '#FFF9E0');
 
   expect(view.queryByText(/контраст/i)).toBeNull();
@@ -95,59 +96,68 @@ test('нечитаемый цвет сохраняется молча: экра�
     fireEvent.press(view.getByText('Сохранить'));
   });
 
-  expect(useAppStore.getState().themeColors.light).toEqual({ 'shift.day.surface': '#FFF9E0' });
+  expect(colorsOf(id).highlight.surface).toBe('#FFF9E0');
 });
 
-test('цвет буквы на заливке не спрашивают: его считают', async () => {
-  const view = await renderScreen('shift.day.surface');
+test('цвет числа на заливке не спрашивают: его считают', async () => {
+  const id = seedTheme();
+  const view = await renderScreen(id, 'highlight.surface');
 
-  // Отдельного цвета буквы в оформлении больше нет: править на экране нечего,
-  // про него только сказано в пояснении.
+  // Отдельного цвета подписи в теме нет: править на экране нечего, про него
+  // только сказано в пояснении.
   expect(view.queryByLabelText(/буква/i)).toBeNull();
-  expect(
-    view.getByText(
-      'Чем залита клетка календаря у смен этого оттенка. Буква-маркер поверх заливки подбирается сама.',
-    ),
-  ).toBeTruthy();
 
   await type(view, '#101820');
   await act(async () => {
     fireEvent.press(view.getByText('Сохранить'));
   });
 
-  // На тёмной заливке буква стала светлой сама: в хранилище при этом лежит
-  // только заливка.
-  expect(useAppStore.getState().themeColors.light).toEqual({ 'shift.day.surface': '#101820' });
-  const pair = buildTheme('light', useAppStore.getState().themeColors.light).colors.shifts[
-    'shift.day'
-  ];
-  expect(contrastRatio(pair.on, pair.surface)).toBeGreaterThanOrEqual(4.5);
+  // На тёмной заливке подпись стала светлой сама.
+  const pair = colorsOf(id).highlight;
+  expect(pair.surface).toBe('#101820');
+  expect(pair.on).not.toBe(lightPalette.highlight.on);
+});
+
+test('цвета смен в теме не правятся: они у самой смены', async () => {
+  const id = seedTheme();
+  const view = await renderScreen(id, 'shift.day.surface');
+
+  expect(view.getByText('Этот цвет больше не правится: темы или цвета нет.')).toBeTruthy();
 });
 
 test('образец показывает цвет до сохранения', async () => {
-  const view = await renderScreen('background');
+  const id = seedTheme();
+  const view = await renderScreen(id, 'background');
   await type(view, '#123456');
 
-  // Образец рисуется черновиком, а не тем, что лежит в хранилище: иначе
-  // смотреть на него до нажатия «Сохранить» было бы бессмысленно.
   expect(backgroundColors(view.toJSON())).toContain('#123456');
-  expect(useAppStore.getState().themeColors.light).toEqual({});
+  expect(colorsOf(id).background).toBe(lightPalette.background);
 });
 
 test('в образце есть сетка месяца, а не одни плашки', async () => {
-  const view = await renderScreen('shift.day.surface');
-  const preview = view.getByLabelText(
-    'Образец: сетка месяца, карточка с текстом и кнопки в выбранных цветах',
-  );
+  const id = seedTheme();
+  const view = await renderScreen(id, 'baseWeekday.surface');
 
-  expect(preview).toBeTruthy();
+  expect(
+    view.getByLabelText('Образец: сетка месяца, карточка с текстом и кнопки в выбранных цветах'),
+  ).toBeTruthy();
 
-  // Дневная смена в образце стоит шесть раз: цикл «день — ночь — отсыпной —
-  // выходной» на тридцати днях даёт восемь дневных, из которых два попадают в
-  // уже отработанные и красятся приглушённой заливкой, а не этой.
+  // «День без графика» в образце стоит четыре раза: это хвост октября, до
+  // которого график не дотянулся.
   await type(view, '#123456');
   const painted = backgroundColors(view.toJSON()).filter((color) => color === '#123456');
-  expect(painted).toHaveLength(6);
+  expect(painted).toHaveLength(4);
+});
+
+test('темы или цвета нет — экран не выдумывает их', async () => {
+  const id = seedTheme();
+
+  const noSlot = await renderScreen(id, 'shift.moon.surface');
+  expect(noSlot.getByText('Этот цвет больше не правится: темы или цвета нет.')).toBeTruthy();
+  await noSlot.unmount();
+
+  const noTheme = await renderScreen('нет-такой', 'accent');
+  expect(noTheme.getByText('Этот цвет больше не правится: темы или цвета нет.')).toBeTruthy();
 });
 
 /** Все цвета заливки в отрисованном дереве: по ним видно, чем нарисован образец. */
@@ -174,23 +184,3 @@ function backgroundColors(tree: unknown): string[] {
   walk(tree);
   return found;
 }
-
-test('свой цвет возвращается к цвету приложения', async () => {
-  useAppStore.setState({ themeColors: { light: { accent: '#7C2D12' }, dark: {} } });
-  const view = await renderScreen('accent');
-
-  expect(view.getByLabelText('Код цвета').props.value).toBe('#7C2D12');
-
-  await act(async () => {
-    fireEvent.press(view.getByText('Вернуть цвет приложения'));
-  });
-
-  expect(useAppStore.getState().themeColors.light).toEqual({});
-  expect(mockBack).toHaveBeenCalled();
-});
-
-test('цвета, которого в оформлении нет, экран не выдумывает', async () => {
-  const view = await renderScreen('shift.moon.surface');
-
-  expect(view.getByText('Такого цвета в оформлении нет.')).toBeTruthy();
-});

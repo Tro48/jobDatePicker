@@ -4,10 +4,13 @@ import { useColorScheme } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkPalette, fadedShiftPair, lightPalette } from './palette.ts';
 import type { ColorPair, Palette } from './palette.ts';
-import { EMPTY_THEME_COLORS, applyOverrides } from './slots.ts';
-import type { PaletteOverrides, SchemeName } from './slots.ts';
+import type { SchemeName } from './slots.ts';
+import { markerOn, readableOn } from './color.ts';
 import { FOCUS_RING_WIDTH, MIN_TOUCH_TARGET, radius, spacing, typography } from './typography.ts';
 import { useAppStore } from '@/data/store.ts';
+
+/** Приставка у своей темы в настройке оформления: «custom:<id>». */
+export const CUSTOM_PREFIX = 'custom:';
 
 export interface Theme {
   scheme: SchemeName;
@@ -20,16 +23,17 @@ export interface Theme {
 }
 
 /**
- * Тема схемы с учётом цветов, заданных человеком.
+ * Тема из готовой палитры.
  *
- * Поправки накладываются здесь, а не в палитре: палитра в коде — это то, с чем
- * приложение ставится и что проверяет CI, и переписывать её значениями с
- * телефона нельзя, иначе сброс оформления было бы неоткуда взять.
+ * Палитра приходит снаружи: у встроенных тем она из кода, у своей — из
+ * хранилища. Светлая тема это или тёмная, спрашивать не нужно — видно по фону:
+ * от этого зависят значки в системной строке, и своя тема на чёрном фоне
+ * обязана вести себя как тёмная, кем бы её ни назвали.
  */
-export function buildTheme(scheme: SchemeName, overrides: PaletteOverrides = {}): Theme {
+export function buildTheme(colors: Palette): Theme {
   return {
-    scheme,
-    colors: applyOverrides(scheme === 'dark' ? darkPalette : lightPalette, overrides),
+    scheme: readableOn(colors.background) === '#FFFFFF' ? 'dark' : 'light',
+    colors,
     spacing,
     radius,
     typography,
@@ -38,18 +42,24 @@ export function buildTheme(scheme: SchemeName, overrides: PaletteOverrides = {})
   };
 }
 
-const ThemeContext = createContext<Theme>(buildTheme('light'));
+const ThemeContext = createContext<Theme>(buildTheme(lightPalette));
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemScheme = useColorScheme();
   const preference = useAppStore((state) => state.appearance);
-  const themeColors = useAppStore((state) => state.themeColors);
+  const themes = useAppStore((state) => state.themes);
 
-  const scheme: SchemeName =
-    preference === 'system' ? (systemScheme === 'dark' ? 'dark' : 'light') : preference;
+  // Своя тема названа «custom:<id>». Пропала вместе с удалением — значит
+  // экраны рисуются системной: пустого экрана из-за исчезнувшей темы быть не
+  // должно.
+  const custom = preference.startsWith(CUSTOM_PREFIX)
+    ? (themes.find((item) => item.id === preference.slice(CUSTOM_PREFIX.length)) ?? null)
+    : null;
 
-  const overrides = (themeColors ?? EMPTY_THEME_COLORS)[scheme];
-  const theme = useMemo(() => buildTheme(scheme, overrides), [scheme, overrides]);
+  const dark = preference === 'dark' || (preference === 'system' && systemScheme === 'dark');
+  const colors = custom ? custom.colors : dark ? darkPalette : lightPalette;
+
+  const theme = useMemo(() => buildTheme(colors), [colors]);
 
   // Фон под корневым View: иначе при листании за границу экрана видно белую
   // подложку системы, и в тёмной теме это бьёт по глазам.
@@ -64,19 +74,37 @@ export function useTheme(): Theme {
   return useContext(ThemeContext);
 }
 
+/** Откуда смена берёт цвет: свой или оттенок палитры. */
+export interface ShiftColorSource {
+  colorToken: string;
+  /** Свой цвет смены. Задан — оттенок палитры не смотрят вовсе. */
+  color?: string;
+}
+
 /**
- * Цвета конкретной смены в текущей теме. Неизвестный токен не роняет экран, а
- * отдаёт нейтральную пару: новый тип смены мог появиться раньше, чем цвет для
- * него.
+ * Цвета конкретной смены в текущей теме.
+ *
+ * Свой цвет смены идёт мимо палитры: человек выбрал его в редакторе смены и
+ * ждёт именно его, в какой бы теме ни открыл календарь. Букву-маркер на нём
+ * приложение подбирает само — отдельного вопроса про неё нет.
+ *
+ * Неизвестный токен не роняет экран, а отдаёт нейтральную пару: новый тип
+ * смены мог появиться раньше, чем цвет для него.
  *
  * faded — смена уже отработана: заливка уходит в серый, подпись остаётся.
  */
-export function useShiftColors(colorToken: string, options: { faded?: boolean } = {}): ColorPair {
+export function useShiftColors(
+  source: ShiftColorSource,
+  options: { faded?: boolean } = {},
+): ColorPair {
   const theme = useTheme();
-  const pair = theme.colors.shifts[colorToken] ?? {
-    surface: theme.colors.surface,
-    on: theme.colors.text,
-  };
+  const own = source.color;
+  const pair: ColorPair = own
+    ? { surface: own, on: markerOn(own) }
+    : (theme.colors.shifts[source.colorToken] ?? {
+        surface: theme.colors.surface,
+        on: theme.colors.text,
+      });
 
   return options.faded ? fadedShiftPair(pair, theme.colors.surface) : pair;
 }

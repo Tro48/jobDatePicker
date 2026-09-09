@@ -51,7 +51,7 @@ interface BrushChipProps {
  */
 function BrushChip({ shiftType, selected, onPress }: BrushChipProps) {
   const theme = useTheme();
-  const colors = useShiftColors(shiftType.colorToken);
+  const colors = useShiftColors(shiftType);
   const [focused, setFocused] = useState(false);
 
   return (

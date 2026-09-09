@@ -118,7 +118,7 @@ function DayCellView({
   onPress,
 }: DayCellProps) {
   const theme = useTheme();
-  const shiftColors = useShiftColors(day.shiftType.colorToken, { faded: isWorked || dimmed });
+  const shiftColors = useShiftColors(day.shiftType, { faded: isWorked || dimmed });
   const [focused, setFocused] = useState(false);
 
   /**

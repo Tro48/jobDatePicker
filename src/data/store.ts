@@ -21,8 +21,8 @@ import type { SharedOverride } from '@/domain/share.ts';
 import { addDays } from '@/domain/date.ts';
 import type { IsoDate } from '@/domain/date.ts';
 import { LATEST_RELEASE_ID } from '@/domain/releaseNotes.ts';
-import { sanitizeThemeColors } from '@/theme/slots.ts';
-import type { SchemeName, ThemeColorOverrides } from '@/theme/slots.ts';
+import { paintSlot, paletteOf, sanitizePalette } from '@/theme/slots.ts';
+import type { Palette } from '@/theme/palette.ts';
 import type { ReleaseManifest } from '@/domain/release.ts';
 import type {
   CustomSchedule,
@@ -43,9 +43,35 @@ import type {
  * состояния, вместе с веткой в migrate — иначе у пользователя после обновления
  * сборки молча пропадут данные.
  */
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
-export type ThemePreference = 'system' | 'light' | 'dark';
+/**
+ * Что выбрано в списке тем: встроенная или своя.
+ *
+ * Своя записана как «custom:<id>» — одной строкой, а не парой полей: список
+ * тем на экране один, и выбор в нём один. Тема, которую удалили, оставляет
+ * строку, которой ничего не соответствует, — приложение тогда рисуется
+ * системной темой, а не падает.
+ */
+export type ThemePreference = 'system' | 'light' | 'dark' | `custom:${string}`;
+
+/**
+ * Своя тема: имя и полная палитра.
+ *
+ * Палитра целиком, а не поправки к встроенной: тема живёт сама по себе, её
+ * можно переименовать, скопировать и удалить, не оглядываясь на то, от какой
+ * из встроенных её когда-то сняли. Цена — цвет, добавленный в палитру новой
+ * версией приложения, до заведённых тем не доедет: в них он останется тем, что
+ * скопировался в день создания.
+ */
+export interface CustomTheme {
+  id: string;
+  name: string;
+  colors: Palette;
+}
+
+/** Предел длины имени темы: длиннее не помещается в строку списка. */
+export const MAX_THEME_NAME_LENGTH = 40;
 
 /**
  * Что известно про вышедшую сборку APK.
@@ -123,14 +149,8 @@ export interface SharedGroup {
 
 export interface AppState {
   appearance: ThemePreference;
-  /**
-   * Цвета, заданные человеком поверх палитры приложения, — по набору на тему.
-   *
-   * Поправки, а не готовая палитра: см. src/theme/slots.ts. Светлая и тёмная
-   * правятся отдельно — цвет, читаемый на белом фоне, на чёрном не читается, и
-   * общий набор означал бы, что одна из тем всегда испорчена.
-   */
-  themeColors: ThemeColorOverrides;
+  /** Свои темы в порядке заведения. Показываются в том же списке, что встроенные. */
+  themes: CustomTheme[];
   /**
    * Отслеживаемые графики. Пусто — ни одного не заведено, экраны показывают
    * «График не выбран». Второй появляется под вторую работу или под график
@@ -204,17 +224,25 @@ export type PersistedSnapshot = Partial<AppState> & LegacyFlatState;
 export interface AppActions {
   setAppearance: (value: ThemePreference) => void;
   /**
-   * Задаёт свой цвет одному слоту палитры. Неправильный цвет не сохраняется:
-   * поле правят по букве, и «#12» — это середина набора, а не значение.
+   * Заводит свою тему копией переданной палитры и возвращает её id — редактор
+   * открывается сразу по нему.
+   *
+   * Палитру передаёт экран: тема снимается с той, что сейчас показана, — со
+   * светлой, если в системе день, и с тёмной, если ночь. Спрашивать это
+   * отдельно незачем: человек и так смотрит на ту тему, от которой пляшет.
    */
-  setThemeColor: (scheme: SchemeName, slotId: string, hex: string) => void;
-  /** Возвращает слоту цвет из палитры приложения. */
-  resetThemeColor: (scheme: SchemeName, slotId: string) => void;
+  addTheme: (name: string, colors: Palette) => string;
+  renameTheme: (id: string, name: string) => void;
   /**
-   * Сброс всех своих цветов. Без темы — обе сразу: это выход из оформления, в
-   * котором уже ничего не видно, и выбирать в нём тему человеку нечем.
+   * Задаёт цвет одному слоту темы. Неправильный цвет не сохраняется: поле
+   * правят по букве, и «#12» — это середина набора, а не значение.
    */
-  resetThemeColors: (scheme?: SchemeName) => void;
+  setThemeColor: (id: string, slotId: string, hex: string) => void;
+  /**
+   * Удаляет тему. Если её сейчас показывали, оформление возвращается к
+   * системному: экран не должен остаться без палитры.
+   */
+  removeTheme: (id: string) => void;
   /** Заводит свой тип смены и возвращает его id — редактор открывается сразу по нему. */
   addShiftType: (draft: ShiftTypeDraft) => string;
   /**
@@ -455,7 +483,7 @@ const DEFAULT_PAYROLL: PayrollSettings = {
 
 export const INITIAL_STATE: AppState = {
   appearance: 'system',
-  themeColors: { light: {}, dark: {} },
+  themes: [],
   tracks: [],
   activeTrackId: null,
   shiftTypes: DEFAULT_SHIFT_TYPES,
@@ -474,6 +502,64 @@ export const INITIAL_STATE: AppState = {
   buildCheck: { checkedAt: 0, build: null, dismissedRuntime: null },
 };
 
+/** Имя темы: обрезано по длине, пустое заменяется на понятное человеку. */
+function themeName(name: string): string {
+  const clean = name.trim().slice(0, MAX_THEME_NAME_LENGTH);
+  return clean.length > 0 ? clean : 'Своя тема';
+}
+
+/**
+ * Свои темы из снимка хранилища.
+ *
+ * До версии 19 цвета лежали поправками к светлой и тёмной палитре и своего
+ * имени не имели. Каждый непустой набор становится темой: человек их подбирал
+ * руками, и терять их при обновлении нельзя. Выбранной ни одна из них не
+ * становится — до этой версии они и так показывались поверх встроенной темы,
+ * которая выбрана в настройках.
+ */
+function migrateThemes(persisted: PersistedSnapshot): CustomTheme[] {
+  if (Array.isArray(persisted.themes)) {
+    return persisted.themes
+      .filter((theme): theme is CustomTheme => typeof theme?.id === 'string')
+      .map((theme) => ({
+        id: theme.id,
+        name: themeName(typeof theme.name === 'string' ? theme.name : ''),
+        colors: sanitizePalette(theme.colors),
+      }));
+  }
+
+  const legacy = persisted.themeColors;
+  if (typeof legacy !== 'object' || legacy === null) return [];
+
+  const themes: CustomTheme[] = [];
+  for (const base of ['light', 'dark'] as const) {
+    const overrides = (legacy as Record<string, unknown>)[base];
+    if (typeof overrides !== 'object' || overrides === null) continue;
+    const entries = Object.entries(overrides as Record<string, unknown>);
+    if (entries.length === 0) continue;
+
+    let colors = paletteOf(base);
+    for (const [slotId, hex] of entries) {
+      if (typeof hex === 'string') colors = paintSlot(colors, slotId, hex);
+    }
+    themes.push({
+      id: `legacy-${base}`,
+      name: base === 'dark' ? 'Своя тёмная' : 'Своя светлая',
+      colors,
+    });
+  }
+  return themes;
+}
+
+/** Выбранное оформление, если тема, на которую оно ссылается, ещё существует. */
+function migrateAppearance(persisted: PersistedSnapshot): ThemePreference {
+  const saved = persisted.appearance ?? 'system';
+  if (!saved.startsWith('custom:')) return saved;
+
+  const id = saved.slice('custom:'.length);
+  return migrateThemes(persisted).some((theme) => theme.id === id) ? saved : 'system';
+}
+
 /** Единственное место, где чинятся значения из формы: отсрочка вне диапазона. */
 function normalizeAlarm(alarm: Alarm): Alarm {
   return { ...alarm, snoozeMinutes: clampSnoozeMinutes(alarm.snoozeMinutes) };
@@ -490,29 +576,36 @@ export const useAppStore = create<AppState & AppActions>()(
 
       setAppearance: (appearance) => set({ appearance }),
 
-      setThemeColor: (scheme, slotId, hex) =>
-        set((state) => {
-          // Через тот же санитайз, что и чтение из файла копии: в стили
-          // должно уходить только «#RRGGBB», и проверка этому одна.
-          const clean = sanitizeThemeColors({
-            ...state.themeColors,
-            [scheme]: { ...state.themeColors[scheme], [slotId]: hex },
-          });
-          return { themeColors: clean };
-        }),
+      addTheme: (name, colors) => {
+        const id = createId();
+        // Санитайз, а не сама палитра: сюда приходит объект из темы экрана, и
+        // копия должна быть своей — иначе правка темы дотянулась бы до общей.
+        const theme: CustomTheme = { id, name: themeName(name), colors: sanitizePalette(colors) };
+        set((state) => ({ themes: [...state.themes, theme] }));
+        return id;
+      },
 
-      resetThemeColor: (scheme, slotId) =>
-        set((state) => {
-          const { [slotId]: _removed, ...rest } = state.themeColors[scheme];
-          return { themeColors: { ...state.themeColors, [scheme]: rest } };
-        }),
+      renameTheme: (id, name) =>
+        set((state) => ({
+          themes: state.themes.map((theme) =>
+            theme.id === id ? { ...theme, name: themeName(name) } : theme,
+          ),
+        })),
 
-      resetThemeColors: (scheme) =>
-        set((state) =>
-          scheme
-            ? { themeColors: { ...state.themeColors, [scheme]: {} } }
-            : { themeColors: { light: {}, dark: {} } },
-        ),
+      setThemeColor: (id, slotId, hex) =>
+        set((state) => ({
+          themes: state.themes.map((theme) =>
+            theme.id === id ? { ...theme, colors: paintSlot(theme.colors, slotId, hex) } : theme,
+          ),
+        })),
+
+      removeTheme: (id) =>
+        set((state) => ({
+          themes: state.themes.filter((theme) => theme.id !== id),
+          // Показывали именно её — возвращаемся к системной: иначе экран
+          // остался бы без палитры.
+          appearance: state.appearance === `custom:${id}` ? 'system' : state.appearance,
+        })),
 
       addShiftType: (draft) => {
         const id = createId();
@@ -891,7 +984,7 @@ export const useAppStore = create<AppState & AppActions>()(
       /** В хранилище уходят данные пользователя, включая правленый справочник смен. */
       partialize: (state): PersistedState => ({
         appearance: state.appearance,
-        themeColors: state.themeColors,
+        themes: state.themes,
         shiftTypes: state.shiftTypes,
         customSchedules: state.customSchedules,
         holidays: state.holidays,
@@ -949,6 +1042,10 @@ export const useAppStore = create<AppState & AppActions>()(
  * доната. У всех, кто обновляется, ничего не куплено и ничего не скрыто.
  *
  * В версии 16 график дорожки стал историей периодов, а не одним графиком.
+ *
+ * В версии 19 цвета стали темой: у оформления появилось имя, полная палитра и
+ * место в общем списке тем. Поправки версии 18 превращаются в готовые темы —
+ * по одной на каждый непустой набор.
  *
  * В версии 18 появились свои цвета оформления. В снимке прошлых версий их
  * нет — палитра остаётся ровно той, что в коде.
@@ -1011,9 +1108,12 @@ export function migrateState(persisted: PersistedSnapshot, _version: number): Ap
     sharedDaysOff: { ...INITIAL_STATE.sharedDaysOff, ...persisted.sharedDaysOff },
     holidays: { ...INITIAL_STATE.holidays, ...persisted.holidays },
     support: { ...INITIAL_STATE.support, ...persisted.support },
-    // Цвета чистятся при чтении, а не при показе: снимок мог прийти из файла
+    // Темы чистятся при чтении, а не при показе: снимок мог прийти из файла
     // копии, сделанного чужой рукой, и оттуда в стиль ушло бы что угодно.
-    themeColors: sanitizeThemeColors(persisted.themeColors),
+    themes: migrateThemes(persisted),
+    // Выбранная тема, которой в списке нет, — это системное оформление:
+    // ссылка могла пережить удаление темы в чужом файле копии.
+    appearance: migrateAppearance(persisted),
     // Участники, чьи дорожки удалили, из групп выбрасываются: иначе группа
     // навсегда осталась бы без совпадений и объяснить это было бы нечем.
     sharedGroups: (persisted.sharedGroups ?? []).map((group) => ({

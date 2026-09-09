@@ -3,6 +3,7 @@ import type { IsoDate } from './date.ts';
 import { resolveDay } from './engine.ts';
 import type { ScheduleContext } from './engine.ts';
 import { formatMonthTitle, formatTimeRange } from './format.ts';
+import type { ShiftType } from './types.ts';
 
 /**
  * Снимок графика для виджета на главном экране.
@@ -56,8 +57,13 @@ export interface WidgetShift {
   dark: WidgetColorPair;
 }
 
-/** Откуда снимок берёт цвета смены. Передаётся снаружи: домен палитры не знает. */
-export type WidgetColorLookup = (colorToken: string) => {
+/**
+ * Откуда снимок берёт цвета смены. Передаётся снаружи: домен палитры не знает.
+ *
+ * Спрашивается по самой смене, а не по её токену: у смены может стоять свой
+ * цвет, и тогда палитру для неё не смотрят вовсе.
+ */
+export type WidgetColorLookup = (shiftType: ShiftType) => {
   light: WidgetColorPair;
   dark: WidgetColorPair;
 };
@@ -159,7 +165,7 @@ export function buildWidgetSnapshot(
             name: type.name,
             work: type.kind === 'work',
             time: type.time ? formatTimeRange(type.time.start, type.time.end) : '',
-            ...colorsOf(type.colorToken),
+            ...colorsOf(type),
           });
         }
 
