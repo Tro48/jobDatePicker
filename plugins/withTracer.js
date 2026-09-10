@@ -15,8 +15,7 @@ const {
  *
  * Включается только когда заданы оба токена из кабинета Tracer:
  * TRACER_PLUGIN_TOKEN и TRACER_APP_TOKEN. Без них сборка идёт как раньше, без
- * Tracer вовсе, — так отладочная сборка на своей машине не требует ни токенов,
- * ни доступа к репозиториям VK.
+ * Tracer вовсе, — отладочная сборка на своей машине токенов не требует.
  *
  * Из шести модулей Tracer подключены два: отчёты о падениях и о падениях
  * нативной части. Второй нужен из-за будильника — он написан на Kotlin, и
@@ -25,8 +24,11 @@ const {
  * телефоне, а нам нужен ответ на один вопрос — почему приложение упало.
  */
 
-const TRACER_VERSION = '0.2.7';
-const MAVEN = 'https://artifactory-external.vkpartner.ru/artifactory/maven/';
+// Версия и репозиторий взяты не из документации RuStore: она отстала на два
+// года и зовёт за 0.2.7 в репозиторий VK. Сам Tracer с 1.x лежит в Maven
+// Central, а он в проекте уже подключён — своего репозитория не нужно вовсе.
+// Проверено запросами к repo1.maven.org: все четыре артефакта 1.4.0 на месте.
+const TRACER_VERSION = '1.4.0';
 
 /** Оба токена или ничего: с одним Tracer не настроится. */
 function tokens() {
@@ -35,32 +37,20 @@ function tokens() {
   return plugin && app ? { plugin, app } : null;
 }
 
-/** Репозиторий VK и сам gradle-плагин — в корневой build.gradle. */
+/**
+ * Сам gradle-плагин — в корневой build.gradle, через classpath.
+ *
+ * Не `plugins { id(...) version(...) }`, как в документации: такая запись
+ * ищет плагин в pluginManagement.repositories, а в settings.gradle, который
+ * пишет Expo, репозиториев нет вовсе — там только includeBuild.
+ */
 function patchProjectGradle(contents) {
-  let next = contents;
+  if (contents.includes('tracer-plugin')) return contents;
 
-  if (!next.includes('tracer-plugin')) {
-    next = next.replace(
-      "    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')",
-      `    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')\n    classpath("ru.ok.tracer:tracer-plugin:${TRACER_VERSION}")`,
-    );
-  }
-
-  // Репозиторий нужен дважды: buildscript берёт оттуда сам плагин,
-  // allprojects — библиотеки, которые он приносит.
-  if (!next.includes(MAVEN)) {
-    next = next
-      .replace(
-        'buildscript {\n  repositories {\n    google()\n    mavenCentral()',
-        `buildscript {\n  repositories {\n    google()\n    mavenCentral()\n    maven { url '${MAVEN}' }`,
-      )
-      .replace(
-        "allprojects {\n  repositories {\n    google()\n    mavenCentral()\n    maven { url 'https://www.jitpack.io' }",
-        `allprojects {\n  repositories {\n    google()\n    mavenCentral()\n    maven { url 'https://www.jitpack.io' }\n    maven { url '${MAVEN}' }`,
-      );
-  }
-
-  return next;
+  return contents.replace(
+    "    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')",
+    `    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')\n    classpath("ru.ok.tracer:tracer-plugin:${TRACER_VERSION}")`,
+  );
 }
 
 /**
@@ -87,9 +77,16 @@ tracer {
 }
 `;
 
+  // Версии модулей задаёт platform: так их нельзя развести между собой.
   return withPlugin.replace(
     /dependencies \{/,
-    `${config}\ndependencies {\n    implementation "ru.ok.tracer:tracer-crash-report:${TRACER_VERSION}"\n    implementation "ru.ok.tracer:tracer-crash-report-native:${TRACER_VERSION}"`,
+    [
+      config,
+      'dependencies {',
+      `    implementation platform("ru.ok.tracer:tracer-platform:${TRACER_VERSION}")`,
+      '    implementation "ru.ok.tracer:tracer-crash-report"',
+      '    implementation "ru.ok.tracer:tracer-crash-report-native"',
+    ].join('\n'),
   );
 }
 
