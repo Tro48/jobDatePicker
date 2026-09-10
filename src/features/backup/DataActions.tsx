@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { parseBackup, serializeBackup, stateFromBackup } from '@/data/backup.ts';
 import type { BackupSummary } from '@/data/backup.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, IconButton } from '@/ui';
+import { AppText, Button, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 import { pickShareFile } from '@/features/share/pickShareFile.ts';
 import { saveTextFile, shareTextFile } from './files.ts';
@@ -12,13 +12,17 @@ import { saveTextFile, shareTextFile } from './files.ts';
 /**
  * Копия и восстановление — в существующей карточке «Данные».
  *
- * Три действия стоят значками в строку: полосы во всю ширину занимали три
- * экранных строки на то, за чем сюда заходят раз в полгода. Подпись у каждого
- * значка остаётся доступным именем, а зона нажатия — полной.
+ * Три действия стоят в одну строку: полосы во всю ширину занимали три экранных
+ * строки на то, за чем сюда заходят раз в полгода.
  *
- * Одна кнопка «Загрузить из файла» на два разных файла: и на резервную копию,
- * и на присланный график. Человек не обязан помнить, что ему прислали, — это
- * видно по самому файлу.
+ * Подпись осталась только у загрузки: она забирает данные из файла и заменяет
+ * ими всё, что есть, — значок без слов о таком предупредить не может. Сохранить
+ * и отправить обратимы и живут значками; доступное имя есть у каждого, зона
+ * нажатия полная.
+ *
+ * Одна кнопка загрузки на два разных файла: и на резервную копию, и на
+ * присланный график. Человек не обязан помнить, что ему прислали, — это видно
+ * по самому файлу.
  *
  * Замена данных необратима, поэтому подтверждение спрашивается системным
  * окном: оно перехватывает фокус, читается скринридером и закрывается кнопкой
@@ -100,24 +104,34 @@ export function DataActions() {
 
   return (
     <View style={{ gap: theme.spacing.sm }}>
-      <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+      {/* Перенос по строкам, а не сжатие: при крупном системном шрифте подпись
+          вырастет, и значкам лучше уехать вниз, чем ужаться. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: theme.spacing.sm,
+        }}
+      >
+        <Button
+          title="Загрузить настройки"
+          icon="download-outline"
+          compact
+          accessibilityHint="Резервная копия или график, присланный с другого телефона. Копия заменит всё, что сейчас в приложении"
+          onPress={() => void load()}
+        />
+        <IconButton
+          name="share-social-outline"
+          label="Отправить копию"
+          accessibilityHint="Файл со всеми данными сразу в мессенджер, на почту или в облако"
+          onPress={() => void send()}
+        />
         <IconButton
           name="save-outline"
           label="Сохранить копию"
           accessibilityHint="Выбрать папку на телефоне и положить туда файл со всеми данными: графики, правки, выплаты и будильники"
           onPress={() => void save()}
-        />
-        <IconButton
-          name="share-social-outline"
-          label="Отправить копию"
-          accessibilityHint="Тот же файл, но сразу в мессенджер, на почту или в облако"
-          onPress={() => void send()}
-        />
-        <IconButton
-          name="folder-open-outline"
-          label="Загрузить из файла"
-          accessibilityHint="Резервная копия или график, присланный с другого телефона"
-          onPress={() => void load()}
         />
       </View>
 
