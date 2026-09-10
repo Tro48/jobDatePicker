@@ -5,6 +5,7 @@ import { toIsoDateLocal } from '@/domain/date.ts';
 import { AppText, Button, Card, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 import type { ReleaseManifest } from '@/domain/release.ts';
+import { useRustoreUpdate } from '@/features/rustore/useRustoreUpdate.ts';
 import { useAppUpdate } from './useAppUpdate.ts';
 import { useBuildSignal } from './useBuildSignal.ts';
 import { UPDATE_FAILURE_TEXT } from './updateError.ts';
@@ -68,6 +69,10 @@ export function UpdateCard() {
   // Кнопка скачивания живёт только здесь: полоска на календаре про сборку
   // рассказывает, но ставить APK человек приходит в настройки.
   const { build: newBuild, refresh } = useBuildSignal();
+  // Второй канал сборок: в магазине новую версию ставит сам RuStore. Живут
+  // рядом и не мешают друг другу — вне сборки для магазина этот молчит, а в
+  // ней молчит канал GitHub: адреса списка выпусков в такой сборке просто нет.
+  const store = useRustoreUpdate();
 
   const message = newBuild ? newBuildText(newBuild) : statusText(status);
 
@@ -133,6 +138,22 @@ export function UpdateCard() {
           title="Скачать APK"
           variant="primary"
           onPress={() => void Linking.openURL(newBuild.url)}
+        />
+      ) : null}
+
+      {/* Ставит RuStore: свой полноэкранный экран с прогрессом и своя
+          установка. Номер сборки в подсказке — чтобы было видно, что именно
+          приедет, а не только «есть обновление». */}
+      {store.available ? (
+        <Button
+          title="Обновить в RuStore"
+          variant="primary"
+          accessibilityHint={
+            store.versionCode !== null
+              ? `В магазине сборка ${store.versionCode}. Обновление скачает и поставит RuStore`
+              : 'Обновление скачает и поставит RuStore'
+          }
+          onPress={() => void store.install()}
         />
       ) : null}
 

@@ -26,6 +26,7 @@
       }
     },
     "plugins": [
+      "./plugins/withTracer.js",
       "expo-router",
       "expo-font",
       "expo-sharing",

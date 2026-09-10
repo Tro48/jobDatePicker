@@ -2,6 +2,7 @@ import { Linking, View } from 'react-native';
 import { useAppStore } from '@/data/store.ts';
 import { AppText, Button, Card } from '@/ui';
 import { useTheme } from '@/theme';
+import { ReviewButton } from '@/features/rustore/ReviewButton.tsx';
 import { adProvider } from './ads.ts';
 import { SUPPORT_URL } from './entitlements.ts';
 import { useSupportSlot } from './useSupportSlot.ts';
@@ -31,8 +32,8 @@ export function SupportSlot() {
   return (
     <Card title="Без рекламы и без подписки">
       <AppText variant="body" tone="muted">
-        Приложение ничего не показывает и ничего не собирает: график, деньги и заметки лежат только
-        на телефоне и никуда не уходят.
+        Приложение не показывает рекламы и не собирает данные о вас: график, деньги и заметки лежат
+        только на телефоне. Уходят наружу одни отчёты о сбоях — чтобы падение можно было починить.
       </AppText>
 
       <View style={{ gap: theme.spacing.sm }}>
@@ -50,6 +51,11 @@ export function SupportSlot() {
             Если приложение пригодилось — расскажи о нём тем, кто работает по такому же графику.
           </AppText>
         )}
+        {/* Оценка — здесь же и только здесь: карточку открывают редко и
+            намеренно, а всплывающий вопрос «нравится ли приложение?» бесит
+            ровно тех, кто им пользуется. Вне сборки для магазина кнопки нет. */}
+        <ReviewButton />
+
         {/* Обязательная кнопка: карточка, которую нельзя убрать, — это та же
             реклама, только своя. */}
         <Button
