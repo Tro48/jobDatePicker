@@ -3,11 +3,11 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
-group = 'com.andrey.jobdatepicker.alarm'
+group = 'com.trofimdev.jobdatepicker.alarm'
 version = '0.1.0'
 
 android {
-  namespace "com.andrey.jobdatepicker.alarm"
+  namespace "com.trofimdev.jobdatepicker.alarm"
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
