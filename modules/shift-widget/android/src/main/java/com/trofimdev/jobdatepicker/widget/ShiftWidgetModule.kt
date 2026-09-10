@@ -1,4 +1,4 @@
-package com.andrey.jobdatepicker.widget
+package com.trofimdev.jobdatepicker.widget
 
 import android.content.Context
 import androidx.glance.appwidget.GlanceAppWidgetManager

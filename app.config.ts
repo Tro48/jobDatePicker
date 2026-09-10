@@ -74,7 +74,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     icon: './assets/icon-dev.png',
     android: {
       ...config.android,
-      package: 'com.andrey.jobdatepicker.dev',
+      package: 'com.trofimdev.jobdatepicker.dev',
       adaptiveIcon: {
         ...config.android?.adaptiveIcon,
         foregroundImage: './assets/android-icon-foreground-dev.png',

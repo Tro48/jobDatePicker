@@ -1,4 +1,4 @@
-package com.andrey.jobdatepicker.alarm
+package com.trofimdev.jobdatepicker.alarm
 
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -15,7 +15,7 @@ import android.os.Build
  */
 object AlarmScheduler {
   const val EXTRA_ALARM_ID = "alarm_id"
-  private const val ACTION_FIRE = "com.andrey.jobdatepicker.alarm.FIRE"
+  private const val ACTION_FIRE = "com.trofimdev.jobdatepicker.alarm.FIRE"
 
   fun canScheduleExact(context: Context): Boolean {
     val manager = alarmManager(context)

@@ -1,4 +1,4 @@
-package com.andrey.jobdatepicker.alarm
+package com.trofimdev.jobdatepicker.alarm
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -254,9 +254,9 @@ class AlarmService : Service() {
   }
 
   companion object {
-    const val ACTION_START = "com.andrey.jobdatepicker.alarm.START"
-    const val ACTION_DISMISS = "com.andrey.jobdatepicker.alarm.DISMISS"
-    const val ACTION_SNOOZE = "com.andrey.jobdatepicker.alarm.SNOOZE"
+    const val ACTION_START = "com.trofimdev.jobdatepicker.alarm.START"
+    const val ACTION_DISMISS = "com.trofimdev.jobdatepicker.alarm.DISMISS"
+    const val ACTION_SNOOZE = "com.trofimdev.jobdatepicker.alarm.SNOOZE"
 
     private const val CHANNEL_ID = "shift-alarm"
     private const val NOTIFICATION_ID = 4201

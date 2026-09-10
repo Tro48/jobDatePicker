@@ -6,7 +6,7 @@
          config plugin для этого не нужно — манифест библиотеки сливается с
          манифестом приложения при сборке. -->
     <receiver
-      android:name="com.andrey.jobdatepicker.widget.ShiftWidgetReceiver"
+      android:name="com.trofimdev.jobdatepicker.widget.ShiftWidgetReceiver"
       android:exported="true"
       android:label="@string/shift_widget_label">
       <intent-filter>

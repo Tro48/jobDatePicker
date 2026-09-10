@@ -16,11 +16,11 @@
     <!-- Имена классов полные: в манифесте библиотеки короткая запись
          разворачивается по пакету приложения, а не модуля. -->
     <receiver
-      android:name="com.andrey.jobdatepicker.alarm.AlarmReceiver"
+      android:name="com.trofimdev.jobdatepicker.alarm.AlarmReceiver"
       android:exported="false" />
 
     <receiver
-      android:name="com.andrey.jobdatepicker.alarm.BootReceiver"
+      android:name="com.trofimdev.jobdatepicker.alarm.BootReceiver"
       android:enabled="true"
       android:exported="true">
       <intent-filter>
@@ -32,12 +32,12 @@
     </receiver>
 
     <service
-      android:name="com.andrey.jobdatepicker.alarm.AlarmService"
+      android:name="com.trofimdev.jobdatepicker.alarm.AlarmService"
       android:exported="false"
       android:foregroundServiceType="mediaPlayback" />
 
     <activity
-      android:name="com.andrey.jobdatepicker.alarm.AlarmActivity"
+      android:name="com.trofimdev.jobdatepicker.alarm.AlarmActivity"
       android:exported="false"
       android:excludeFromRecents="true"
       android:launchMode="singleInstance"

@@ -15,11 +15,11 @@ apply plugin: 'com.android.library'
 apply plugin: 'expo-module-gradle-plugin'
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
-group = 'com.andrey.jobdatepicker.widget'
+group = 'com.trofimdev.jobdatepicker.widget'
 version = '0.1.0'
 
 android {
-  namespace "com.andrey.jobdatepicker.widget"
+  namespace "com.trofimdev.jobdatepicker.widget"
   defaultConfig {
     versionCode 1
     versionName "0.1.0"

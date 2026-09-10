@@ -1,4 +1,4 @@
-package com.andrey.jobdatepicker.alarm
+package com.trofimdev.jobdatepicker.alarm
 
 import android.app.Activity
 import android.content.Context

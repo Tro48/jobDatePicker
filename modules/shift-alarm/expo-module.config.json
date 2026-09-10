@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["com.andrey.jobdatepicker.alarm.ShiftAlarmModule"]
+    "modules": ["com.trofimdev.jobdatepicker.alarm.ShiftAlarmModule"]
   }
 }

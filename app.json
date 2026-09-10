@@ -14,7 +14,7 @@
       "policy": "fingerprint"
     },
     "android": {
-      "package": "com.andrey.jobdatepicker",
+      "package": "com.trofimdev.jobdatepicker",
       "versionCode": 14,
       "allowBackup": false,
       "predictiveBackGestureEnabled": false,

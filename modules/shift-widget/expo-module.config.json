@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["com.andrey.jobdatepicker.widget.ShiftWidgetModule"]
+    "modules": ["com.trofimdev.jobdatepicker.widget.ShiftWidgetModule"]
   }
 }

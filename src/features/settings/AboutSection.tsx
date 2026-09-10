@@ -11,7 +11,7 @@ import { useTheme } from '@/theme';
 const REPOSITORY_URL = 'https://github.com/Tro48/jobDatePicker';
 const LICENSE_URL = `${REPOSITORY_URL}/blob/main/LICENSE`;
 const PRIVACY_URL = 'https://tro48.github.io/jobDatePicker/privacy';
-const STORE_URL = 'https://www.rustore.ru/catalog/app/com.andrey.jobdatepicker';
+const STORE_URL = 'https://www.rustore.ru/catalog/app/com.trofimdev.jobdatepicker';
 
 const AUTHOR = 'Андрей Трофимов';
 const COPYRIGHT_YEAR = 2026;
