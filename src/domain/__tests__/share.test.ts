@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_SHARE_OPTIONS,
   QR_PAYLOAD_LIMIT,
   ShareFormatError,
   buildSharedTrack,
@@ -145,56 +144,24 @@ test('обычный график с полусотней правок влез�
   assert.ok(fitsInQr(payload), `вышло ${payload.length} символов при пределе ${QR_PAYLOAD_LIMIT}`);
 });
 
-test('заметки и выплаты в код не попадают, пока их не включили', () => {
-  const built = buildSharedTrack(
-    {
-      name: 'Аня',
-      shiftTypes: [dayShift, off, evening],
-      pattern: { kind: 'cycle', slots: [dayShift.id, off.id] },
-      anchorDate: '2026-09-01',
-      overrides: [{ date: '2026-09-10', shiftTypeId: 'evening' }],
-      notes: [
-        { id: 'n1', date: '2026-09-11', text: 'просто подпись', remindAt: null, createdAt: 0 },
-      ],
-      payments: [{ kind: 'salary', period: '2026-09', receivedOn: '2026-10-10', amount: 75_000 }],
-    },
-    DEFAULT_SHARE_OPTIONS,
-  );
+test('заметки и выплаты в код не попадают вовсе', () => {
+  const built = buildSharedTrack({
+    name: 'Аня',
+    shiftTypes: [dayShift, off, evening],
+    pattern: { kind: 'cycle', slots: [dayShift.id, off.id] },
+    anchorDate: '2026-09-01',
+    overrides: [{ date: '2026-09-10', shiftTypeId: 'evening' }],
+  });
 
   assert.equal(built.payments.length, 0);
-  // День, у которого была одна заметка, не едет вовсе: правки на нём нет.
+  // Уезжает только правка со сменой: заметок в коде графика больше нет.
   assert.equal(built.overrides.length, 1);
   assert.equal(built.overrides[0].note, undefined);
 });
 
-test('включённые заметки уезжают даже с дня, где правки нет', () => {
-  const built = buildSharedTrack(
-    {
-      name: 'Аня',
-      shiftTypes: [dayShift, off, evening],
-      pattern: { kind: 'cycle', slots: [dayShift.id, off.id] },
-      anchorDate: '2026-09-01',
-      overrides: [{ date: '2026-09-10', shiftTypeId: 'evening' }],
-      notes: [
-        { id: 'n1', date: '2026-09-11', text: 'первая', remindAt: '09:00', createdAt: 1 },
-        { id: 'n2', date: '2026-09-11', text: 'вторая', remindAt: null, createdAt: 2 },
-      ],
-      payments: [],
-    },
-    { notes: true, payments: false },
-  );
-
-  const back = decodeTrack(encodeTrack(built));
-  const day = back.overrides.find((override) => override.date === '2026-09-11');
-
-  assert.equal(back.overrides.length, 2);
-  // Заметки одного дня уезжают одним текстом: формат обмена знает про день, а
-  // не про отдельные заметки. Напоминание не передаётся вовсе.
-  assert.equal(day?.note, 'первая\nвторая');
-  assert.equal(day?.shiftTypeId, undefined);
-});
-
-test('включённые заметки и выплаты доезжают целиком', () => {
+// Свои коды заметок и выплат больше не несут, но пришедший со старой версии
+// обязан разобраться целиком: формат не менялся, менялось только то, что кладём.
+test('заметки и выплаты из старого кода доезжают целиком', () => {
   const share = shareOf(
     [{ date: '2026-09-10', shiftTypeId: 'evening', note: 'подмена за Сергея' }],
     [{ kind: 'salary', period: '2026-09', receivedOn: '2026-10-10', amount: 75_000 }],

@@ -7,9 +7,12 @@ import { ThemeProvider } from '@/theme';
 /**
  * Кнопки в карточке «Данные».
  *
- * Проверяется то, что ломается молча: одна кнопка «Загрузить из файла»
- * обслуживает и резервную копию, и присланный график, и по чужому файлу она
- * обязана сказать словами, что не так, а не промолчать.
+ * Кнопки здесь без подписей, поэтому и ищутся они по доступному имени: если
+ * оно потеряется, значок останется молчащим квадратом для скринридера.
+ *
+ * Проверяется то, что ломается молча: один значок «Загрузить из файла»
+ * обслуживает и резервную копию, и присланный график, и по чужому файлу он
+ * обязан сказать словами, что не так, а не промолчать.
  */
 
 const mockPush = jest.fn();
@@ -51,7 +54,7 @@ test('«Сохранить копию» пишет файл на телефон,
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByText('Сохранить копию'));
+    fireEvent.press(view.getByLabelText('Сохранить копию'));
   });
 
   expect(mockSave).toHaveBeenCalled();
@@ -69,7 +72,7 @@ test('закрытый проводник ошибкой не считается
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByText('Сохранить копию'));
+    fireEvent.press(view.getByLabelText('Сохранить копию'));
   });
 
   expect(view.queryByText(/Не получилось/)).toBeNull();
@@ -81,7 +84,7 @@ test('«Отправить копию» отдаёт тот же файл сис
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByText('Отправить копию'));
+    fireEvent.press(view.getByLabelText('Отправить копию'));
   });
 
   expect(mockShare).toHaveBeenCalled();
@@ -100,7 +103,7 @@ test('присланный график открывает предпросмо�
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByText('Загрузить из файла'));
+    fireEvent.press(view.getByLabelText('Загрузить из файла'));
   });
 
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/track', params: { d: 'AQID' } });
@@ -118,7 +121,7 @@ test('резервная копия спрашивает подтвержден�
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByText('Загрузить из файла'));
+    fireEvent.press(view.getByLabelText('Загрузить из файла'));
   });
 
   expect(mockAlert).toHaveBeenCalled();
@@ -134,7 +137,7 @@ test('чужой файл объясняется словами, а не тиш�
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByText('Загрузить из файла'));
+    fireEvent.press(view.getByLabelText('Загрузить из файла'));
   });
 
   expect(view.getByText(/Файл сделан не этим приложением/)).toBeTruthy();

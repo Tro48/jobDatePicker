@@ -13,6 +13,8 @@ import { indexShiftTypes, shiftStartGroups } from '@/domain/shifts.ts';
 import { useActiveTrack } from '@/data/selectors.ts';
 import { useAppStore } from '@/data/store.ts';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
+import { pickShareFile } from '@/features/share/pickShareFile.ts';
+import { SHARE_FAILED_TEXT, sendTrackFile, shareOfTrack } from '@/features/share/trackShare.ts';
 import {
   AppText,
   Button,
@@ -341,6 +343,58 @@ export function SchedulePickerScreen() {
 
   const editedCustom = customSchedules.find((item) => item.id === presetId) ?? null;
 
+  /** Что не так с выбранным файлом. Пусто — либо ещё не выбирали, либо всё вышло. */
+  const [importError, setImportError] = useState<string | null>(null);
+
+  /** Отказ системного листа: делиться на этом телефоне нечем. */
+  const [shareError, setShareError] = useState<string | null>(null);
+
+  /**
+   * Принять чужой график прямо здесь.
+   *
+   * Тому, кому график прислали, заполнять эту форму нечем: у него в
+   * мессенджере лежит готовый файл, а не знание про раскладку и дату первой
+   * смены. Поэтому вход в приём стоит там же, где заводят график руками.
+   *
+   * Предпросмотр встаёт на место этого экрана, а не поверх: график либо
+   * собирают сами, либо берут готовым — возвращаться в брошенную форму после
+   * принятия чужого незачем. Тем же заменой открывается и сканер.
+   */
+  const loadFromFile = async (): Promise<void> => {
+    setImportError(null);
+    const picked = await pickShareFile();
+
+    if (picked.kind === 'canceled') return;
+    if (picked.kind === 'error') {
+      setImportError(picked.message);
+      return;
+    }
+    if (picked.kind === 'other') {
+      setImportError(
+        'В этом файле графика нет. Резервная копия открывается в «Настройки → Данные».',
+      );
+      return;
+    }
+
+    router.replace({ pathname: '/track', params: { d: picked.payload } });
+  };
+
+  /**
+   * Отдать этот график файлом.
+   *
+   * Прямо отсюда, без промежуточного экрана: системный лист и есть тот выбор,
+   * ради которого раньше открывалась отдельная карточка. Уезжает последний
+   * период — тот график, по которому работают сейчас.
+   */
+  const sendFile = async (): Promise<void> => {
+    setShareError(null);
+    if (!edited) return;
+
+    const share = shareOfTrack(edited, shiftTypes);
+    if (!share) return;
+    if (!(await sendTrackFile(share))) setShareError(SHARE_FAILED_TEXT);
+  };
+
   return (
     <Sheet
       title={isNew ? 'Новый график' : addsPeriod ? 'Смена графика' : 'График'}
@@ -351,6 +405,57 @@ export function SchedulePickerScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
       >
+        {/* Приём стоит первым и только у нового графика: правя свой, чужой
+            файл не открывают. Значки — напротив заголовка: строки под ними
+            нет, и карточка занимает ровно одну. */}
+        {isNew ? (
+          <>
+            <Card
+              title="Загрузить"
+              help="Файл с графиком приходит в мессенджер — открой его отсюда. Что именно добавится, будет видно до того, как оно попадёт в календарь. QR-код с чужого экрана снимается обычной камерой телефона."
+              action={
+                <View style={{ flexDirection: 'row' }}>
+                  <IconButton
+                    name="folder-open-outline"
+                    label="Загрузить график из файла"
+                    accessibilityHint="График, который отдал другой телефон. Заполнять форму ниже тогда не нужно"
+                    onPress={() => void loadFromFile()}
+                  />
+                  {/* Второй путь того же приёма: код с чужого экрана вместо
+                      файла в мессенджере. Сканер сам заменяет себя
+                      предпросмотром, поэтому и открывается заменой. */}
+                  <IconButton
+                    name="qr-code-outline"
+                    label="Сканировать QR"
+                    accessibilityHint="Считать код с экрана другого телефона камерой"
+                    onPress={() => router.replace('/settings/scan')}
+                  />
+                </View>
+              }
+            >
+              {importError ? (
+                <AppText
+                  variant="body"
+                  color={theme.colors.danger}
+                  accessibilityLiveRegion="polite"
+                >
+                  {importError}
+                </AppText>
+              ) : null}
+            </Card>
+
+            {/* Развилка названа словом, а не чертой: «или» читается и
+                скринридером, и тем, кто видит два блока подряд. */}
+            <AppText
+              variant="body"
+              tone="muted"
+              style={{ textAlign: 'center', marginBottom: theme.spacing.lg }}
+            >
+              или
+            </AppText>
+          </>
+        ) : null}
+
         {named ? (
           <Card title="Чей это график">
             <TextField
@@ -368,7 +473,39 @@ export function SchedulePickerScreen() {
           </Card>
         ) : null}
 
-        <Card title="График">
+        <Card
+          title="График"
+          /* Отдать график можно только сохранённым: у черновика, который ещё
+             не нажали «Сохранить», нет ни одного периода — отдавать нечем. */
+          action={
+            edited && history.length > 0 ? (
+              <View style={{ flexDirection: 'row' }}>
+                <IconButton
+                  name="share-social-outline"
+                  label="Отправить график файлом"
+                  accessibilityHint="Откроется системный лист: мессенджер, почта, облако"
+                  onPress={() => void sendFile()}
+                />
+                <IconButton
+                  name="qr-code-outline"
+                  label="Показать QR-код графика"
+                  accessibilityHint="Код на весь экран: его снимают камерой другого телефона"
+                  onPress={() =>
+                    push({ pathname: '/settings/share', params: { track: edited.id } })
+                  }
+                />
+              </View>
+            ) : null
+          }
+        >
+          {/* Отказ системного листа — первой строкой карточки: значок, который
+              его вызвал, стоит прямо над ней. */}
+          {shareError ? (
+            <AppText variant="body" color={theme.colors.danger} accessibilityLiveRegion="polite">
+              {shareError}
+            </AppText>
+          ) : null}
+
           {/* Выпадающим списком, а не столбиком радиокнопок: графиков десяток,
               и развёрнутый список выталкивал бы дату первой смены за экран. */}
           <Select label="График работы" value={presetId} options={choices} onChange={setPresetId} />
@@ -611,21 +748,6 @@ export function SchedulePickerScreen() {
                   params: { track: edited.id, period: 'new' },
                 })
               }
-            />
-          </Card>
-        ) : null}
-
-        {/* Поделиться можно только сохранённым графиком: черновик, который
-            ещё не нажали «Сохранить», отдавать нечем. */}
-        {edited && history.length > 0 ? (
-          <Card
-            title="Отдать другому телефону"
-            help="QR-код с экрана или файл в мессенджер — так график переезжает без облака и без учётной записи."
-          >
-            <Button
-              title="Поделиться графиком"
-              accessibilityHint="Код и файл на одном экране"
-              onPress={() => push({ pathname: '/settings/share', params: { track: edited.id } })}
             />
           </Card>
         ) : null}
