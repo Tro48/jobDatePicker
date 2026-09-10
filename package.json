@@ -16,7 +16,8 @@
     "test:domain": "node --test --experimental-strip-types \"src/**/__tests__/*.test.ts\"",
     "test:ui": "jest",
     "check:contrast": "node --experimental-strip-types scripts/check-contrast.ts",
-    "icons": "node --experimental-strip-types scripts/make-icons.ts"
+    "icons": "node --experimental-strip-types scripts/make-icons.ts",
+    "demo": "node --experimental-strip-types scripts/make-store-demo.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

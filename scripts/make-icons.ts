@@ -1,5 +1,5 @@
 import { deflateSync } from 'node:zlib';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 /**
  * Генератор иконок приложения.
@@ -265,7 +265,15 @@ function calendarOps(size: number, glyph: number, palette: Palette | null): Op[]
 
 const SIZE = 1024;
 
-const files: Array<{ name: string; pixels: Uint8Array }> = [
+/**
+ * Иконка для карточки магазина. Размер задан площадкой — ровно 512×512, — а
+ * заливка обязательна: прозрачные углы RuStore отклоняет. Лежит вне `assets`
+ * намеренно: в APK она не нужна, а лишний файл рядом с рабочими иконками
+ * двигал бы отпечаток нативной части и стоил бы сборки.
+ */
+const STORE_SIZE = 512;
+
+const files: Array<{ name: string; pixels: Uint8Array; size?: number; dir?: string }> = [
   {
     name: 'icon.png',
     pixels: render(SIZE, DARK_BACKGROUND, calendarOps(SIZE, 0.62, ON_DARK)),
@@ -305,9 +313,19 @@ const files: Array<{ name: string; pixels: Uint8Array }> = [
     name: 'splash-icon-dark.png',
     pixels: render(SIZE, null, calendarOps(SIZE, 0.5, ON_DARK)),
   },
+  {
+    name: 'icon-512.png',
+    size: STORE_SIZE,
+    dir: 'docs/store',
+    pixels: render(STORE_SIZE, DARK_BACKGROUND, calendarOps(STORE_SIZE, 0.62, ON_DARK)),
+  },
 ];
 
 for (const file of files) {
-  writeFileSync(new URL(`../assets/${file.name}`, import.meta.url), encodePng(SIZE, file.pixels));
-  console.log(`assets/${file.name}`);
+  const size = file.size ?? SIZE;
+  const dir = file.dir ?? 'assets';
+  const target = new URL(`../${dir}/${file.name}`, import.meta.url);
+  mkdirSync(new URL('.', target), { recursive: true });
+  writeFileSync(target, encodePng(size, file.pixels));
+  console.log(`${dir}/${file.name}`);
 }
