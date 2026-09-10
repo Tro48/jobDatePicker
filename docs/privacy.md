@@ -81,4 +81,4 @@ permalink: /privacy/
 
 ## Связь
 
-Андрей Трофимов — [github.com/Tro48/jobDatePicker](https://github.com/Tro48/jobDatePicker)
+Андрей Трофимов — [github.com/Tro48](https://github.com/Tro48)
