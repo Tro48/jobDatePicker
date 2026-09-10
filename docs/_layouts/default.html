@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="{{ site.lang | default: 'ru' }}">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Без maximum-scale и user-scalable: запрет зума ломает страницу тем,
+         кому он нужен, а выигрыша не даёт никакого. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ page.title | default: site.title }}</title>
+    <meta name="description" content="{{ page.description | default: site.description }}" />
+    <style>
+      /* Размеры в rem: настройка размера шрифта в браузере обязана работать. */
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --text: #1a1a1a;
+        --muted: #4a4a4a;
+        --link: #0b4fd0;
+        --rule: #d8d8d8;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14161a;
+          --text: #ececec;
+          --muted: #b4b4b4;
+          --link: #8fb4ff;
+          --rule: #333840;
+        }
+      }
+
+      body {
+        margin: 0;
+        padding: 2rem 1.25rem 4rem;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          1rem/1.6 system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+
+      main,
+      header,
+      footer {
+        max-width: 42rem;
+        margin: 0 auto;
+      }
+
+      h1 {
+        font-size: 1.75rem;
+        line-height: 1.3;
+      }
+
+      h2 {
+        margin-top: 2.5rem;
+        font-size: 1.25rem;
+        line-height: 1.4;
+      }
+
+      a {
+        color: var(--link);
+      }
+
+      a:focus-visible {
+        outline: 0.1875rem solid currentColor;
+        outline-offset: 0.125rem;
+      }
+
+      footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        border-top: 0.0625rem solid var(--rule);
+        color: var(--muted);
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>{{ content }}</main>
+    <footer>
+      <p>
+        {{ site.title }} — <a href="{{ site.baseurl }}/">о приложении</a>. Исходный код:
+        <a href="https://github.com/Tro48/jobDatePicker">github.com/Tro48/jobDatePicker</a>.
+      </p>
+    </footer>
+  </body>
+</html>
