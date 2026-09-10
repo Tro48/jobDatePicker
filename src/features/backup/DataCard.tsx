@@ -1,24 +1,35 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Alert, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { parseBackup, serializeBackup, stateFromBackup } from '@/data/backup.ts';
 import type { BackupSummary } from '@/data/backup.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button, IconButton } from '@/ui';
+import { AppText, Button, Card, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 import { pickShareFile } from '@/features/share/pickShareFile.ts';
 import { saveTextFile, shareTextFile } from './files.ts';
 
+export interface DataCardProps {
+  /** Что стоит в карточке под кнопкой: сейчас — сведения о хранилище. */
+  children?: ReactNode;
+}
+
 /**
- * Копия и восстановление — в существующей карточке «Данные».
+ * Карточка «Данные»: копия, обмен и восстановление.
  *
- * Три действия стоят в одну строку: полосы во всю ширину занимали три экранных
- * строки на то, за чем сюда заходят раз в полгода.
+ * Карточку рисует сам компонент, а не экран настроек: её действия разъехались
+ * по двум местам — значки в шапке, кнопка в теле, — и держать их логику и
+ * состояние в одном файле дешевле, чем поднимать наверх ради разметки.
+ *
+ * Загрузка стоит полосой во всю ширину: это единственное здесь необратимое
+ * действие и то, ради чего сюда заходят. Сохранить и отправить обратимы, живут
+ * значками напротив заголовка — тот же приём, что у проверки обновлений, — и
+ * не занимают экранную строку.
  *
  * Подпись осталась только у загрузки: она забирает данные из файла и заменяет
- * ими всё, что есть, — значок без слов о таком предупредить не может. Сохранить
- * и отправить обратимы и живут значками; доступное имя есть у каждого, зона
- * нажатия полная.
+ * ими всё, что есть, — значок без слов о таком предупредить не может. У значков
+ * доступное имя есть у каждого, зона нажатия полная.
  *
  * Одна кнопка загрузки на два разных файла: и на резервную копию, и на
  * присланный график. Человек не обязан помнить, что ему прислали, — это видно
@@ -28,7 +39,7 @@ import { saveTextFile, shareTextFile } from './files.ts';
  * окном: оно перехватывает фокус, читается скринридером и закрывается кнопкой
  * «назад» — самодельная карточка ни одного из трёх свойств не даёт бесплатно.
  */
-export function DataActions() {
+export function DataCard({ children }: DataCardProps) {
   const theme = useTheme();
   const router = useRouter();
   const restoreState = useAppStore((state) => state.restoreState);
@@ -103,48 +114,49 @@ export function DataActions() {
   };
 
   return (
-    <View style={{ gap: theme.spacing.sm }}>
-      {/* Перенос по строкам, а не сжатие: при крупном системном шрифте подпись
-          вырастет, и значкам лучше уехать вниз, чем ужаться. */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: theme.spacing.sm,
-        }}
-      >
+    <Card
+      title="Данные"
+      action={
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs }}>
+          <IconButton
+            name="share-social-outline"
+            label="Отправить копию"
+            accessibilityHint="Файл со всеми данными сразу в мессенджер, на почту или в облако"
+            onPress={() => void send()}
+          />
+          <IconButton
+            name="save-outline"
+            label="Сохранить копию"
+            accessibilityHint="Выбрать папку на телефоне и положить туда файл со всеми данными: графики, правки, выплаты и будильники"
+            onPress={() => void save()}
+          />
+        </View>
+      }
+    >
+      <View style={{ gap: theme.spacing.sm }}>
         <Button
           title="Загрузить настройки"
           icon="download-outline"
-          compact
           accessibilityHint="Резервная копия или график, присланный с другого телефона. Копия заменит всё, что сейчас в приложении"
           onPress={() => void load()}
         />
-        <IconButton
-          name="share-social-outline"
-          label="Отправить копию"
-          accessibilityHint="Файл со всеми данными сразу в мессенджер, на почту или в облако"
-          onPress={() => void send()}
-        />
-        <IconButton
-          name="save-outline"
-          label="Сохранить копию"
-          accessibilityHint="Выбрать папку на телефоне и положить туда файл со всеми данными: графики, правки, выплаты и будильники"
-          onPress={() => void save()}
-        />
+
+        {/* Результат сохранения и разбора файла: проводник и системный лист
+            закрываются молча, сказать о том, что вышло, больше некому. Живая
+            область — потому что фокус в этот момент стоит на кнопке в шапке. */}
+        {status ? (
+          <AppText
+            variant="body"
+            color={status.failed ? theme.colors.danger : theme.colors.text}
+            accessibilityLiveRegion="polite"
+          >
+            {status.text}
+          </AppText>
+        ) : null}
       </View>
 
-      {status ? (
-        <AppText
-          variant="body"
-          color={status.failed ? theme.colors.danger : theme.colors.text}
-          accessibilityLiveRegion="polite"
-        >
-          {status.text}
-        </AppText>
-      ) : null}
-    </View>
+      {children}
+    </Card>
   );
 }
 

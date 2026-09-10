@@ -2,7 +2,7 @@ import { View } from 'react-native';
 import { AppText, Button, Card, Screen, Toggle } from '@/ui';
 import { useAppStore } from '@/data/store.ts';
 import { ThemeList } from '@/features/theme/ThemeList.tsx';
-import { DataActions } from '@/features/backup/DataActions.tsx';
+import { DataCard } from '@/features/backup/DataCard.tsx';
 import { AboutSection } from '@/features/settings/AboutSection.tsx';
 import { UpdateCard } from '@/features/updates/UpdateCard.tsx';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
@@ -108,15 +108,14 @@ export default function SettingsScreen() {
 
       <UpdateCard />
 
-      <Card title="Данные">
-        {/* Копия и обмен живут здесь же, а не отдельной карточкой: это всё
-            про одни и те же данные. Счётчиков — правок, выплат, типов смен и
-            версии схемы — здесь больше нет: делать по ним было нечего, а
-            место они занимали над кнопками, ради которых сюда и заходят. */}
-        <DataActions />
-
+      {/* Копия и обмен живут здесь же, а не отдельной карточкой: это всё про
+          одни и те же данные. Счётчиков — правок, выплат, типов смен и версии
+          схемы — здесь больше нет: делать по ним было нечего, а место они
+          занимали над кнопками, ради которых сюда и заходят. Саму карточку
+          рисует DataCard: её кнопки стоят и в шапке, и в теле. */}
+      <DataCard>
         <AboutSection />
-      </Card>
+      </DataCard>
     </Screen>
   );
 }
