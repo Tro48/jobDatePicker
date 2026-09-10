@@ -43,41 +43,40 @@ export default function SettingsScreen() {
           value={holidays.enabled}
           onValueChange={(enabled) => setHolidays({ enabled })}
         />
-      </Card>
 
-      {/* Совпадающие выходные показываются, только когда есть с кем совпадать:
-          настройка без единого чужого графика ничего бы не включала. */}
-      {others.length > 0 ? (
-        <Card title="Общие выходные">
+        {/* Общие выходные стоят здесь же, а не своей карточкой: это такой же
+            переключатель поверх календаря, как праздники, и ради одной строки
+            карточка держала целый заголовок. Показываются, только когда есть с
+            кем совпадать: без единого чужого графика включать нечего. */}
+        {others.length > 0 ? (
           <Toggle
-            label="Показывать на календаре"
-            hint={`Свободны и ты, и ${others.map((track) => track.name).join(', ')}`}
+            label="Общие выходные"
             help="Под календарём появится список дней, когда свободны все. Нажатие на строку выделяет эти дни в сетке, остальные при этом гаснут. Отсыпной после ночной за общий выходной не считается."
             value={shared.enabled}
             onValueChange={(enabled) => setSharedDaysOff({ enabled })}
           />
+        ) : null}
 
-          {/* Группы отвечают на вопрос, который по одному человеку не задать:
-              когда свободны все разом. */}
-          {shared.enabled && others.length > 1 ? (
-            <View style={{ gap: theme.spacing.sm }}>
-              {groups.map((group) => (
-                <Button
-                  key={group.id}
-                  title={`${group.name} · ${group.trackIds.length}`}
-                  accessibilityHint="Изменить состав группы"
-                  onPress={() => push({ pathname: '/settings/group', params: { group: group.id } })}
-                />
-              ))}
+        {/* Группы отвечают на вопрос, который по одному человеку не задать:
+            когда свободны все разом. */}
+        {others.length > 1 && shared.enabled ? (
+          <View style={{ gap: theme.spacing.sm }}>
+            {groups.map((group) => (
               <Button
-                title="Добавить группу"
-                accessibilityHint="Например «друзья»: общие выходные сразу у нескольких человек"
-                onPress={() => push('/settings/group')}
+                key={group.id}
+                title={`${group.name} · ${group.trackIds.length}`}
+                accessibilityHint="Изменить состав группы"
+                onPress={() => push({ pathname: '/settings/group', params: { group: group.id } })}
               />
-            </View>
-          ) : null}
-        </Card>
-      ) : null}
+            ))}
+            <Button
+              title="Добавить группу"
+              accessibilityHint="Например «друзья»: общие выходные сразу у нескольких человек"
+              onPress={() => push('/settings/group')}
+            />
+          </View>
+        ) : null}
+      </Card>
 
       {/* Выплаты — только у своих работ: деньги чужого графика приложение не
           считает, и настраивать там нечего. */}
