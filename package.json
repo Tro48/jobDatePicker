@@ -16,7 +16,8 @@
     "test:domain": "node --test --experimental-strip-types \"src/**/__tests__/*.test.ts\"",
     "test:ui": "jest",
     "check:contrast": "node --experimental-strip-types scripts/check-contrast.ts",
-    "icons": "node --experimental-strip-types scripts/make-icons.ts"
+    "icons": "node --experimental-strip-types scripts/make-icons.ts",
+    "demo": "node --experimental-strip-types scripts/make-store-demo.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -41,6 +42,8 @@
     "react-native-mmkv": "^4.3.2",
     "react-native-nitro-modules": "0.37.1",
     "react-native-reanimated": "4.5.1",
+    "react-native-rustore-review": "git+https://gitflic.ru/project/rustore/react-native-rustore-review-sdk.git",
+    "react-native-rustore-update": "git+https://gitflic.ru/project/rustore/react-native-rustore-update-sdk.git",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
