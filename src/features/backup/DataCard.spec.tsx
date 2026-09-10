@@ -1,14 +1,15 @@
 import { Alert } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { DataActions } from './DataActions.tsx';
+import { DataCard } from './DataCard.tsx';
 import { INITIAL_STATE, useAppStore } from '@/data/store.ts';
 import { ThemeProvider } from '@/theme';
 
 /**
  * Кнопки в карточке «Данные».
  *
- * Кнопки здесь без подписей, поэтому и ищутся они по доступному имени: если
- * оно потеряется, значок останется молчащим квадратом для скринридера.
+ * Сохранить и отправить стоят значками в шапке карточки, поэтому и ищутся они
+ * по доступному имени: если оно потеряется, значок останется молчащим
+ * квадратом для скринридера.
  *
  * Проверяется то, что ломается молча: один значок «Загрузить из файла»
  * обслуживает и резервную копию, и присланный график, и по чужому файлу он
@@ -35,7 +36,7 @@ const mockAlert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 function renderActions() {
   return render(
     <ThemeProvider>
-      <DataActions />
+      <DataCard />
     </ThemeProvider>,
   );
 }
