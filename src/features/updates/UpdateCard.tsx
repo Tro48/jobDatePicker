@@ -2,7 +2,7 @@ import { Linking, View } from 'react-native';
 import { useGuardedPush } from '@/navigation/useGuardedPush.ts';
 import { formatDayShort } from '@/domain/format.ts';
 import { toIsoDateLocal } from '@/domain/date.ts';
-import { AppText, Button, Card } from '@/ui';
+import { AppText, Button, Card, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
 import type { ReleaseManifest } from '@/domain/release.ts';
 import { useAppUpdate } from './useAppUpdate.ts';
@@ -72,7 +72,32 @@ export function UpdateCard() {
   const message = newBuild ? newBuildText(newBuild) : statusText(status);
 
   return (
-    <Card title="Обновления">
+    <Card
+      title="Обновления"
+      /* Ручная проверка остаётся всегда, даже когда есть что скачивать: это
+         единственный способ спросить об обновлениях самому, не дожидаясь
+         расписания. Значком напротив заголовка, а не строкой внизу: карточка и
+         так длинная, а кнопка здесь единственная, что не появляется по случаю,
+         — ход и результат проверки говорит текст под ней. */
+      action={
+        <IconButton
+          name="refresh-outline"
+          label="Проверить обновление"
+          accessibilityHint="Спрашивает сразу оба канала: обновление по воздуху и новую сборку"
+          // Проверяются оба канала разом: по воздуху приезжает JS, а список
+          // выпусков знает про сборку, которую надо ставить руками.
+          onPress={() => {
+            check();
+            void refresh({ force: true });
+          }}
+          disabled={
+            status.kind === 'disabled' ||
+            status.kind === 'checking' ||
+            status.kind === 'downloading'
+          }
+        />
+      }
+    >
       {message ? (
         // Текст меняется по нажатию кнопки, а фокус остаётся на ней: без живой
         // области скринридер промолчит и о ходе проверки, и о результате.
@@ -121,22 +146,6 @@ export function UpdateCard() {
         title="Что нового"
         onPress={() => push('/whats-new')}
         accessibilityHint="Открывает список изменений в последних выпусках"
-      />
-
-      {/* Ручная проверка остаётся всегда, даже когда есть что скачивать: это
-          единственный способ спросить об обновлениях самому, не дожидаясь
-          расписания. */}
-      <Button
-        title="Проверить обновление"
-        // Проверяются оба канала разом: по воздуху приезжает JS, а список
-        // выпусков знает про сборку, которую надо ставить руками.
-        onPress={() => {
-          check();
-          void refresh({ force: true });
-        }}
-        disabled={
-          status.kind === 'disabled' || status.kind === 'checking' || status.kind === 'downloading'
-        }
       />
     </Card>
   );
