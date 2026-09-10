@@ -103,7 +103,7 @@ test('присланный график открывает предпросмо�
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByLabelText('Загрузить из файла'));
+    fireEvent.press(view.getByText('Загрузить настройки'));
   });
 
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/track', params: { d: 'AQID' } });
@@ -121,7 +121,7 @@ test('резервная копия спрашивает подтвержден�
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByLabelText('Загрузить из файла'));
+    fireEvent.press(view.getByText('Загрузить настройки'));
   });
 
   expect(mockAlert).toHaveBeenCalled();
@@ -137,7 +137,7 @@ test('чужой файл объясняется словами, а не тиш�
   const view = await renderActions();
 
   await act(async () => {
-    fireEvent.press(view.getByLabelText('Загрузить из файла'));
+    fireEvent.press(view.getByText('Загрузить настройки'));
   });
 
   expect(view.getByText(/Файл сделан не этим приложением/)).toBeTruthy();
