@@ -10,9 +10,7 @@ import { fromEpochDay, toEpochDay } from './date.ts';
 import type { IsoDate, Weekday } from './date.ts';
 import { FALLBACK_COLOR_TOKEN, SHIFT_COLOR_TOKENS, sanitizeShiftType } from './shifts.ts';
 import { PAYMENT_KINDS } from './payments.ts';
-import { notesByDate } from './notes.ts';
 import type {
-  DayNote,
   DayOverride,
   PaymentKind,
   PaymentRecord,
@@ -62,37 +60,26 @@ export interface SharedTrack {
   shiftTypes: ShiftType[];
   pattern: SchedulePattern;
   anchorDate: IsoDate;
-  /** Ручные правки. Заметки внутри них включаются отдельно. */
+  /** Ручные правки: только смены и часы, без заметок. */
   overrides: SharedOverride[];
-  /** Выплаты. Пусто, если их решили не отдавать. */
+  /**
+   * Выплаты. Своих здесь не бывает — поле осталось ради кодов, отправленных
+   * версиями, которые ещё умели их отдавать.
+   */
   payments: Array<Omit<PaymentRecord, 'id' | 'trackId'>>;
 }
 
 /**
  * Правка дня в коде графика.
  *
- * Заметки уезжают внутри неё одним текстом, хотя в приложении они давно живут
- * отдельно от правок: формат старше этого разделения, и ломать совместимость
- * ради него незачем. День с одними заметками едет правкой без смены и часов —
- * принимающая сторона разбирает её обратно в заметки.
- *
- * Напоминания не передаются: время звонка — дело телефона, на котором заметку
- * завели.
+ * Заметка внутри правки — наследство формата: свои коды её больше не несут, но
+ * пришедший со старой версии разбирается по-прежнему, а принимающая сторона
+ * раскладывает такой текст обратно в заметки дня.
  */
 export interface SharedOverride extends DayOverride {
   /** Заметки этого дня, склеенные переводом строки. */
   note?: string;
 }
-
-/** Что именно кладём в код или файл. */
-export interface ShareOptions {
-  /** Заметки к дням: произвольный текст, который может занять и десять килобайт. */
-  notes: boolean;
-  /** История выплат: это суммы зарплат, и фото QR легко переслать дальше. */
-  payments: boolean;
-}
-
-export const DEFAULT_SHARE_OPTIONS: ShareOptions = { notes: false, payments: false };
 
 /** Разобрать не удалось. kind отличает «нужна новая версия» от «код испорчен». */
 export class ShareFormatError extends Error {
@@ -127,23 +114,22 @@ const BREAK_STEP = 5;
 /**
  * Что из дорожки вообще можно отдать.
  *
+ * Уезжает только сам график: раскладка, смены и ручные правки. Заметки,
+ * напоминания и выплаты не уезжают ни при каких условиях — принимающему нужен
+ * рабочий календарь друга, а не его личный текст и суммы зарплат. Своё целиком
+ * переносит резервная копия, у неё для этого и есть отдельная кнопка.
+ *
  * Смены берутся не все подряд, а только те, что реально встречаются в графике
  * и в правках: отдавать вместе с графиком весь чужой справочник незачем, а в
  * QR-коде каждый лишний байт виден.
  */
-export function buildSharedTrack(
-  source: {
-    name: string;
-    shiftTypes: ShiftType[];
-    pattern: SchedulePattern;
-    anchorDate: IsoDate;
-    overrides: DayOverride[];
-    /** Заметки всех дней: в код попадают только при включённой галочке. */
-    notes: DayNote[];
-    payments: Array<Omit<PaymentRecord, 'id' | 'trackId'>>;
-  },
-  options: ShareOptions = DEFAULT_SHARE_OPTIONS,
-): SharedTrack {
+export function buildSharedTrack(source: {
+  name: string;
+  shiftTypes: ShiftType[];
+  pattern: SchedulePattern;
+  anchorDate: IsoDate;
+  overrides: DayOverride[];
+}): SharedTrack {
   const used = new Set<string>(patternIds(source.pattern));
   for (const override of source.overrides) {
     if (override.shiftTypeId) used.add(override.shiftTypeId);
@@ -162,20 +148,13 @@ export function buildSharedTrack(
     if (usable) packed.set(override.date, { ...override });
   }
 
-  if (options.notes) {
-    for (const [date, notes] of notesByDate(source.notes)) {
-      const text = notes.map((note) => note.text).join('\n');
-      packed.set(date, { ...(packed.get(date) ?? { date }), note: text });
-    }
-  }
-
   return {
     name: source.name,
     shiftTypes: source.shiftTypes.filter((type) => used.has(type.id)),
     pattern: source.pattern,
     anchorDate: source.anchorDate,
     overrides: [...packed.values()],
-    payments: options.payments ? source.payments : [],
+    payments: [],
   };
 }
 

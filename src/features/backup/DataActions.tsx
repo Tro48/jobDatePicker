@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { payloadFromFile } from '@/domain/share.ts';
 import { parseBackup, serializeBackup, stateFromBackup } from '@/data/backup.ts';
 import type { BackupSummary } from '@/data/backup.ts';
 import { useAppStore } from '@/data/store.ts';
-import { AppText, Button } from '@/ui';
+import { AppText, IconButton } from '@/ui';
 import { useTheme } from '@/theme';
-import { pickTextFile, saveTextFile, shareTextFile } from './files.ts';
+import { pickShareFile } from '@/features/share/pickShareFile.ts';
+import { saveTextFile, shareTextFile } from './files.ts';
 
 /**
- * Копия, восстановление и приём чужого графика — в существующей карточке
- * «Данные».
+ * Копия и восстановление — в существующей карточке «Данные».
+ *
+ * Три действия стоят значками в строку: полосы во всю ширину занимали три
+ * экранных строки на то, за чем сюда заходят раз в полгода. Подпись у каждого
+ * значка остаётся доступным именем, а зона нажатия — полной.
  *
  * Одна кнопка «Загрузить из файла» на два разных файла: и на резервную копию,
  * и на присланный график. Человек не обязан помнить, что ему прислали, — это
@@ -56,7 +59,7 @@ export function DataActions() {
     // Отмена — не ошибка: человек закрыл проводник, говорить ему нечего.
     if (result === 'canceled') return;
     if (result === 'unsupported') {
-      fail('Этот телефон не даёт выбрать папку. Копию можно отправить кнопкой ниже.');
+      fail('Этот телефон не даёт выбрать папку. Копию можно отправить значком рядом.');
       return;
     }
     done(`Копия сохранена файлом ${name}.`);
@@ -73,20 +76,16 @@ export function DataActions() {
   const load = async (): Promise<void> => {
     setStatus(null);
 
-    let picked;
-    try {
-      picked = await pickTextFile();
-    } catch {
-      fail('Не получилось открыть файл. Попробуй выбрать его ещё раз.');
-      return;
-    }
-    if (!picked) return;
-
     // Сначала график: он встречается чаще, а копия узнаётся однозначно по
     // своей метке — перепутать их нельзя.
-    const shared = payloadFromFile(picked.text);
-    if (shared) {
-      router.push({ pathname: '/track', params: { d: shared } });
+    const picked = await pickShareFile();
+    if (picked.kind === 'canceled') return;
+    if (picked.kind === 'error') {
+      fail(picked.message);
+      return;
+    }
+    if (picked.kind === 'track') {
+      router.push({ pathname: '/track', params: { d: picked.payload } });
       return;
     }
 
@@ -101,26 +100,26 @@ export function DataActions() {
 
   return (
     <View style={{ gap: theme.spacing.sm }}>
-      <Button
-        title="Сохранить копию"
-        accessibilityHint="Выбрать папку на телефоне и положить туда файл со всеми данными: графики, правки, выплаты и будильники"
-        onPress={() => void save()}
-      />
-      <Button
-        title="Отправить копию"
-        accessibilityHint="Тот же файл, но сразу в мессенджер, на почту или в облако"
-        onPress={() => void send()}
-      />
-      <Button
-        title="Загрузить из файла"
-        accessibilityHint="Резервная копия или график, присланный с другого телефона"
-        onPress={() => void load()}
-      />
-      <Button
-        title="Сканировать QR"
-        accessibilityHint="Считать график с экрана другого телефона камерой"
-        onPress={() => router.push('/settings/scan')}
-      />
+      <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+        <IconButton
+          name="save-outline"
+          label="Сохранить копию"
+          accessibilityHint="Выбрать папку на телефоне и положить туда файл со всеми данными: графики, правки, выплаты и будильники"
+          onPress={() => void save()}
+        />
+        <IconButton
+          name="share-social-outline"
+          label="Отправить копию"
+          accessibilityHint="Тот же файл, но сразу в мессенджер, на почту или в облако"
+          onPress={() => void send()}
+        />
+        <IconButton
+          name="folder-open-outline"
+          label="Загрузить из файла"
+          accessibilityHint="Резервная копия или график, присланный с другого телефона"
+          onPress={() => void load()}
+        />
+      </View>
 
       {status ? (
         <AppText
