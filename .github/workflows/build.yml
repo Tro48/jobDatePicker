@@ -10,6 +10,13 @@
 # когда мерж в main изменил отпечаток нативной части. Решает там сверка
 # отпечатков, здесь профиль просто приходит входным параметром.
 #
+# Профилей три. production и development расходятся по релизам репозитория:
+# первый ставится поверх рабочего приложения, второй живёт рядом с ним.
+# rustore — сборка для магазина: из манифеста вырезаны разрешения инструментов
+# разработки, канала доставки APK мимо магазина в ней нет вовсе. В релизы она
+# не едет и остаётся артефактом запуска: её место — консоль RuStore, а не
+# страница выпусков, куда приложение ходит за обновлениями.
+#
 # Сборка идёт только после зелёных проверок: APK из кода, который не проходит
 # типы или тесты, стоил бы столько же, сколько рабочий.
 name: Сборка Android
@@ -23,6 +30,7 @@ on:
         options:
           - production
           - development
+          - rustore
         default: production
   # Вызов из update.yml. Проверки ниже прогоняются ещё раз, хотя вызывающий их
   # уже гонял: развязывать это условием дороже, чем лишний бесплатный прогон.
@@ -76,6 +84,7 @@ jobs:
         run: eas build --platform android --profile ${{ inputs.profile }} --non-interactive --json --wait > build.json
 
       - name: Выпуск на GitHub
+        if: inputs.profile != 'rustore'
         # APK переезжает в релиз репозитория по двум причинам: артефакты EAS на
         # бесплатном аккаунте живут 30 дней, а ссылка релиза постоянная —
         # приложение читает по ней список выпусков и никогда не промахивается.
@@ -134,3 +143,22 @@ jobs:
             --title "Смены $version" \
             --notes "Отпечаток нативной части: $runtime" \
             || gh release upload "$tag" "$apk" android.json --clobber
+
+      - name: APK для магазина
+        if: inputs.profile == 'rustore'
+        run: |
+          set -euo pipefail
+          artifact=$(jq -er '.[0].artifacts.applicationArchiveUrl' build.json)
+          version=$(jq -er '.[0].appVersion' build.json)
+          curl -fsSL "$artifact" -o "smeny-rustore-$version.apk"
+          echo "APK=smeny-rustore-$version.apk" >> "$GITHUB_ENV"
+
+      - name: Артефакт запуска
+        if: inputs.profile == 'rustore'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustore-apk
+          path: ${{ env.APK }}
+          # Артефакт нужен ровно на то время, пока APK не загружен в консоль
+          # RuStore. Держать его дольше незачем: в магазине он и так лежит.
+          retention-days: 7
