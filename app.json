@@ -5,7 +5,7 @@
     "platforms": [
       "android"
     ],
-    "version": "0.1.26",
+    "version": "0.1.27",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "jobdatepicker",
@@ -15,7 +15,7 @@
     },
     "android": {
       "package": "com.trofimdev.jobdatepicker",
-      "versionCode": 18,
+      "versionCode": 19,
       "allowBackup": false,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
