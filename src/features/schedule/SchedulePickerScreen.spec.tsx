@@ -24,6 +24,16 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
+/**
+ * Календарь выбора открывается на сегодняшнем месяце, а дни в тестах —
+ * сентябрьские. Часы заморожены на 1 сентября 2026: иначе тест живёт до
+ * первого октября, даты уезжают в прошлое, и сетка их больше не показывает.
+ */
+jest.mock('@/domain/date.ts', () => ({
+  ...jest.requireActual('@/domain/date.ts'),
+  todayIso: () => '2026-09-01',
+}));
+
 function renderPicker() {
   return render(
     <ThemeProvider>
