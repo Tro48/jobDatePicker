@@ -5,8 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -33,6 +35,33 @@ class AlarmService : Service() {
   private var wakeLock: PowerManager.WakeLock? = null
   private val handler = Handler(Looper.getMainLooper())
   private val autoStop = Runnable { stopEverything() }
+
+  /** Что звонит сейчас. Нужен, чтобы вернуть экран после блокировки. */
+  private var ringing: StoredAlarm? = null
+
+  /**
+   * Номер уведомления. Меняется на каждом показе экрана: полноэкранный intent
+   * система поднимает только для нового уведомления, а не для обновления уже
+   * показанного.
+   */
+  private var notificationId = NOTIFICATION_ID
+
+  /**
+   * Блокировка экрана во время звонка.
+   *
+   * Полноэкранный intent одноразовый: если человек свернул экран будильника,
+   * при следующей блокировке он сам не вернётся. Поэтому на каждое выключение
+   * экрана уведомление выкладывается заново — и система снова поднимает экран
+   * будильника. Уже видимый экран не трогаем: его возвращать не нужно.
+   */
+  private val screenReceiver = object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+      if (intent.action != Intent.ACTION_SCREEN_OFF) return
+      val alarm = ringing ?: return
+      if (AlarmActivity.isShowing) return
+      showFullScreen(alarm)
+    }
+  }
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -64,7 +93,9 @@ class AlarmService : Service() {
     handler.removeCallbacks(autoStop)
     stopRinging()
 
-    startForegroundWith(alarm)
+    ringing = alarm
+    showFullScreen(alarm)
+    registerScreenUpdates()
     acquireWakeLock()
     startRinging(alarm)
     // Звонить вечно нельзя: разряженный телефон хуже пропущенной смены.
@@ -74,13 +105,48 @@ class AlarmService : Service() {
 
   override fun onDestroy() {
     handler.removeCallbacks(autoStop)
+    unregisterScreenUpdates()
+    ringing = null
     stopRinging()
     releaseWakeLock()
     super.onDestroy()
   }
 
+  /**
+   * Показать экран будильника.
+   *
+   * Каждый показ — новое уведомление со своим номером: полноэкранный intent
+   * система поднимает только для нового уведомления. Обновление уже
+   * показанного экран не поднимает.
+   */
+  private fun showFullScreen(alarm: StoredAlarm) {
+    notificationId += 1
+    val notification = buildNotification(alarm)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      startForeground(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+    } else {
+      startForeground(notificationId, notification)
+    }
+  }
+
+  private fun registerScreenUpdates() {
+    // Повторная регистрация того же приёмника запрещена, а в работающую службу
+    // может прийти второй будильник — снимаем прежнюю регистрацию.
+    unregisterScreenUpdates()
+    val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    } else {
+      registerReceiver(screenReceiver, filter)
+    }
+  }
+
+  private fun unregisterScreenUpdates() {
+    runCatching { unregisterReceiver(screenReceiver) }
+  }
+
   @Suppress("DEPRECATION")
-  private fun startForegroundWith(alarm: StoredAlarm) {
+  private fun buildNotification(alarm: StoredAlarm): Notification {
     createChannel()
 
     val fullScreen = PendingIntent.getActivity(
@@ -124,13 +190,7 @@ class AlarmService : Service() {
       )
     }
 
-    val notification = builder.build()
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-    } else {
-      startForeground(NOTIFICATION_ID, notification)
-    }
+    return builder.build()
   }
 
   private fun servicePendingIntent(alarm: StoredAlarm, action: String): PendingIntent {

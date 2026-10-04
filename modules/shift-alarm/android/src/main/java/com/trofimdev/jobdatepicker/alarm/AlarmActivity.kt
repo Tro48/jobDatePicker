@@ -55,6 +55,17 @@ class AlarmActivity : Activity() {
   @Suppress("DEPRECATION")
   override fun onBackPressed() = Unit
 
+  /** Экран на виду — служба по этому флагу не выкладывает уведомление заново. */
+  override fun onStart() {
+    super.onStart()
+    isShowing = true
+  }
+
+  override fun onStop() {
+    isShowing = false
+    super.onStop()
+  }
+
   private fun showOverLockScreen() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
@@ -155,6 +166,14 @@ class AlarmActivity : Activity() {
     (value * resources.displayMetrics.density).toInt()
 
   companion object {
+    /**
+     * Экран будильника сейчас на виду. Служба смотрит сюда, чтобы не поднимать
+     * его повторно поверх уже показанного.
+     */
+    @Volatile
+    var isShowing = false
+      private set
+
     // Те же цвета, что в тёмной теме приложения: белый на #0F1115 даёт 17:1,
     // подпись #A3ABB8 — 8.9:1, чёрный на янтарном #F2B33D — 10.9:1.
     private val BACKGROUND = 0xFF0F1115.toInt()
