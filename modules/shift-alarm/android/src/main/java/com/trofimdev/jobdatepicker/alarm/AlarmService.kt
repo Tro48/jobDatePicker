@@ -5,8 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -33,6 +35,33 @@ class AlarmService : Service() {
   private var wakeLock: PowerManager.WakeLock? = null
   private val handler = Handler(Looper.getMainLooper())
   private val autoStop = Runnable { stopEverything() }
+
+  /** Что звонит сейчас. Нужен, чтобы вернуть экран после блокировки. */
+  private var ringing: StoredAlarm? = null
+
+  /**
+   * Номер уведомления. Меняется на каждом показе экрана: полноэкранный intent
+   * система поднимает только для нового уведомления, а не для обновления уже
+   * показанного.
+   */
+  private var notificationId = NOTIFICATION_ID
+
+  /**
+   * Блокировка экрана во время звонка.
+   *
+   * Полноэкранный intent одноразовый: если человек свернул экран будильника,
+   * при следующей блокировке он сам не вернётся. Поэтому на каждое выключение
+   * экрана уведомление выкладывается заново — и система снова поднимает экран
+   * будильника. Уже видимый экран не трогаем: его возвращать не нужно.
+   */
+  private val screenReceiver = object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+      if (intent.action != Intent.ACTION_SCREEN_OFF) return
+      val alarm = ringing ?: return
+      if (AlarmActivity.isShowing) return
+      showFullScreen(alarm)
+    }
+  }
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -64,7 +93,9 @@ class AlarmService : Service() {
     handler.removeCallbacks(autoStop)
     stopRinging()
 
-    startForegroundWith(alarm)
+    ringing = alarm
+    showFullScreen(alarm)
+    registerScreenUpdates()
     acquireWakeLock()
     startRinging(alarm)
     // Звонить вечно нельзя: разряженный телефон хуже пропущенной смены.
@@ -74,13 +105,52 @@ class AlarmService : Service() {
 
   override fun onDestroy() {
     handler.removeCallbacks(autoStop)
+    unregisterScreenUpdates()
+    // Сигнал снят (или служба остановлена) — окно будильника, если оно ещё
+    // живо, закрывается само. Иначе после кнопки в шторке на экране остался бы
+    // висеть старый звонок.
+    sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName))
+    ringing = null
     stopRinging()
     releaseWakeLock()
     super.onDestroy()
   }
 
+  /**
+   * Показать экран будильника.
+   *
+   * Каждый показ — новое уведомление со своим номером: полноэкранный intent
+   * система поднимает только для нового уведомления. Обновление уже
+   * показанного экран не поднимает.
+   */
+  private fun showFullScreen(alarm: StoredAlarm) {
+    notificationId += 1
+    val notification = buildNotification(alarm)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      startForeground(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+    } else {
+      startForeground(notificationId, notification)
+    }
+  }
+
+  private fun registerScreenUpdates() {
+    // Повторная регистрация того же приёмника запрещена, а в работающую службу
+    // может прийти второй будильник — снимаем прежнюю регистрацию.
+    unregisterScreenUpdates()
+    val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    } else {
+      registerReceiver(screenReceiver, filter)
+    }
+  }
+
+  private fun unregisterScreenUpdates() {
+    runCatching { unregisterReceiver(screenReceiver) }
+  }
+
   @Suppress("DEPRECATION")
-  private fun startForegroundWith(alarm: StoredAlarm) {
+  private fun buildNotification(alarm: StoredAlarm): Notification {
     createChannel()
 
     val fullScreen = PendingIntent.getActivity(
@@ -105,6 +175,9 @@ class AlarmService : Service() {
       .setVisibility(Notification.VISIBILITY_PUBLIC)
       .setOngoing(true)
       .setAutoCancel(false)
+      // Каналов на Android 7 ещё нет, а без максимального приоритета
+      // уведомление не всплывает поверх экрана.
+      .setPriority(Notification.PRIORITY_MAX)
       .setContentIntent(fullScreen)
       // Полноэкранный intent — то, ради чего всё затевалось: экран будильника
       // поверх блокировки, а не строчка в шторке.
@@ -124,13 +197,7 @@ class AlarmService : Service() {
       )
     }
 
-    val notification = builder.build()
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-    } else {
-      startForeground(NOTIFICATION_ID, notification)
-    }
+    return builder.build()
   }
 
   private fun servicePendingIntent(alarm: StoredAlarm, action: String): PendingIntent {
@@ -147,7 +214,6 @@ class AlarmService : Service() {
   private fun createChannel() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    if (manager.getNotificationChannel(CHANNEL_ID) != null) return
 
     val channel = NotificationChannel(CHANNEL_ID, "Будильник на смену", NotificationManager.IMPORTANCE_HIGH).apply {
       description = "Звонок перед началом смены"
@@ -157,6 +223,10 @@ class AlarmService : Service() {
       lockscreenVisibility = Notification.VISIBILITY_PUBLIC
       setBypassDnd(true)
     }
+
+    // Канал не только создаётся, но и обновляется: доступ к «Не беспокоить»
+    // могли выдать уже после первого звонка, и без повторного вызова запрос на
+    // обход DND так и остался бы отклонённым.
     manager.createNotificationChannel(channel)
   }
 
@@ -257,6 +327,9 @@ class AlarmService : Service() {
     const val ACTION_START = "com.trofimdev.jobdatepicker.alarm.START"
     const val ACTION_DISMISS = "com.trofimdev.jobdatepicker.alarm.DISMISS"
     const val ACTION_SNOOZE = "com.trofimdev.jobdatepicker.alarm.SNOOZE"
+
+    /** Сигнал снят: экран будильника должен закрыться. */
+    const val ACTION_STOPPED = "com.trofimdev.jobdatepicker.alarm.STOPPED"
 
     private const val CHANNEL_ID = "shift-alarm"
     private const val NOTIFICATION_ID = 4201

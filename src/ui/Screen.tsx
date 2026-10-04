@@ -38,29 +38,31 @@ export function Screen({ title, subtitle, action, children, scrollable = true }:
   );
 
   const padding = {
-    paddingTop: insets.top + theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
     paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.xl,
   };
 
-  if (!scrollable) {
-    return (
-      <View style={[{ flex: 1, backgroundColor: theme.colors.background }, padding]}>
-        {header}
-        {children}
-      </View>
-    );
-  }
-
+  // Верхний отступ — у самой рамки, а не у содержимого: иначе при прокрутке
+  // текст заезжает под статусбар. Так же устроена шторка (Sheet).
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
-      contentContainerStyle={padding}
-      // Прокрутка обязана работать при увеличенном системном шрифте.
-      keyboardShouldPersistTaps="handled"
-    >
-      {header}
-      {children}
-    </ScrollView>
+    <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top }}>
+      {scrollable ? (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={padding}
+          // Прокрутка обязана работать при увеличенном системном шрифте.
+          keyboardShouldPersistTaps="handled"
+        >
+          {header}
+          {children}
+        </ScrollView>
+      ) : (
+        <View style={[{ flex: 1 }, padding]}>
+          {header}
+          {children}
+        </View>
+      )}
+    </View>
   );
 }

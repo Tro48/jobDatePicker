@@ -1,8 +1,10 @@
 package com.trofimdev.jobdatepicker.alarm
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -28,12 +30,25 @@ import java.util.Locale
 class AlarmActivity : Activity() {
   private var alarm: StoredAlarm? = null
 
+  /**
+   * Сигнал сняли из шторки — окно закрывается само.
+   *
+   * Кнопки уведомления работают без открытия приложения, и окно, оставшееся за
+   * шторкой, не должно висеть со старым звонком.
+   */
+  private val stopReceiver = object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+      finish()
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     showOverLockScreen()
 
     alarm = AlarmScheduler.alarmFromIntent(intent)
     setContentView(buildLayout())
+    registerStopReceiver()
   }
 
   /**
@@ -54,6 +69,33 @@ class AlarmActivity : Activity() {
   /** Кнопка «назад» будильник не выключает — иначе его глушат случайно. */
   @Suppress("DEPRECATION")
   override fun onBackPressed() = Unit
+
+  /** Экран на виду — служба по этому флагу не выкладывает уведомление заново. */
+  override fun onStart() {
+    super.onStart()
+    isShowing = true
+  }
+
+  override fun onStop() {
+    isShowing = false
+    super.onStop()
+  }
+
+  override fun onDestroy() {
+    runCatching { unregisterReceiver(stopReceiver) }
+    isShowing = false
+    super.onDestroy()
+  }
+
+  /** Слушать «сигнал снят»: приходит из службы, когда будильник отключили в шторке. */
+  private fun registerStopReceiver() {
+    val filter = IntentFilter(AlarmService.ACTION_STOPPED)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      registerReceiver(stopReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    } else {
+      registerReceiver(stopReceiver, filter)
+    }
+  }
 
   private fun showOverLockScreen() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -155,6 +197,14 @@ class AlarmActivity : Activity() {
     (value * resources.displayMetrics.density).toInt()
 
   companion object {
+    /**
+     * Экран будильника сейчас на виду. Служба смотрит сюда, чтобы не поднимать
+     * его повторно поверх уже показанного.
+     */
+    @Volatile
+    var isShowing = false
+      private set
+
     // Те же цвета, что в тёмной теме приложения: белый на #0F1115 даёт 17:1,
     // подпись #A3ABB8 — 8.9:1, чёрный на янтарном #F2B33D — 10.9:1.
     private val BACKGROUND = 0xFF0F1115.toInt()

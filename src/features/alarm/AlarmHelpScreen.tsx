@@ -2,6 +2,7 @@ import { Linking, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   isAlarmModuleAvailable,
+  openDndAccessSettings,
   openExactAlarmSettings,
   openFullScreenIntentSettings,
   openNotificationSettings,
@@ -37,13 +38,15 @@ export function AlarmHelpScreen() {
         <Card title="Сначала — разрешения">
           <AppText variant="body">
             Без точных будильников Android не даст поставить расписание вовсе, а без уведомлений не
-            покажет звонок. Эти два разрешения слетают после обновления приложения чаще всего.
+            покажет звонок. В режиме «Не беспокоить» экран будильника не поднимется без отдельного
+            доступа. Эти разрешения слетают после обновления приложения чаще всего.
           </AppText>
           {isAlarmModuleAvailable ? (
             <View style={{ gap: theme.spacing.sm }}>
               <Button title="Точные будильники" onPress={openExactAlarmSettings} />
               <Button title="Уведомления" onPress={openNotificationSettings} />
               <Button title="Экран поверх блокировки" onPress={openFullScreenIntentSettings} />
+              <Button title="Обход «Не беспокоить»" onPress={openDndAccessSettings} />
             </View>
           ) : (
             <AppText variant="body" tone="muted">

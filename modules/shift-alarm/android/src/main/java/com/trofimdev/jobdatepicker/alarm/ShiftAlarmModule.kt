@@ -93,6 +93,17 @@ class ShiftAlarmModule : Module() {
     }
 
     /**
+     * Доступ к «Не беспокоить».
+     *
+     * В режиме тишины Android не пропустит экран будильника без этого доступа,
+     * сколько бы канал ни просил об обходе. Экран системный, списком: в нём
+     * нужно найти «Смены» и разрешить.
+     */
+    Function("openDndAccessSettings") {
+      startSettings(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS, withPackage = false)
+    }
+
+    /**
      * Разрешение на уведомления системным диалогом.
      *
      * С Android 13 оно не выдано по умолчанию, а без него не срабатывает

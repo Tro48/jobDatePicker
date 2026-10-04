@@ -1,6 +1,7 @@
 import { act, render } from '@testing-library/react-native';
 import { WidgetSyncProvider } from './WidgetSyncProvider.tsx';
 import { INITIAL_STATE, useAppStore } from '@/data/store.ts';
+import { addDays, todayIso } from '@/domain/date.ts';
 import { ThemeProvider, darkPalette } from '@/theme';
 
 /**
@@ -42,7 +43,10 @@ test('отпуск, поставленный в календаре, попада
   expect(beforeCalls).toBeGreaterThan(0);
 
   await act(async () => {
-    useAppStore.getState().setOverrideRange('2026-09-10', 7, 'vacation');
+    // Отпуск ставится в ближайшие дни, а не на календарную дату: снимок
+    // покрывает три месяца вперёд, и жёсткая дата однажды оказалась бы в
+    // прошлом — правка перестала бы попадать в снимок.
+    useAppStore.getState().setOverrideRange(addDays(todayIso(), 3), 7, 'vacation');
   });
 
   const last = mockWrite.mock.calls.at(-1)?.[0] as string;

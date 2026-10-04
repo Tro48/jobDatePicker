@@ -168,36 +168,43 @@ export function CalendarScreen() {
   const selectDay = useCallback((date: IsoDate) => setSelected(date), []);
 
   const padding = {
-    paddingTop: insets.top + theme.spacing.md,
+    paddingTop: theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.xl,
   };
 
+  // Верхний отступ — у рамки, а не у содержимого: при прокрутке календарь
+  // иначе заезжает под статусбар.
+  const frame = {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    paddingTop: insets.top,
+  };
+
   if (!context) {
     return (
-      <ScrollView
-        style={{ flex: 1, backgroundColor: theme.colors.background }}
-        contentContainerStyle={padding}
-      >
-        <AppText
-          variant="display"
-          accessibilityRole="header"
-          style={{ marginBottom: theme.spacing.lg }}
-        >
-          Календарь
-        </AppText>
-        {trackRow}
-        <Card title="График не выбран">
-          <AppText variant="body" tone="muted">
-            Выбери график и дату первой смены — календарь заполнится сам.
+      <View style={frame}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={padding}>
+          <AppText
+            variant="display"
+            accessibilityRole="header"
+            style={{ marginBottom: theme.spacing.lg }}
+          >
+            Календарь
           </AppText>
-          <Button
-            title="Выбрать график"
-            variant="primary"
-            onPress={() => push('/settings/schedule')}
-          />
-        </Card>
-      </ScrollView>
+          {trackRow}
+          <Card title="График не выбран">
+            <AppText variant="body" tone="muted">
+              Выбери график и дату первой смены — календарь заполнится сам.
+            </AppText>
+            <Button
+              title="Выбрать график"
+              variant="primary"
+              onPress={() => push('/settings/schedule')}
+            />
+          </Card>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -209,128 +216,127 @@ export function CalendarScreen() {
   const monthClosed = summary === null || summary.elapsedWorkedDays === summary.workedDays;
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
-      contentContainerStyle={padding}
-    >
-      {trackRow}
+    <View style={frame}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={padding}>
+        {trackRow}
 
-      {/* Шапка страницы — сам месяц: он меняется при листании и точнее
+        {/* Шапка страницы — сам месяц: он меняется при листании и точнее
           описывает то, что сейчас на экране, чем слово «Календарь». */}
-      <View style={{ marginBottom: theme.spacing.sm }}>
-        <MonthSwitcher period={visible.period} onChange={goTo} />
-      </View>
+        <View style={{ marginBottom: theme.spacing.sm }}>
+          <MonthSwitcher period={visible.period} onChange={goTo} />
+        </View>
 
-      <AlarmPermissionNotice />
+        <AlarmPermissionNotice />
 
-      {/* Обновление — новость, а не работа: полоска стоит после разрешений
+        {/* Обновление — новость, а не работа: полоска стоит после разрешений
           будильника, которые чинить надо прямо сейчас, и перед календарём,
           иначе её никто не увидит. */}
-      <View style={{ marginBottom: theme.spacing.md, gap: theme.spacing.md }}>
-        <UpdateNotice />
-        <DayCard
-          day={selectedDay}
-          isToday={selected === today}
-          notes={selectedNotes}
-          payments={selectedPayments}
-          currency={currency}
-          onEdit={() => push({ pathname: '/day/[date]', params: { date: selected } })}
-          onNotes={() => push({ pathname: '/notes/[date]', params: { date: selected } })}
-        />
-      </View>
+        <View style={{ marginBottom: theme.spacing.md, gap: theme.spacing.md }}>
+          <UpdateNotice />
+          <DayCard
+            day={selectedDay}
+            isToday={selected === today}
+            notes={selectedNotes}
+            payments={selectedPayments}
+            currency={currency}
+            onEdit={() => push({ pathname: '/day/[date]', params: { date: selected } })}
+            onNotes={() => push({ pathname: '/notes/[date]', params: { date: selected } })}
+          />
+        </View>
 
-      {/* Сетка идёт во всю ширину экрана: при семи колонках только так клетка
+        {/* Сетка идёт во всю ширину экрана: при семи колонках только так клетка
           дотягивает до 48 dp зоны нажатия на узких телефонах. */}
-      <View style={{ marginHorizontal: -theme.spacing.lg }}>
-        <WeekdayHeader width={width} />
-        <MonthPager
-          key={windowKey}
-          months={months}
-          index={index}
-          onIndexChange={setIndex}
-          context={context}
-          today={today}
-          selectedDate={selected}
-          onSelectDay={selectDay}
-          highlighted={highlighted}
-          highlightName={highlightName}
-          notes={notesByDay}
-          paymentDates={paymentDates}
-          width={width}
-        />
-      </View>
+        <View style={{ marginHorizontal: -theme.spacing.lg }}>
+          <WeekdayHeader width={width} />
+          <MonthPager
+            key={windowKey}
+            months={months}
+            index={index}
+            onIndexChange={setIndex}
+            context={context}
+            today={today}
+            selectedDate={selected}
+            onSelectDay={selectDay}
+            highlighted={highlighted}
+            highlightName={highlightName}
+            notes={notesByDay}
+            paymentDates={paymentDates}
+            width={width}
+          />
+        </View>
 
-      {summary && summary.byShiftType.length > 0 ? (
-        <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.md }}>
-          {/* Выделение объясняется легендой под календарём, вместе с
+        {summary && summary.byShiftType.length > 0 ? (
+          <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.md }}>
+            {/* Выделение объясняется легендой под календарём, вместе с
               заливками смен: своей строки у него нет — она стояла над сеткой
               и на каждое нажатие в списке двигала весь экран вниз. */}
-          <Legend
-            totals={summary.byShiftType}
-            colors={shiftColors}
-            hasHolidays={monthHasHolidays}
-            hasNotes={monthHas(notesByDay.keys(), visible.period)}
-            hasPayments={monthHas(paymentDates, visible.period)}
-            shared={highlight}
-            reserveShared={sharedListVisible}
-          />
-          <View style={{ gap: theme.spacing.xs }}>
-            {/* Только смены и часы. Число ручных правок отсюда убрано: после
+            <Legend
+              totals={summary.byShiftType}
+              colors={shiftColors}
+              hasHolidays={monthHasHolidays}
+              hasNotes={monthHas(notesByDay.keys(), visible.period)}
+              hasPayments={monthHas(paymentDates, visible.period)}
+              shared={highlight}
+              reserveShared={sharedListVisible}
+            />
+            <View style={{ gap: theme.spacing.xs }}>
+              {/* Только смены и часы. Число ручных правок отсюда убрано: после
                 двухнедельного отпуска строка «правок: 14» читается как «что-то
                 сломалось на четырнадцати днях», хотя это одна проставленная
                 запись. Кому нужен счёт — он есть в сводке за месяц.
 
                 В незакрытом месяце числа идут дробью: «7/16 смен» — сколько из
                 запланированного уже отработано. */}
-            <AppText
-              variant="body"
-              tone="muted"
-              accessibilityLabel={
-                monthClosed
-                  ? `${pluralize(summary.workedDays, SHIFT_FORMS)}, ${formatTotalHours(summary.workedMinutes)}`
-                  : `Отработано ${summary.elapsedWorkedDays} из ${pluralize(summary.workedDays, SHIFT_FORMS)}, ${formatTotalHours(summary.elapsedWorkedMinutes)} из ${formatTotalHours(summary.workedMinutes)}`
-              }
-            >
-              {monthClosed
-                ? `${pluralize(summary.workedDays, SHIFT_FORMS)} · ${formatTotalHours(summary.workedMinutes)}`
-                : `${summary.elapsedWorkedDays}/${summary.workedDays} ${plural(summary.workedDays, SHIFT_FORMS)} · ${formatHoursRatio(summary.elapsedWorkedMinutes, summary.workedMinutes)}`}
-            </AppText>
-            <OvertimeLine minutes={summary.overtimeMinutes} />
-            {startNote ? (
-              <AppText variant="caption" tone="muted">
-                {startNote}
+              <AppText
+                variant="body"
+                tone="muted"
+                accessibilityLabel={
+                  monthClosed
+                    ? `${pluralize(summary.workedDays, SHIFT_FORMS)}, ${formatTotalHours(summary.workedMinutes)}`
+                    : `Отработано ${summary.elapsedWorkedDays} из ${pluralize(summary.workedDays, SHIFT_FORMS)}, ${formatTotalHours(summary.elapsedWorkedMinutes)} из ${formatTotalHours(summary.workedMinutes)}`
+                }
+              >
+                {monthClosed
+                  ? `${pluralize(summary.workedDays, SHIFT_FORMS)} · ${formatTotalHours(summary.workedMinutes)}`
+                  : `${summary.elapsedWorkedDays}/${summary.workedDays} ${plural(summary.workedDays, SHIFT_FORMS)} · ${formatHoursRatio(summary.elapsedWorkedMinutes, summary.workedMinutes)}`}
               </AppText>
-            ) : null}
+              <OvertimeLine minutes={summary.overtimeMinutes} />
+              {startNote ? (
+                <AppText variant="caption" tone="muted">
+                  {startNote}
+                </AppText>
+              ) : null}
+            </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      {summary && summary.byShiftType.length === 0 && startNote ? (
-        <AppText variant="body" tone="muted" style={{ marginTop: theme.spacing.md }}>
-          {startNote}
-        </AppText>
-      ) : null}
+        {summary && summary.byShiftType.length === 0 && startNote ? (
+          <AppText variant="body" tone="muted" style={{ marginTop: theme.spacing.md }}>
+            {startNote}
+          </AppText>
+        ) : null}
 
-      {sharedListVisible ? (
-        <View style={{ marginTop: theme.spacing.md }}>
-          <SharedDaysOffCard rows={sharedRows} focusedId={focusedId} onFocus={setFocusedId} />
-        </View>
-      ) : null}
+        {sharedListVisible ? (
+          <View style={{ marginTop: theme.spacing.md }}>
+            <SharedDaysOffCard rows={sharedRows} focusedId={focusedId} onFocus={setFocusedId} />
+          </View>
+        ) : null}
 
-      {/* Правка графика — внизу страницы, а не в ряду переключателей: она про
+        {/* Правка графика — внизу страницы, а не в ряду переключателей: она про
           весь открытый календарь, а не про выбор между ними. Название стоит в
           кнопке, только когда графиков несколько, — иначе непонятно, какой из
           них откроется. */}
-      {track ? (
-        <View style={{ marginTop: theme.spacing.lg }}>
-          <Button
-            title={tracks.length > 1 ? `Изменить: ${track.name}` : 'Изменить график'}
-            accessibilityHint="График, дата первой смены, название"
-            onPress={() => push({ pathname: '/settings/schedule', params: { track: track.id } })}
-          />
-        </View>
-      ) : null}
-    </ScrollView>
+        {track ? (
+          <View style={{ marginTop: theme.spacing.lg }}>
+            <Button
+              title={tracks.length > 1 ? `Изменить: ${track.name}` : 'Изменить график'}
+              accessibilityHint="График, дата первой смены, название"
+              onPress={() => push({ pathname: '/settings/schedule', params: { track: track.id } })}
+            />
+          </View>
+        ) : null}
+      </ScrollView>
+    </View>
   );
 }
 
