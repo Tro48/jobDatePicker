@@ -108,6 +108,9 @@ jobs:
           git push
 
   # Нативная часть изменилась — по воздуху её не доставить, собираем APK.
+  # Две сборки из одного кода: production для обновлений с GitHub и rustore
+  # для магазина. Магазинная отличается манифестом (без инструментов
+  # разработки) и каналом обновлений, поэтому production-APK ей не замена.
   build:
     name: Сборка APK
     needs: [version, native]
@@ -115,6 +118,17 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       profile: production
+    secrets: inherit
+
+  # После сборки build.yml сам отправляет APK в RuStore: создаёт черновик
+  # версии, заливает файл и отправляет на модерацию.
+  build-rustore:
+    name: Сборка для RuStore
+    needs: [version, native]
+    if: needs.native.outputs.changed == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      profile: rustore
     secrets: inherit
 
   # Изменился только JS — обновление уезжает на телефон само.
