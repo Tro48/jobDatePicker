@@ -141,7 +141,7 @@ export function SummaryScreen() {
   );
 
   const padding = {
-    paddingTop: insets.top + theme.spacing.md,
+    paddingTop: theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.xxl,
   };
@@ -152,44 +152,45 @@ export function SummaryScreen() {
     const foreignOnly = !track && tracks.length > 0;
 
     return (
-      <ScrollView
-        style={{ flex: 1, backgroundColor: theme.colors.background }}
-        contentContainerStyle={padding}
-      >
-        <AppText
-          variant="display"
-          accessibilityRole="header"
-          style={{ marginBottom: theme.spacing.lg }}
-        >
-          Сводка
-        </AppText>
-        {foreignOnly ? (
-          <Card title="Только по своим графикам">
-            <AppText variant="body" tone="muted">
-              График близкого человека показывает общие выходные, а часы и деньги по нему не
-              считаются. Отметь график своим — сводка появится сама.
-            </AppText>
-            <Button
-              title="Настроить график"
-              variant="primary"
-              onPress={() =>
-                push({ pathname: '/settings/schedule', params: { track: tracks[0].id } })
-              }
-            />
-          </Card>
-        ) : (
-          <Card title="График не выбран">
-            <AppText variant="body" tone="muted">
-              Считать часы не по чему. Выбери график — сводка появится сама.
-            </AppText>
-            <Button
-              title="Выбрать график"
-              variant="primary"
-              onPress={() => push('/settings/schedule')}
-            />
-          </Card>
-        )}
-      </ScrollView>
+      // Верхний отступ — у рамки, а не у содержимого: иначе при прокрутке
+      // заголовок заезжает под статусбар.
+      <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={padding}>
+          <AppText
+            variant="display"
+            accessibilityRole="header"
+            style={{ marginBottom: theme.spacing.lg }}
+          >
+            Сводка
+          </AppText>
+          {foreignOnly ? (
+            <Card title="Только по своим графикам">
+              <AppText variant="body" tone="muted">
+                График близкого человека показывает общие выходные, а часы и деньги по нему не
+                считаются. Отметь график своим — сводка появится сама.
+              </AppText>
+              <Button
+                title="Настроить график"
+                variant="primary"
+                onPress={() =>
+                  push({ pathname: '/settings/schedule', params: { track: tracks[0].id } })
+                }
+              />
+            </Card>
+          ) : (
+            <Card title="График не выбран">
+              <AppText variant="body" tone="muted">
+                Считать часы не по чему. Выбери график — сводка появится сама.
+              </AppText>
+              <Button
+                title="Выбрать график"
+                variant="primary"
+                onPress={() => push('/settings/schedule')}
+              />
+            </Card>
+          )}
+        </ScrollView>
+      </View>
     );
   }
 

@@ -27,41 +27,44 @@ export function AppErrorScreen({ error, retry }: ErrorBoundaryProps) {
   };
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{
-        flexGrow: 1,
-        justifyContent: 'center',
-        gap: spacing.md,
-        padding: spacing.lg,
-        paddingTop: insets.top + spacing.lg,
-        paddingBottom: insets.bottom + spacing.lg,
-      }}
-    >
-      <Text
-        accessibilityRole="header"
-        style={{ fontSize: 24, fontWeight: '700', color: colors.text }}
+    // Верхний отступ — у рамки: при прокрутке текст ошибки не должен
+    // заезжать под статусбар.
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          gap: spacing.md,
+          padding: spacing.lg,
+          paddingBottom: insets.bottom + spacing.lg,
+        }}
       >
-        Приложение споткнулось
-      </Text>
+        <Text
+          accessibilityRole="header"
+          style={{ fontSize: 24, fontWeight: '700', color: colors.text }}
+        >
+          Приложение споткнулось
+        </Text>
 
-      <Text style={{ fontSize: 16, lineHeight: 24, color: colors.text }}>
-        Данные никуда не делись — сломался только показ. Попробуй открыть заново. Если не помогает,
-        сбрось график: календарь соберётся заново, а правки дней, выплаты и будильники останутся на
-        месте.
-      </Text>
+        <Text style={{ fontSize: 16, lineHeight: 24, color: colors.text }}>
+          Данные никуда не делись — сломался только показ. Попробуй открыть заново. Если не
+          помогает, сбрось график: календарь соберётся заново, а правки дней, выплаты и будильники
+          останутся на месте.
+        </Text>
 
-      <ErrorButton label="Открыть заново" onPress={() => void retry()} primary colors={colors} />
-      <ErrorButton label="Сбросить график" onPress={resetSchedule} colors={colors} />
+        <ErrorButton label="Открыть заново" onPress={() => void retry()} primary colors={colors} />
+        <ErrorButton label="Сбросить график" onPress={resetSchedule} colors={colors} />
 
-      {/* Текст ошибки внизу и мелким: он нужен для отчёта, а не для чтения. */}
-      <Text
-        accessibilityLabel={`Текст ошибки: ${error.message}`}
-        style={{ fontSize: 13, lineHeight: 18, color: colors.textMuted, marginTop: spacing.md }}
-      >
-        {error.message}
-      </Text>
-    </ScrollView>
+        {/* Текст ошибки внизу и мелким: он нужен для отчёта, а не для чтения. */}
+        <Text
+          accessibilityLabel={`Текст ошибки: ${error.message}`}
+          style={{ fontSize: 13, lineHeight: 18, color: colors.textMuted, marginTop: spacing.md }}
+        >
+          {error.message}
+        </Text>
+      </ScrollView>
+    </View>
   );
 }
 
