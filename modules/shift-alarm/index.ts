@@ -25,6 +25,7 @@ interface ShiftAlarmNativeModule {
   areNotificationsEnabled(): boolean;
   openExactAlarmSettings(): void;
   openFullScreenIntentSettings(): void;
+  openDndAccessSettings(): void;
   openNotificationSettings(): void;
   requestNotifications(): Promise<boolean>;
   schedule(alarms: NativeAlarm[]): Promise<number>;
@@ -73,6 +74,11 @@ export function openExactAlarmSettings(): void {
 
 export function openFullScreenIntentSettings(): void {
   native?.openFullScreenIntentSettings();
+}
+
+/** Доступ к «Не беспокоить»: без него в режиме тишины экран будильника не поднимется. */
+export function openDndAccessSettings(): void {
+  native?.openDndAccessSettings();
 }
 
 export function openNotificationSettings(): void {

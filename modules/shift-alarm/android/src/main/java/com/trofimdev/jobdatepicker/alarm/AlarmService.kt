@@ -106,6 +106,10 @@ class AlarmService : Service() {
   override fun onDestroy() {
     handler.removeCallbacks(autoStop)
     unregisterScreenUpdates()
+    // Сигнал снят (или служба остановлена) — окно будильника, если оно ещё
+    // живо, закрывается само. Иначе после кнопки в шторке на экране остался бы
+    // висеть старый звонок.
+    sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName))
     ringing = null
     stopRinging()
     releaseWakeLock()
@@ -171,6 +175,9 @@ class AlarmService : Service() {
       .setVisibility(Notification.VISIBILITY_PUBLIC)
       .setOngoing(true)
       .setAutoCancel(false)
+      // Каналов на Android 7 ещё нет, а без максимального приоритета
+      // уведомление не всплывает поверх экрана.
+      .setPriority(Notification.PRIORITY_MAX)
       .setContentIntent(fullScreen)
       // Полноэкранный intent — то, ради чего всё затевалось: экран будильника
       // поверх блокировки, а не строчка в шторке.
@@ -207,7 +214,6 @@ class AlarmService : Service() {
   private fun createChannel() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    if (manager.getNotificationChannel(CHANNEL_ID) != null) return
 
     val channel = NotificationChannel(CHANNEL_ID, "Будильник на смену", NotificationManager.IMPORTANCE_HIGH).apply {
       description = "Звонок перед началом смены"
@@ -217,6 +223,10 @@ class AlarmService : Service() {
       lockscreenVisibility = Notification.VISIBILITY_PUBLIC
       setBypassDnd(true)
     }
+
+    // Канал не только создаётся, но и обновляется: доступ к «Не беспокоить»
+    // могли выдать уже после первого звонка, и без повторного вызова запрос на
+    // обход DND так и остался бы отклонённым.
     manager.createNotificationChannel(channel)
   }
 
@@ -317,6 +327,9 @@ class AlarmService : Service() {
     const val ACTION_START = "com.trofimdev.jobdatepicker.alarm.START"
     const val ACTION_DISMISS = "com.trofimdev.jobdatepicker.alarm.DISMISS"
     const val ACTION_SNOOZE = "com.trofimdev.jobdatepicker.alarm.SNOOZE"
+
+    /** Сигнал снят: экран будильника должен закрыться. */
+    const val ACTION_STOPPED = "com.trofimdev.jobdatepicker.alarm.STOPPED"
 
     private const val CHANNEL_ID = "shift-alarm"
     private const val NOTIFICATION_ID = 4201

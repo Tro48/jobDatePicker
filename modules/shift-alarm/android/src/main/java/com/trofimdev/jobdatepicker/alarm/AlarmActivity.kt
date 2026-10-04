@@ -1,8 +1,10 @@
 package com.trofimdev.jobdatepicker.alarm
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -28,12 +30,25 @@ import java.util.Locale
 class AlarmActivity : Activity() {
   private var alarm: StoredAlarm? = null
 
+  /**
+   * Сигнал сняли из шторки — окно закрывается само.
+   *
+   * Кнопки уведомления работают без открытия приложения, и окно, оставшееся за
+   * шторкой, не должно висеть со старым звонком.
+   */
+  private val stopReceiver = object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+      finish()
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     showOverLockScreen()
 
     alarm = AlarmScheduler.alarmFromIntent(intent)
     setContentView(buildLayout())
+    registerStopReceiver()
   }
 
   /**
@@ -64,6 +79,22 @@ class AlarmActivity : Activity() {
   override fun onStop() {
     isShowing = false
     super.onStop()
+  }
+
+  override fun onDestroy() {
+    runCatching { unregisterReceiver(stopReceiver) }
+    isShowing = false
+    super.onDestroy()
+  }
+
+  /** Слушать «сигнал снят»: приходит из службы, когда будильник отключили в шторке. */
+  private fun registerStopReceiver() {
+    val filter = IntentFilter(AlarmService.ACTION_STOPPED)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      registerReceiver(stopReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    } else {
+      registerReceiver(stopReceiver, filter)
+    }
   }
 
   private fun showOverLockScreen() {
