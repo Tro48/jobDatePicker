@@ -9,6 +9,10 @@
 # Раньше сборка стояла отдельно и запускалась руками. Это и подводило: мерж с
 # нативной правкой публиковал обновление под новым отпечатком, которого нет ни
 # на одном телефоне, и напомнить об этом было некому.
+#
+# Обновление публикуется в две ветки: production и rustore. У магазинной
+# сборки свой отпечаток и свой канал — из манифеста вырезаны инструменты
+# разработки, — поэтому одной веткой её не догнать.
 name: Выкатка в main
 
 on:
@@ -162,5 +166,11 @@ jobs:
         env:
           MESSAGE: ${{ github.event.head_commit.message || github.sha }}
         # Ветка обновлений называется так же, как канал в eas.json: сборка с
-        # каналом production получает обновления ветки production.
-        run: eas update --platform android --branch production --message "$MESSAGE" --non-interactive
+        # каналом production получает обновления ветки production. Для
+        # магазинной сборки APP_DISTRIBUTION=rustore обязателен: он меняет
+        # app.config, а вместе с ним и отпечаток нативной части, по которому
+        # expo-updates решает, кому обновление положено.
+        run: |
+          set -euo pipefail
+          eas update --platform android --branch production --message "$MESSAGE" --non-interactive
+          APP_DISTRIBUTION=rustore eas update --platform android --branch rustore --message "$MESSAGE" --non-interactive

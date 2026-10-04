@@ -173,9 +173,9 @@ jobs:
           RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
           RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
           APK_PATH: ${{ env.APK }}
-          # MANUAL — после модерации версия ждёт кнопки в консоли.
-          # INSTANTLY — публикуется сама сразу после модерации.
-          PUBLISH_TYPE: MANUAL
+          # INSTANTLY — версия публикуется сама сразу после модерации.
+          # MANUAL — ждала бы кнопки «Опубликовать» в консоли.
+          PUBLISH_TYPE: INSTANTLY
         run: |
           set -euo pipefail
           export WHATS_NEW="$(node --experimental-strip-types scripts/release-notes.ts)"
