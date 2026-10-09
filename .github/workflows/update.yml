@@ -34,6 +34,41 @@ jobs:
   checks:
     uses: ./.github/workflows/checks.yml
 
+  # Рубеж перед выпуском: пуш в main обязан менять список «что нового».
+  # Текст записей пишется вручную — автоматика только не пускает релиз без
+  # записи. Коммит подъёма версии джобу не запускает ([skip ci]), поэтому
+  # здесь видны только настоящие пуши с изменениями.
+  notes:
+    name: «Что нового» обновлено
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Нужны оба конца диапазона пуша: before может быть не прямым предком.
+          fetch-depth: 0
+
+      - name: Пуш менял список записей?
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+
+          # У workflow_dispatch границ пуша нет: перевыкладка того же кода
+          # проверять нечего.
+          if [ -z "$BEFORE" ] || [ -z "$AFTER" ]; then
+            echo "Границ пуша нет (workflow_dispatch) — проверять нечего."
+            exit 0
+          fi
+
+          if git diff --name-only "$BEFORE" "$AFTER" | grep -qx 'src/domain/releaseNotes.ts'; then
+            echo "Список записей обновлён — релиз идёт."
+          else
+            echo "Пуш не менял src/domain/releaseNotes.ts: добавь запись в «Что нового» и смержи снова."
+            exit 1
+          fi
+
   native:
     name: Менялась ли нативная часть
     runs-on: ubuntu-latest
@@ -78,9 +113,9 @@ jobs:
 
   version:
     name: Версия
-    # Ждёт проверок: без этого версия поднималась и уезжала в main даже тогда,
-    # когда тесты красные и выкатывать нечего.
-    needs: checks
+    # Ждёт проверок и рубежа «что нового»: без этого версия поднималась и
+    # уезжала в main даже тогда, когда тесты красные или записи не обновлены.
+    needs: [checks, notes]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

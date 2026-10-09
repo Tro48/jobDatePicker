@@ -15,9 +15,9 @@ import type { UpdateStatus } from './useAppUpdate.ts';
 const FINGERPRINT_LENGTH = 8;
 
 /**
- * Ход проверки. Новая сборка сюда не попадает: про неё говорит отдельная
- * строка, иначе карточка одновременно писала бы «установлена последняя версия»
- * и предлагала скачать APK.
+ * Ход проверки по воздуху. Ни новая сборка, ни обновление из магазина сюда не
+ * попадают: про них говорит отдельная строка, иначе карточка одновременно
+ * писала бы «установлена последняя версия» и предлагала скачать APK.
  */
 function statusText(status: UpdateStatus): string | null {
   switch (status.kind) {
@@ -74,7 +74,14 @@ export function UpdateCard() {
   // ней молчит канал GitHub: адреса списка выпусков в такой сборке просто нет.
   const store = useRustoreUpdate();
 
-  const message = newBuild ? newBuildText(newBuild) : statusText(status);
+  // Обновление из магазина — та же новость, что и вышедшая сборка: под ним
+  // «установлена последняя версия» не пишется. Кнопка «Обновить в RuStore»
+  // рядом с такой надписью означала бы, что карточка врёт.
+  const message = newBuild
+    ? newBuildText(newBuild)
+    : store.available
+      ? 'В RuStore вышло обновление.'
+      : statusText(status);
 
   return (
     <Card
@@ -108,7 +115,7 @@ export function UpdateCard() {
         // области скринридер промолчит и о ходе проверки, и о результате.
         <AppText
           variant="body"
-          tone={newBuild ? 'default' : 'muted'}
+          tone={newBuild || store.available ? 'default' : 'muted'}
           accessibilityLiveRegion="polite"
         >
           {message}
